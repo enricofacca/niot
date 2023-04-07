@@ -20,7 +20,7 @@ def include_filters(no_filter_svg):
 # coordinate of the network nodes 
 # connection topology
 # forcing term (should be balance and lenght equal to number of nodes)
-coord=[[10,10],[10,90],[30,10],[30,90]]
+coord=[[10,10],[10,90],[20,10],[40,90]]
 topol=[[0,1],[2,3]]
 forcing=[-1,1,-1,1]
 
