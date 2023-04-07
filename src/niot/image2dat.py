@@ -4,7 +4,9 @@ import numpy as np
 import sys
 import os
 import subprocess
-from firedrake import *
+from copy import deepcopy as cp
+import firedrake as fire
+import matplotlib.pyplot as plt
 
 def image2matrix(img_name,factor=1):
    #open file in fileList:
@@ -29,15 +31,31 @@ def image2matrix(img_name,factor=1):
    print ('Pixels : '+str(img_grey.size[0])+' x '+ str(img_grey.size[1]))
    value = np.asarray(img_grey.getdata(), dtype=float)
    value = value.reshape((img_grey.size[1], img_grey.size[0]))
-   value = value/255
+   value = 1-value/255
 
    return value
 
+def matrix2image(numpy_matrix, image_path, lenght_unit=100):
+   """ Given a (numpy) matrix with values between 0 and 1
+   save a grayscale image to file. Grayscale is flipped,
+   which means that 0 is white and 1 is white
+   """
+   # Creates PIL image
+   img = Image.fromarray(np.uint8((1-numpy_matrix) * 255) , 'L')
+   img.save(image_path)
+
+   # alternative
+   #from scipy.misc import toimage
+   #im = toimage(numpy_matrix)
+   #im.save(image_path)
+
+
 def matrix2function(value,cartesian_mesh):
    """
-   Convert np matrix into a piecewise function defined ad the cartesina grid
+   Convert np matrix into a piecewise function 
+   defined ad the cartesina triangulation.
+   Each pixel is splitted in two triangles.
    """ 
-
    
    # we flip vertically because images are read from left, right, top to bottom
    value = np.flip(value,0)
@@ -47,14 +65,36 @@ def matrix2function(value,cartesian_mesh):
    double_value[0,:,:] = value[:,:]
    double_value[1,:,:] = value[:,:]
    triangles_image = double_value.swapaxes(0,2).flatten()
-   DG0 = FunctionSpace(cartesian_mesh,'DG',0)
+   DG0 = fire.FunctionSpace(cartesian_mesh,'DG',0)
    
-   img_function = Function(DG0)
+   img_function = fire.Function(DG0)
    with img_function.dat.vec as d:
       d.array = triangles_image
 
    return img_function
+
+def function2image(function,image_path,vmin=0):
+   """
+   Print a firedrake function to grayscale image (0=white, >0=black)
+   using matplotlib tools in firedrake
+   """
+   fig, axes = plt.subplots()
+   colors = fire.tricontourf(function, 
+      axes=axes, cmap='gray_r', vmin=vmin)
+   fig.colorbar(colors)
+   plt.gca().set_aspect('equal')
+   plt.savefig(image_path)
    
+def corrupt_image(path_original,path_corrupted,path_masks):
+   """
+   Corrupt an image by applying masks
+   """
+   np_corrupted = i2d.image2matrix(Image.open(path_orig))
+   
+   for mask in path_masks:
+      np_corrupted -= i2d.image2matrix(Image.open(path_orig))
+   
+
 
 def image2grid(img_name,factor):
    img_file = Image.open(img_name)
@@ -67,7 +107,7 @@ def image2grid(img_name,factor):
    # get original image parameters...
    width, height = img_file.size
    min_side = min(width,height)
-   mesh = RectangleMesh(width,height,1,height/min_side,reorder=False)
+   mesh = fire.RectangleMesh(width,height,1,height/min_side,reorder=False)
 
    return mesh
    
