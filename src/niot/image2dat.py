@@ -97,6 +97,7 @@ def corrupt_image(path_original,path_corrupted,path_masks):
 
 
 def image2grid(img_name,factor):
+   
    img_file = Image.open(img_name)
 
    if (factor <1):

@@ -82,7 +82,7 @@ class SpaceDiscretization:
     """
     Class containg fem discretization variables
     """
-    def __init__(self, mesh):
+    def __init__(self, mesh, pot_space='CR', pot_deg=1, tdens_space='DG', tdens_deg=0):
        #tdens_fem='DG0',pot_fem='P1'):
        """
        Initialize FEM spaces used to discretized the problem
@@ -91,15 +91,22 @@ class SpaceDiscretization:
        #meshes = MeshHierarchy(mesh, 1)
        #print("meshes",meshes)
        #print("meshes",len(meshes))
-       self.pot_fem = FiniteElement('CR', mesh.ufl_cell(), 1)
+
+       self.pot_fem = FiniteElement(pot_space, mesh.ufl_cell(), pot_deg)
        self.pot_space = FunctionSpace(mesh, self.pot_fem)
        self.pot_trial = TrialFunction(self.pot_space)
        self.pot_test = TestFunction(self.pot_space)
+
+       if (pot_space=='DG') and (pot_deg == 0):
+            x,y = mesh.coordinates
+            x_func = interpolate(x, self.pot_space)
+            y_func = interpolate(y, self.pot_space)
+            self.delta_h = sqrt(jump(x_func)**2 + jump(y_func)**2)
        
        
        # For Tdens unknow, create fem, function space, test and trial
        # space
-       self.tdens_fem = FiniteElement('DG', mesh.ufl_cell(), 0)
+       self.tdens_fem = FiniteElement(tdens_space, mesh.ufl_cell(), tdens_deg)
        self.tdens_space = FunctionSpace(mesh, self.tdens_fem)
        self.tdens_trial = TrialFunction(self.tdens_space)
        self.tdens_test = TestFunction(self.tdens_space)
@@ -133,46 +140,15 @@ class SpaceDiscretization:
 
         return sol
 
-    
-
-
-class TdensPotential:
-    """ This class contains problem solution tdens and pot such that
-    pot solves the P-laplacian solution and 
-    $\Tdens=|\Grad \Pot|^{\plapl-2}$
-    """
-    def __init__(self, problem, tdens0=None, pot0=None):
+    def save_solution(self, sol, file_name):
         """
-         Constructor of TdensPotential class, containing unkonws
-         tdens, pot
-         
-         Args:
-            
-        
-        Raise:
-        ValueError
-
-        Example:
-       
-        
+        Save solution to file
         """
-        #: Tdens function
-        self.tdens = Function(problem.tdens_fem_space)
-        self.tdens.vector()[:]=1.0
-        self.tdens.rename("tdens","Optimal Transport Tdens")
-        
-        #: Potential function
-        self.pot = Function(problem.pot_fem_space)
-        self.pot.vector()[:]=0.0
-        self.pot.rename("Pot","Kantorovich Potential")
-        
-        #: int: Number of tdens variable
-        self.n_tdens = self.tdens.vector().size()
-        #: int: Number of pot variable 
-        self.n_pot = self.pot.vector().size()
-
-        # define implicitely the velocity
-        self.velocity = self.tdens * grad(self.pot) 
+        pot, tdens = sol.split()
+        pot.rename("pot","Kantorovich Potential")
+        tdens.rename("tdens","Optimal Transport Tdens")
+        out_file = File(file_name)
+        out_file.write(pot, tdens)
         
 
 class InpaitingProblem:
@@ -205,8 +181,10 @@ class InpaitingProblem:
         """
         outfile = File(filename)
         outfile.write(self.observed, self.forcing)
-        
-        
+
+
+
+            
 class Controls:
     """
     Class with Dmk Solver 
@@ -275,47 +253,188 @@ class Controls:
  
 class NiotSolver:
     """
-    Solver for the network inpaiting problem 
+    Solver for the network inpaiting problem-
+    Args:
+    spaces: strings denoting the discretization scheme used
+    numpy_corruped: numpy 2d/3d array describing network to be reconstructed
+    numpy_source: numpy 2d/3d array describing inlet flow
+    numpy_sink: numpy 2d/3d array describing outlet flow
+    force_balance: boolean to force balancing sink to ensure problem to be well posed
     """
-    def __init__(self, fems):
+    def __init__(self, spaces, numpy_corrupted, numpy_source, numpy_sink, force_balance=False):
         """
-        Initialize solver with passed controls (or default)
-        and initialize structure to store info on solver application
+        Initialize solver (spatial discretization) from numpy_image (2d or 3d data)
+
         """
-        # create pointe to FEM spaces
-        self.fems = fems
+        # create mesh from image
+        self.spaces = spaces
+        if spaces == 'CR1DG0':
+            self.mesh = self.build_mesh_from_numpy(numpy_corrupted, mesh_type='simplicial')
+            self.mesh_type = 'simplicial'
+            # create FEM spaces
+            self.fems = SpaceDiscretization(self.mesh,'CR',1, 'DG',0)
+        if spaces == 'DG0DG0':
+            self.mesh = self.build_mesh_from_numpy(numpy_corrupted, mesh_type='cartesian')
+            self.mesh_type = 'cartesian'
+            # create FEM spaces
+            self.fems = SpaceDiscretization(self.mesh,'DG',0,'DG',0)
+        else:
+            raise ValueError("Wrong spaces only pot,tdens in CR1,DG0 implemented")
+
+        # set function 
+        self.observed = self.numpy2function(numpy_corrupted)
+
+        # set source and sink 
+        self.set_inout_flow(numpy_source, numpy_sink, force_balance=force_balance)    
+    
+        # set niot parameter to default
+        self.set_parameters(
+            gamma=0.6,
+            weights=[1.0,1.0,0.0],
+            confidence=Constant(1.0,domain=self.mesh),
+            tdens2image=lambda x: x)
 
         # init infos
         self.linear_iter = 0
         self.nonlinear_iter = 0
         self.nonlinear_res = 0.0
 
-        # set niot parameter to default
-        self.set_parameters()
+
+    def build_mesh_from_numpy(self, np_image, mesh_type='simplicial'): 
+        """
+        Create a mesh (first axis size=1) from a numpy array
+        """
+        if (mesh_type == 'simplicial'):
+            quadrilateral = False
+        elif (mesh_type == 'cartesian'):
+            quadrilateral = True
+        print(f"Mesh type {mesh_type} quadrilateral {quadrilateral}")
+        
+        if (np_image.ndim == 2):
+            width, height = np_image.shape
+            mesh = RectangleMesh(width,height,1,height/width, 
+                quadrilateral = quadrilateral,
+                reorder=False)
+                
+        elif (np_image.ndim == 3):
+            raise NotImplementedError("3D not implemented")
+        else:
+            raise ValueError("Wrong dimension of image")
+        return mesh
+
         
     def set_parameters(self,
-                 gamma=0.8,
-                 confidence = 1.0,
-                 weights=[1.0,1.0,0.0],
-                 tdens2image= lambda x: x ):
+                 gamma=None,
+                 weights=None,
+                 confidence=None,
+                 tdens2image=None):
         """
         Set all niot parameter
         """
-        self.gamma = gamma
-        self.confidence  = confidence
-        self.weights = weights
-        self.tdens2image = tdens2image
+        if gamma is not None:
+            if gamma<0:
+                raise ValueError(f"Gamma must be greater than zero")
+            self.gamma = gamma
+        
+        if weights is not None:
+            if len(weights)!=3:
+                raise ValueError(f"3 weights are required, Transport Energy, Discrepancy, Penalization")
+            self.weights = weights
+
+        if confidence is not None:
+            self.confidence  = self.convert_data(confidence)
+            self.confidence.rename('confidence','confidence')
+        
+        if tdens2image is not None:
+            self.tdens2image = tdens2image
+
+    def numpy2function(self, value):
+        """
+        Convert np array (2d o 3d) into a function compatible with the mesh solver.
+        Args:
+        
+        value: numpy array (2d or 3d) with images values
+
+        returns: piecewise constant firedake function 
+        """ 
+        
+        # we flip vertically because images are read from left, right, top to bottom
+        value = np.flip(value,0)
+
+        if (self.mesh_type == 'simplicial'):
+            # Each pixel is splitted in two triangles.
+            if (self.mesh.geometric_dimension() == 2):
+                # double the value to copy the pixel value to the triangles
+                double_value = np.zeros([2,value.shape[0],value.shape[1]])
+                double_value[0,:,:] = value[:,:]
+                double_value[1,:,:] = value[:,:]
+                triangles_image = double_value.swapaxes(0,2).flatten()
+                DG0 = FunctionSpace(self.mesh,'DG',0)
+                
+                img_function = Function(DG0)
+                with img_function.dat.vec as d:
+                    d.array = triangles_image
+            else:
+                raise ValueError("3d data not implemented yet")
+
+            return img_function
+
+        if (self.mesh_type == 'cartesian'):
+            DG0 = FunctionSpace(self.mesh,'DG',0)
+            img_function = Function(DG0)
+            with img_function.dat.vec as d:
+                d.array = value.flatten('F')
+            return img_function
+
+    def convert_data(self, data):
+        if isinstance(data, np.ndarray):
+            return self.numpy2function(data)
+        elif isinstance(data, functionspaceimpl.FunctionSpace):
+            # function must be defined on the same mesh
+            if data.functon_space().mesh() == self.mesh:
+                return data
+            else:
+                raise ValueError("Data not defined on the same mesh of the solver")
+        elif isinstance(data, constant.Constant):
+            return data 
+        else:
+            raise ValueError("Type "+str(type(data))+" passed as source not supported")
+
+    def set_inout_flow(self, source, sink, force_balance=False, tolerance=1e-10):
+        """
+        Set source and sink member of niot_solver class
+
+        Args:
+        source: (numpy 2d-3d array or function) inlet ratio
+        sink:  (numpy 2d-3d array or function) outlet ratio
+        force balance: (bolean) balance sink term 
+        """
+
+        # Ensure to store source and sink as functions
+        self.source = self.convert_data(source)
+        self.source.rename('source','source')
+        self.sink = self.convert_data(sink)
+        self.sink.rename('sink','sink')
+
+        mass_source = assemble(self.source*dx)
+        mass_sink = assemble(self.sink*dx)
+
+        if abs(mass_source-mass_sink) > tolerance :
+            if force_balance:
+                with self.sink.dat.vec as f:
+                    f.scale(mass_source / mass_sink)
+            else:
+                raise ValueError("Source and sink terms are not balanced")
+
+    def create_solution(self):
+        return self.fems.create_solution()
 
     def save_solution(self, sol, file_name):
-        """
-        Save solution to file
-        """
-        pot, tdens = sol.split()
-        pot.rename("pot","Kantorovich Potential")
-        tdens.rename("tdens","Optimal Transport Tdens")
+        self.fems.save_solution(sol,file_name)
+
+    def save_inputs(self, file_name):
         out_file = File(file_name)
-        out_file.write(pot, tdens)
-        
+        out_file.write(self.source, self.sink, self.observed, self.confidence)
         
     def print_info(self, msg, priority):
         """
@@ -373,16 +492,14 @@ class NiotSolver:
         bc = None
 
                                     
-    def syncronize(self, problem, sol, ctrl):
+    def syncronize(self, sol, ctrl):
         """        
         Args:
-         tdpot: Class with unkowns (tdens, pot in this case)
-         problem: Class with inputs  (rhs, q_exponent)
+         sol: Class with unkowns (tdens, pot in this case)
          ctrl:  Class with controls how we solve
 
         Returns:
-         tdpot : syncronized to fill contraint S(tdens) pot = rhs
-         ierr  : control flag (=0 if everthing worked)
+        ierr  : control flag (=0 if everthing worked)
         """
         # pot0 is the initial guess
         # tden0 is the given data
@@ -398,11 +515,14 @@ class NiotSolver:
         # fix tdens and solve with Euler-Lagrange eqs. w.r.t to pot
         # (the resulting PDE is linear and is given by
         # PDE_pot = (problem.forcing*test-tdens0*dot(grad(pot),grad(test)))*dx
-        PDE_pot = derivative(self.energy(problem, pot, tdens0), pot)
+        # PDE_pot = derivative(self.energy(problem, pot, tdens0), pot)
         test = self.fems.pot_test
         
-        PDE_pot = tdens0 * inner(grad(pot),grad(test)) * dx - problem.forcing * test * dx
-
+        if (self.spaces == 'CR1DG0'):
+            PDE_pot = tdens0 * inner(grad(pot),grad(test)) * dx - (self.source-self.sink) * test * dx
+        elif (self.spaces == 'DG0DG0'):
+            tdens_facet = avg(tdens0)
+            PDE_pot = tdens_facet * jump(pot) * jump(test) / self.fems.delta_h * dS - (self.source-self.sink) * test * dx
         
         u_prob = NonlinearVariationalProblem(PDE_pot, pot)
 
@@ -447,10 +567,8 @@ class NiotSolver:
         return ierr
         
     
-    def iterate(self, problem, sol, ctrl):
+    def iterate(self, sol, ctrl):
         """
-        Procedure overriding update of parent class(Problem)
-        
         Args:
         problem: Class with inputs  (rhs, q_exponent)
         sol  : Class with unkowns (pot,tdens, in this case)
@@ -478,14 +596,25 @@ class NiotSolver:
 
             test_tdens = TestFunction(self.fems.tdens_space)
             gamma = self.gamma
-            direction = assemble(-(
-                self.weights[0] * (
-                    tdens_k ** (2 - gamma) * (
-                        - dot(grad(pot_k), grad(pot_k))
-                        + tdens_k**(gamma-1) )
-                )
-                + self.weights[1] * self.confidence * (tdens_k - problem.observed) 
-                )*test_tdens*dx)
+            if (self.spaces == 'CR1DG0'):
+                direction = assemble(-(
+                    self.weights[0] * (
+                        tdens_k ** (2 - gamma) * (
+                            - dot(grad(pot_k), grad(pot_k))
+                            + tdens_k**(gamma-1) )
+                    ) * test_tdens * dx
+                    + self.weights[1] * self.confidence * (tdens_k - self.observed) * test_tdens*dx
+                    + self.weights[2] * inner(grad(tdens), grad(test_tdens)) * dx
+                ))
+            elif (self.spaces == 'DG0DG0'):
+                tdens_facet = avg(tdens_k**(2-gamma))
+                test_facet = avg(test_tdens)
+                direction = assemble(-(
+                    - self.weights[0] * test_facet* tdens_facet * jump(pot_k) **2 / self.fems.delta_h * dS
+                    + self.weights[0] * tdens_k * test_tdens * dx
+                    + self.weights[1] * self.confidence * (tdens_k - self.observed) * test_tdens*dx
+                    #+ self.weights[2] * inner(grad(tdens), grad(test_tdens)) * dx
+                ))
 
             d = self.fems.tdens_mass_matrix.createVecLeft()
             with direction.dat.vec as rhs, tdens_k.dat.vec as td:
@@ -517,7 +646,7 @@ class NiotSolver:
             pot_old, tdens_new = sol.split()
          
             # compute pot associated to new tdens
-            ierr = self.syncronize(problem, sol, ctrl)
+            ierr = self.syncronize( sol, ctrl)
             
             self.nonlinear_iter = 1
             return ierr            
@@ -526,7 +655,7 @@ class NiotSolver:
             ierr = 1
             #return tdpot, ierr, self;
 
-    def solve(self, inputs, sol, ctrl):
+    def solve(self, sol, ctrl):
         """
         Args:
         problem: Class with inputs  (rhs, q_exponent)
@@ -537,7 +666,7 @@ class NiotSolver:
 
         """
 
-        ierr = self.syncronize(inputs, sol, ctrl)
+        ierr = self.syncronize( sol, ctrl)
         iter = 0
         ierr_dmk = 0
         while ierr_dmk == 0:
@@ -547,7 +676,7 @@ class NiotSolver:
             sol_old = cp(sol)
             nrestart = 0 
             while nrestart < ctrl.max_restart:
-                ierr = self.iterate(inputs, sol, ctrl)
+                ierr = self.iterate(sol, ctrl)
                 if ierr == 0:
                     break
                 else:
