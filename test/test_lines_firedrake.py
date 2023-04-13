@@ -6,7 +6,6 @@ from copy import deepcopy as cp
 sys.path.append('../src/niot')
 from niot import NiotSolver
 from niot import InpaitingProblem
-from niot import TdensPotential
 from niot import SpaceDiscretization
 from niot import Controls
 from niot import msg_bounds
@@ -33,8 +32,7 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,directo
 
     # create a triangulation mesh from images
     factor = 0.5
-    mesh = i2d.image2grid(img_sources,factor)
-
+    
     # convert images to numpy matrices
     # 1 is the white background
     np_sources = 2e1 * i2d.image2matrix(img_sources,factor)
@@ -46,46 +44,39 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,directo
     # to the known network
     np_corrupted = np_networks * (1-np_masks)
     np_confidence = 1-np_masks
-    #np_confidence = np.ones(np_masks.shape)
 
+    # Init. solver, set in/out flow and parameters
+    niot_solver = NiotSolver('DG0DG0', np_corrupted, np_sources, np_sinks, force_balance=True)
+    niot_solver.set_parameters(
+        gamma=gamma,
+        weights=[1.0,weight_discrepancy,1e-16])
 
-    # convert to firedrake function
-    fire_sources = i2d.matrix2function(np_sources,mesh)
+    # save inputs 
+    fire_sources = niot_solver.numpy2function(np_sources)
     fire_sources.rename("sources")
-    fire_sinks = i2d.matrix2function(np_sinks,mesh)
+    fire_sinks = niot_solver.numpy2function(np_sinks)
     fire_sinks.rename("sinks")
-    fire_networks = i2d.matrix2function(np_networks,mesh)
+    fire_networks = niot_solver.numpy2function(np_networks)
     fire_networks.rename("networks")
-    fire_corrupted = i2d.matrix2function(np_corrupted,mesh)
+    fire_corrupted = niot_solver.numpy2function(np_corrupted)
     fire_corrupted.rename("corrupted")
-    fire_masks = i2d.matrix2function(np_masks,mesh)
+    fire_masks = niot_solver.numpy2function(np_masks)
     fire_masks.rename("masks")
-    fire_confidence = i2d.matrix2function(np_confidence,mesh)
+    fire_confidence = niot_solver.numpy2function(np_confidence)
     fire_confidence.rename("confidence")
 
     out_file = File(os.path.join(directory,"inputs_recostruction.pvd"))
     out_file.write(fire_sources, fire_sinks, fire_networks,fire_masks,fire_corrupted, fire_confidence)
-
+    #niot_solver.save_inputs(os.path.join(directory,"inputs_recostruction.pvd"))
     
-
-    # set solver inputs 
-    inputs = InpaitingProblem(fire_corrupted,fire_sources,fire_sinks,force_balance=True)
-
-    # Init. niot solver and set parameters 
-    fem = SpaceDiscretization(mesh)
-    niot_solver = NiotSolver(fem)
-    niot_solver.set_parameters(
-        gamma=gamma, # branching exponent  
-        #confidence = fire_confidence, # confidence function
-        weights=[1.0,weight_discrepancy,0.0])
-
-    # create a mixed function [pot,tdens] and controls
-    sol = fem.create_solution()
+    # initialize a mixed function [pot,tdens] and solver controls
+    sol = niot_solver.create_solution()
+    
     ctrl = Controls(
         tol=1e-4,
         time_discretization_method='mirrow_descent',
         deltat=0.01,
-        max_iter=200,
+        max_iter=1000,
         nonlinear_tol=1e-6,
         linear_tol=1e-6,
         nonlinear_max_iter=30,
@@ -93,12 +84,12 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,directo
 
     ctrl.control_deltat = 'adaptive'
     ctrl.increment_deltat = 1.001
-    ctrl.deltat_min = 0.01
+    ctrl.deltat_min = 0.005
     ctrl.deltat_max = 0.4
     ctrl.verbose = 1
     
     # solve the problem
-    ierr = niot_solver.solve(inputs, sol, ctrl)
+    ierr = niot_solver.solve(sol, ctrl)
     
     # save data and print reconstructed images
     str_gamma = f"{niot_solver.gamma:.2e}"
@@ -113,6 +104,9 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,directo
     i2d.function2image(tdens_plot,os.path.join(directory,label+"tdens.png"),vmin=ctrl.tdens_min)
     i2d.function2image(tdens_plot,os.path.join(directory,label+"support_tdens.png"),vmin=ctrl.tdens_min)
 
+
+
+    
     
 def get_image_path(directory_example, name):
     string = os.path.join(directory_example,name)
