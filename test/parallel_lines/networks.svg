@@ -1,0 +1,7 @@
+<ns0:svg xmlns:ns0="http://www.w3.org/2000/svg" height="200" viewBox="0 -100 50 100" width="100">
+<ns0:defs>
+<filter id="f1"> <feGaussianBlur stdDeviation="1" /></filter></ns0:defs>
+<ns0:rect fill="white" height="100" stroke-width="0" width="100" x="0" y="-100" />
+<ns0:path d="M10,-10 L10,-90" fill="none" stroke="black" stroke-width="6" />
+<ns0:path d="M20,-10 L40,-90" fill="none" stroke="black" stroke-width="6" />
+</ns0:svg>

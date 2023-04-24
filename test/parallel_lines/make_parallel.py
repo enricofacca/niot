@@ -1,5 +1,6 @@
 import drawSvg as draw
 from copy import deepcopy as cp
+import sys
 
 #
 # Passing the filters did not worked.
@@ -17,6 +18,11 @@ def include_filters(no_filter_svg):
     tree = ET.ElementTree(svg)
     return tree
 
+
+blur = draw.Filter()
+blur.append(draw.FilterItem('feGaussianBlur', in_='SourceGraphic', stdDeviation=10))
+
+
 # coordinate of the network nodes 
 # connection topology
 # forcing term (should be balance and lenght equal to number of nodes)
@@ -25,9 +31,9 @@ topol=[[0,1],[2,3]]
 forcing=[-1,1,-1,1]
 
 
-d = draw.Drawing(50, 100,  origin=(0,0), idPrefix='d', displayInline=False,
-                  **{"xmlns:inkscape" : "http://www.inkscape.org/namespaces/inkscape"}
-)
+d = draw.Drawing(50, 100)#,  origin=(0,0), idPrefix='d', displayInline=False,
+                #  **{"xmlns:inkscape" : "http://www.inkscape.org/namespaces/inkscape"}
+
 d.setPixelScale(2)  # Set number of pixels per geometry unit
 
 # se back ground color
@@ -63,9 +69,12 @@ for node, value in enumerate(forcing):
                                    fill='blue'))
         
 # Draw mask
-r=draw.Rectangle(10,20,80,40, stroke='black', stroke_width=0, fill='black', filter="url(#f1)")
+r=draw.Rectangle(10,20,80,40,# stroke='black', stroke_width=0, 
+                 fill='black', filter=blur)
 d.append(r)
 masks.append(r)
+
+
 
 for circles in source:
     d.append(circles)
@@ -75,12 +84,37 @@ for circles in sink:
     d.append(circles)
     sinks.append(circles)
 
+d.append(draw.Circle(170, 60, 50, fill='green', filter=blur))
+
+
+import subprocess
+# read svg file -> write png filee_width=0,
+def svg2png_ink(draw, output_png_path):
+
+    width = draw.width
+    height = draw.height
+
+    print(width, height)
+
+    svg_str = draw.asSvg()
+
+    inkscape = 'inkscape'
+    # svg string -> write png file
+    subprocess.run([inkscape, '--export-type=png', f'--export-filename={output_png_path}', f'--export-width={width}', f'--export-height={height}', '--pipe'], input=svg_str.encode())
         
 
 #d.setRenderSize(400,200)  # Alternative to setPixelScale
 #temp_file='temp'+'lines.svg'
 #d.saveSvg(temp_file)
 
+masks.saveSvg('masks.svg')
+
+print(masks.asSvg())
+
+svg2png_ink(masks, 'masks_filter.png')
+
+
+sys.exit()
 #for img in [d,sources,sinks,networks,masks]:
 #    img = include_filters(img.asSvg())
 d = include_filters(d.asSvg())
