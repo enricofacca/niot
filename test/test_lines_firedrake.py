@@ -2,6 +2,7 @@ import sys
 import glob
 import os
 from copy import deepcopy as cp
+import numpy as np
 
 sys.path.append('../src/niot')
 from niot import NiotSolver
@@ -63,6 +64,7 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,directo
     
     # initialize a mixed function [pot,tdens] and solver controls
     sol = niot_solver.create_solution()
+
     
     ctrl = Controls(
         tol=1e-4,
@@ -134,7 +136,7 @@ if (__name__ == '__main__'):
     img_masks = sys.argv[2]
     gamma = float(sys.argv[3])
     weight_discrepancy = float(sys.argv[4])
-    weights=[1.0, weight_discrepancy, 1e-16]
+    weights = np.array([1.0, weight_discrepancy, 1e-16])
 
     
     dir_mask = os.path.dirname(img_masks)
@@ -147,4 +149,4 @@ if (__name__ == '__main__'):
     if (not os.path.exists(experiment_dir)):
         os.mkdir(experiment_dir)
         
-    corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,experiment_dir,gamma,weight_discrepancy)
+    corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,experiment_dir,gamma,weights)
