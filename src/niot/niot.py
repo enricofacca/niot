@@ -129,6 +129,8 @@ class SpaceDiscretization:
 
        self.pot_is, self.tdens_is = self.pot_tdens_space.dof_dset.field_ises
 
+
+
     def create_solution(self):
         """
         Create a mixed function sol=(pot,tdens) 
@@ -268,18 +270,21 @@ class NiotSolver:
         """
         # create mesh from image
         self.spaces = spaces
+        print('spaces', spaces)
         if spaces == 'CR1DG0':
             self.mesh = self.build_mesh_from_numpy(numpy_corrupted, mesh_type='simplicial')
             self.mesh_type = 'simplicial'
             # create FEM spaces
             self.fems = SpaceDiscretization(self.mesh,'CR',1, 'DG',0)
-        if spaces == 'DG0DG0':
+        elif spaces == 'DG0DG0':
             self.mesh = self.build_mesh_from_numpy(numpy_corrupted, mesh_type='cartesian')
             self.mesh_type = 'cartesian'
             # create FEM spaces
             self.fems = SpaceDiscretization(self.mesh,'DG',0,'DG',0)
         else:
-            raise ValueError("Wrong spaces only pot,tdens in CR1,DG0 implemented")
+            raise ValueError("Wrong spaces only (pot,tdens) in (CR1,DG0) or (DG0,DG0) implemented")
+
+        self.DG0 = FunctionSpace(self.mesh, "DG", 0)
 
         # set function 
         self.observed = self.numpy2function(numpy_corrupted)
@@ -291,7 +296,7 @@ class NiotSolver:
         self.set_parameters(
             gamma=0.6,
             weights=[1.0,1.0,0.0],
-            confidence=Constant(1.0,domain=self.mesh),
+            confidence=Function(self.DG0).assign(1.0),
             tdens2image=lambda x: x)
 
         # init infos
@@ -311,7 +316,7 @@ class NiotSolver:
         print(f"Mesh type {mesh_type} quadrilateral {quadrilateral}")
         
         if (np_image.ndim == 2):
-            width, height = np_image.shape
+            height, width  = np_image.shape
             mesh = RectangleMesh(width,height,1,height/width, 
                 quadrilateral = quadrilateral,
                 reorder=False)
@@ -348,7 +353,7 @@ class NiotSolver:
         if tdens2image is not None:
             self.tdens2image = tdens2image
 
-    def numpy2function(self, value):
+    def numpy2function(self, value, name=None):
         """
         Convert np array (2d o 3d) into a function compatible with the mesh solver.
         Args:
@@ -376,7 +381,8 @@ class NiotSolver:
                     d.array = triangles_image
             else:
                 raise ValueError("3d data not implemented yet")
-
+            if (name is not None):
+                img_function.rename(name,name)
             return img_function
 
         if (self.mesh_type == 'cartesian'):
@@ -384,21 +390,24 @@ class NiotSolver:
             img_function = Function(DG0)
             with img_function.dat.vec as d:
                 d.array = value.flatten('F')
+            if (name is not None):
+                img_function.rename(name,name)
             return img_function
 
     def convert_data(self, data):
+        print(type(data))
         if isinstance(data, np.ndarray):
             return self.numpy2function(data)
-        elif isinstance(data, functionspaceimpl.FunctionSpace):
+        elif isinstance(data, functionspaceimpl.FunctionSpace) or isinstance(data, function.Function):
             # function must be defined on the same mesh
-            if data.functon_space().mesh() == self.mesh:
+            if data.function_space().mesh() == self.mesh:
                 return data
             else:
                 raise ValueError("Data not defined on the same mesh of the solver")
         elif isinstance(data, constant.Constant):
             return data 
         else:
-            raise ValueError("Type "+str(type(data))+" passed as source not supported")
+            raise ValueError("Type "+str(type(data))+" not supported")
 
     def set_inout_flow(self, source, sink, force_balance=False, tolerance=1e-10):
         """
@@ -603,8 +612,8 @@ class NiotSolver:
                             - dot(grad(pot_k), grad(pot_k))
                             + tdens_k**(gamma-1) )
                     ) * test_tdens * dx
-                    + self.weights[1] * self.confidence * (tdens_k - self.observed) * test_tdens*dx
-                    + self.weights[2] * inner(grad(tdens), grad(test_tdens)) * dx
+                    + self.weights[1] * self.confidence * (tdens_k - self.observed) * test_tdens * dx
+                    #+ self.weights[2] * inner(grad(tdens_k), grad(test_tdens)) * dx 
                 ))
             elif (self.spaces == 'DG0DG0'):
                 tdens_facet = avg(tdens_k**(2-gamma))

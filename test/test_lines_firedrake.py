@@ -43,28 +43,20 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,directo
     # the corrupted image is created adding a mask
     # to the known network
     np_corrupted = np_networks * (1-np_masks)
-    np_confidence = 1-np_masks
+    np_confidence = 1.0 - np_masks
 
     # Init. solver, set in/out flow and parameters
-    niot_solver = NiotSolver('DG0DG0', np_corrupted, np_sources, np_sinks, force_balance=True)
-    niot_solver.set_parameters(
-        gamma=gamma,
-        weights=[1.0,weight_discrepancy,1e-16])
+    niot_solver = NiotSolver('CR1DG0', np_corrupted, np_sources, np_sinks, force_balance=True)
+    niot_solver.set_parameters(gamma=gamma, weights=weights)
 
     # save inputs 
-    fire_sources = niot_solver.numpy2function(np_sources)
-    fire_sources.rename("sources")
-    fire_sinks = niot_solver.numpy2function(np_sinks)
-    fire_sinks.rename("sinks")
-    fire_networks = niot_solver.numpy2function(np_networks)
-    fire_networks.rename("networks")
-    fire_corrupted = niot_solver.numpy2function(np_corrupted)
-    fire_corrupted.rename("corrupted")
-    fire_masks = niot_solver.numpy2function(np_masks)
-    fire_masks.rename("masks")
-    fire_confidence = niot_solver.numpy2function(np_confidence)
-    fire_confidence.rename("confidence")
-
+    fire_sources = niot_solver.numpy2function(np_sources, name="sources")
+    fire_sinks = niot_solver.numpy2function(np_sinks, name="sinks")
+    fire_networks = niot_solver.numpy2function(np_networks, name="networks")
+    fire_corrupted = niot_solver.numpy2function(np_corrupted, name="corrupted")
+    fire_masks = niot_solver.numpy2function(np_masks, name="masks")
+    fire_confidence = niot_solver.numpy2function(np_confidence, name="confidence")
+    
     out_file = File(os.path.join(directory,"inputs_recostruction.pvd"))
     out_file.write(fire_sources, fire_sinks, fire_networks,fire_masks,fire_corrupted, fire_confidence)
     #niot_solver.save_inputs(os.path.join(directory,"inputs_recostruction.pvd"))
@@ -126,7 +118,13 @@ if (__name__ == '__main__'):
     # get paths of input images (sources, sinks, networks in one directory)
     # and a mask image.
     # The mask image is used to corrupt the network image
-    # Results are saved in a subdirectory of the mask image directory
+    # Results are saved in a directory having the same name of the mask image stored in the runs directory.
+    # The latter is created where the sources, sinks and networks images are stored.
+    # The gamma and weight discrepancy parameters are passed.
+    # 
+    # example: python3 corrupt_reconstruct.py example examples/mask.png 1e-2 1e-2
+    # 
+    # results are stored in runs/mask
     directory_example = os.path.dirname(sys.argv[1])
     
     img_sources = get_image_path(directory_example,'*sources*.png')
@@ -136,7 +134,7 @@ if (__name__ == '__main__'):
     img_masks = sys.argv[2]
     gamma = float(sys.argv[3])
     weight_discrepancy = float(sys.argv[4])
-
+    weights=[1.0, weight_discrepancy, 1e-16]
 
     
     dir_mask = os.path.dirname(img_masks)
