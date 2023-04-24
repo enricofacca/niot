@@ -2,3 +2,5 @@
 *.vtu
 *~
 **/__pycache__/
+test/*/runs/
+*vscode*
