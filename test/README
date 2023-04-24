@@ -1,0 +1,3 @@
+curropt_and_reconstruct.py:
+takes the images of source and sinks, the network to be curropted and a mask.
+

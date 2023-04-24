@@ -1,3 +1,16 @@
+"""
+This script is used to corrupt and reconstruct a network image.
+The corrupted image is created adding a mask to the known network.
+Two parameters are used to control the reconstruction:
+    gamma: controls the branching angle
+    weights: controls the importance of the discrepancy term in the objective function
+Usage example:
+    $ python corrupt_and_reconstruct.py lines/ lines/masks.png 0.5 1.0
+
+The results are saved in directorry name according 
+to mask and parameters used in lines/runs/
+"""
+
 import sys
 import glob
 import os
