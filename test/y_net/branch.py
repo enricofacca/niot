@@ -32,7 +32,10 @@ def svg2png_ink(draw, output_png_path):
 
 # define filters
 blur = draw.Filter()
-blur.append(draw.FilterItem('feGaussianBlur', in_='SourceGraphic', stdDeviation=5))
+blur.append(
+    draw.FilterItem('feGaussianBlur', 
+                    in_='SourceGraphic', 
+                    stdDeviation=1))
 
 def y_branch(coordinates, masses, alpha):
     """
@@ -143,8 +146,8 @@ if (__name__ == '__main__') :
     width = int(sys.argv[1])
 
     coord_points = [[25,10],[10,90],[40,90]]
-    masses = [1.0,-0.5,-0.5]
-    alpha = 0.999
+    masses = [1.0,-0.3,-0.7]
+    alpha = 0.8
     coord, topol = y_branch(coord_points,masses,alpha)
 
     
@@ -186,6 +189,11 @@ if (__name__ == '__main__') :
     r=draw.Rectangle(10,50-width/2,30,width, stroke='black', stroke_width=0, fill='black', filter=blur)
     masks.append(r)
 
+    corrupted = cp(networks)
+    r=draw.Rectangle(10,50-width/2,30,width, fill='white', filter=blur)
+    corrupted.append(r)
+
+
     
     
 
@@ -193,8 +201,11 @@ if (__name__ == '__main__') :
     sinks.saveSvg('sinks.svg')
     networks.saveSvg('networks.svg')
     masks.saveSvg('masks'+str(width)+'.svg')
+    corrupted.saveSvg('corrupted'+str(width)+'.svg')
+    
 
     svg2png_ink(sources, 'sources.png')
     svg2png_ink(sinks, 'sinks.png')
     svg2png_ink(networks, 'networks.png')
     svg2png_ink(masks, 'masks'+str(width)+'.png')
+    svg2png_ink(corrupted, 'corrupted'+str(width)+'.png')

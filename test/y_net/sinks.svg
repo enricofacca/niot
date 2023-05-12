@@ -4,6 +4,6 @@
 <defs>
 </defs>
 <rect x="0" y="-100" width="50" height="100" stroke-width="0" fill="white" />
-<circle cx="10" cy="-90" r="3" fill="blue" />
-<circle cx="40" cy="-90" r="3" fill="blue" />
+<circle cx="10.0" cy="-90.0" r="3" fill="blue" />
+<circle cx="40.0" cy="-90.0" r="3" fill="blue" />
 </svg>
