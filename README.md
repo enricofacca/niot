@@ -19,15 +19,17 @@ First move in the directory were the reposity has been clone and run the Firedra
 ```
 docker run -ti -v $(pwd):/home/firedrake/shared firedrakeproject/firedrake
 ```
-that will run the Docker container and create a directory name "shared", that is a "mirror" of the directory containg the cloned repository (more info can be found [here](https://fenics.readthedocs.io/projects/containers/en/latest/introduction.html#running-fenics-in-docker)). Any file changes done inside the running container can be seen from outside, and viceversa. Hence, we suggests to open a second terminal and use you favorite editor, visulatization tools (VisIt,Paraview,matplotit), etc. to work directly on the files within the cloned repository, while you can run all NIOT programs within the Docker container(see more in the usage section).
+It will run the Docker container and create a directory name "shared", that is a "mirror" of the directory containg the cloned repository (the current work directoy, this is why there is the $(pwd) argment).
 
-But first, you  need activate the Firedrake enviroment in the docker image.
+Any file change done inside the running container can be seen from outside, and viceversa. Hence, we suggests to open a second terminal and use you favorite editor, visulatization tools (VisIt, Paraview, matplotlib), etc. to work directly on the files within the cloned repository, while you can run all NIOT programs within the Docker container. You find an example in the Usage section below.
+
+But first, you  need activate the Firedrake enviroment in the Docker image.
 In Linux, run the command
 ```
 source firedrake/bin/activate
 ```
 
-# Test
+# Tests / Examples
 Move in the test directory ad run
 ```
 python test.py
