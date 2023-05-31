@@ -28,6 +28,14 @@ def svg2png_ink(draw, output_png_path):
     inkscape = 'inkscape'
     # svg string -> write png file
     subprocess.run([inkscape, '--export-type=png', f'--export-filename={output_png_path}', f'--export-width={width}', f'--export-height={height}', '--pipe'], input=svg_str.encode())
+
+def svg2pdf(svg,pdf):
+    inkscape = 'inkscape'
+    print(svg)
+    print(pdf)
+    command=f'{inkscape} {svg} --export-pdf={pdf}'# --export-latex'
+    subprocess.run(command, shell=True, stderr=subprocess.STDOUT)
+
         
 
 # define filters
@@ -145,22 +153,26 @@ def y_branch(coordinates, masses, alpha):
 if (__name__ == '__main__') :
     width = int(sys.argv[1])
 
-    coord_points = [[25,10],[10,90],[40,90]]
-    masses = [1.0,-0.3,-0.7]
-    alpha = 0.8
+    coord_points = [[25,0],[0,50],[50,50]]
+    masses = [1.0,-0.4,-0.6]
+    alpha = 0.6
     coord, topol = y_branch(coord_points,masses,alpha)
 
+    fluxes = [abs(f) for f in masses]
     
     print('optimal topol')
     print(topol)
     print('coordinates')
     print(coord)
 
-    background = draw.Drawing(50, 100,  origin=(0,0))
-    background.setPixelScale(2)  # Set number of pixels per geometry unit
+    x_len = 50
+    y_len = 50
+    
+    background = draw.Drawing(x_len, y_len,  origin=(0,0))
+    background.setPixelScale(50)  # Set number of pixels per geometry unit
 
     # set back ground color
-    r = draw.Rectangle(0,0,50,100, stroke_width=0, fill='white')
+    r = draw.Rectangle(0,0,x_len, y_len, stroke_width=0, fill='white')
     background.append(r)
 
     # source and sinks are the same
@@ -168,29 +180,62 @@ if (__name__ == '__main__') :
     sinks = cp(background)
     masks = cp(background)
     networks = cp(background)
+    all_y = cp(background)
+    all_v = cp(background)
+    base = cp(background)
 
+
+    scale = 5
     # Draw network
-    for edge in topol:
+    for i, edge in enumerate(topol):
         n1,n2=edge
-        networks.append(draw.Line(coord[n1][0], coord[n1][1],coord[n2][0], coord[n2][1],
-                            stroke='black', stroke_width=6, fill='none'))
-   
+        line = draw.Line(coord[n1][0], coord[n1][1],coord[n2][0], coord[n2][1],
+                            stroke='black', stroke_width=scale*fluxes[i], fill='none')
+        
+        networks.append(line)
+        all_y.append(line)
+    node=3
+    circle = draw.Circle(coord[node][0], coord[node][1], scale/2,
+                                       fill='black')
+    all_y.append(circle)
+    base.append(circle)
+
+    #all_y.append(draw.Text('$f^+$', 25, 25, 10, fill='blue'))  # 8pt text at (-10, -35)
+
+    fluxes=fluxes[1:]
+    for i, edge in enumerate([[0,1],[0,2]]):
+        n1,n2=edge
+        line = draw.Line(coord[n1][0], coord[n1][1],coord[n2][0], coord[n2][1],
+                         stroke='black', stroke_width=scale*fluxes[i], fill='none')
+        all_v.append(line)
+
     # Draw nodes
+    scale=5 
     for node, value in enumerate(masses):
         if (value > 0):
-            sources.append(draw.Circle(coord[node][0], coord[node][1], 3,
-                                    fill='red'))
+            circle = draw.Circle(coord[node][0], coord[node][1], scale*np.sqrt(abs(value)),
+                                       fill='red')
+            
+            sources.append(circle)
+            all_y.append(circle)
+            all_v.append(circle)
+            base.append(circle)
+            
         elif (value < 0):
-            sinks.append(draw.Circle(coord[node][0], coord[node][1], 3,
-                                    fill='blue'))
+            circle = draw.Circle(coord[node][0], coord[node][1], scale*np.sqrt(abs(value)),
+                                     fill='blue')
 
-   
+            sinks.append(circle)
+            all_y.append(circle)
+            all_v.append(circle)
+            base.append(circle)
+            
     # Draw maskssucced
-    r=draw.Rectangle(10,50-width/2,30,width, stroke='black', stroke_width=0, fill='black', filter=blur)
+    r=draw.Rectangle(10,10,30,10+width, stroke='black', stroke_width=0, fill='black', filter=blur)
     masks.append(r)
 
     corrupted = cp(networks)
-    r=draw.Rectangle(10,50-width/2,30,width, fill='white', filter=blur)
+    r=draw.Rectangle(10,10,30,10+width, fill='white', filter=blur)
     corrupted.append(r)
 
 
@@ -202,6 +247,13 @@ if (__name__ == '__main__') :
     networks.saveSvg('networks.svg')
     masks.saveSvg('masks'+str(width)+'.svg')
     corrupted.saveSvg('corrupted'+str(width)+'.svg')
+    all_y.saveSvg('y.svg')
+    all_v.saveSvg('v.svg')
+    base.saveSvg('base.svg')
+
+    svg2pdf('y.svg','y.pdf')
+    svg2pdf('v.svg','v.pdf')
+    svg2pdf('corrupted'+str(width)+'.svg','corrupted'+str(width)+'.pdf')
     
 
     svg2png_ink(sources, 'sources.png')
@@ -209,3 +261,6 @@ if (__name__ == '__main__') :
     svg2png_ink(networks, 'networks.png')
     svg2png_ink(masks, 'masks'+str(width)+'.png')
     svg2png_ink(corrupted, 'corrupted'+str(width)+'.png')
+    svg2png_ink(all_y, 'y.png')
+    svg2png_ink(all_v, 'v.png')
+    svg2png_ink(base,'base.png')
