@@ -16,31 +16,16 @@ from petsc4py import PETSc
 
 SNESReasons = utilities._make_reasons(PETSc.SNES.ConvergedReason())
 
-
-
-#from .linear_solvers import info_linalg
-
-
-#from ufl import FiniteElement
-#from ufl import FunctionSpace
-#from firedrake import TrialFunction
-#from firedrake import TestFunction
-#from ufl import MixedFunctionSpace
-
-
-
 # function operations
 from firedrake import *
-
-
-# integration
-from ufl import dx
-from firedrake import assemble
-
 
 #from linear_algebra_firedrake import transpose
 
 from petsc4py import PETSc as p4pyPETSc
+
+# include all citations
+utilities.include_citations('../citations/citations.bib')
+
 
 
 def msg_bounds(vec,label):
@@ -76,12 +61,13 @@ def get_step_lenght(x,increment,x_lower_bound=0.0,step_lower_bound=1e-16):
         return 1
 
 
-
-
 class SpaceDiscretization:
     """
     Class containg fem discretization variables
     """
+    
+    # include relevant citations
+    Citations().register("FCP2021")
     def __init__(self, mesh, pot_space='CR', pot_deg=1, tdens_space='DG', tdens_deg=0):
        #tdens_fem='DG0',pot_fem='P1'):
        """
@@ -149,51 +135,21 @@ class SpaceDiscretization:
         pot, tdens = sol.split()
         pot.rename("pot","Kantorovich Potential")
         tdens.rename("tdens","Optimal Transport Tdens")
+
+        DG0_vec = VectorFunctionSpace(self.pot_space.mesh(),'DG',0)
+        vel = Function(DG0_vec)
+        vel.interpolate(-tdens*grad(pot))
+        vel.rename("vel","Velocity")
         out_file = File(file_name)
-        out_file.write(pot, tdens)
-        
-
-class InpaitingProblem:
-    """
-    This class contains the inputs of the inpaiting problem
-    """
-    def __init__(self, observed, source, sink, force_balance=False):
-        """
-        Constructor of problem setup
-        """
-        img_space = observed.function_space()
-        self.observed  = observed
-        self.observed.rename("obs","ObservedData")
-        self.source = source
-        self.sink = sink
-        self.forcing = interpolate(self.source - self.sink, img_space)
-        imbalance = assemble(self.forcing*dx)
-        print(f"Mass balance {imbalance:.2e}")
-        if (force_balance):
-            mass_source = assemble(self.source*dx)
-            mass_sink = assemble(self.sink*dx)
-            self.forcing = interpolate(self.source - self.sink * mass_source / mass_sink, img_space)
-            imbalance = assemble(self.forcing*dx)
-            print(f"New mass balance  {imbalance:.2e}")
-        self.forcing.rename("forcing","Forcing")
-    
-    def save_inputs(self, filename):
-        """
-        Save the inputs of the problem
-        """
-        outfile = File(filename)
-        outfile.write(self.observed, self.forcing)
-
-
-
-            
+        out_file.write(pot, tdens, vel)
+                    
 class Controls:
     """
     Class with Dmk Solver 
     """
     def __init__(self,
                 tol=1e-2,
-                time_discretization_method='mirrow_descent',
+                time_discretization_method='mirror_descent',
                 deltat=0.5,
                 max_iter=100,
                 nonlinear_tol=1e-6,
@@ -227,7 +183,7 @@ class Controls:
         self.deltat_max = 0.5
         self.deltat_expansion = 2
 
-        #: real : lowerb bound for tdens
+        #: real : lower bound for tdens
         self.tdens_min = 1e-8
         
 
@@ -252,6 +208,16 @@ class Controls:
         self.save_log = 0
         self.file_log = 'niot.log'
 
+    def print_info(self, msg, priority=0, color='black'):
+        """
+        Print messagge to stdout and to log 
+        file according to priority passed
+        """        
+        if (self.verbose > priority):
+            if color != 'black':
+                msg = utilities.color_msg(color, msg)
+            print(msg)   
+
  
 class NiotSolver:
     """
@@ -263,7 +229,11 @@ class NiotSolver:
     numpy_sink: numpy 2d/3d array describing outlet flow
     force_balance: boolean to force balancing sink to ensure problem to be well posed
     """
-    def __init__(self, spaces, numpy_corrupted, numpy_source, numpy_sink, force_balance=False):
+
+    # register citations using Citations class in firedrake
+    Citations().register("FCP2021")
+
+    def __init__(self, spaces, numpy_corrupted):
         """
         Initialize solver (spatial discretization) from numpy_image (2d or 3d data)
 
@@ -287,23 +257,18 @@ class NiotSolver:
         self.DG0 = FunctionSpace(self.mesh, "DG", 0)
 
         # set function 
-        self.observed = self.numpy2function(numpy_corrupted)
-
-        # set source and sink 
-        self.set_inout_flow(numpy_source, numpy_sink, force_balance=force_balance)    
+        self.img_observed = self.numpy2function(numpy_corrupted)
     
         # set niot parameter to default
-        self.set_parameters(
-            gamma=0.6,
+        self.set_inpainting_parameters(
             weights=[1.0,1.0,0.0],
-            confidence=Function(self.DG0).assign(1.0),
+            confidence=1.0,
             tdens2image=lambda x: x)
 
         # init infos
-        self.linear_iter = 0
-        self.nonlinear_iter = 0
+        self.outer_iterations = 0
+        self.nonlinear_iterations = 0
         self.nonlinear_res = 0.0
-
 
     def build_mesh_from_numpy(self, np_image, mesh_type='simplicial'): 
         """
@@ -327,31 +292,83 @@ class NiotSolver:
             raise ValueError("Wrong dimension of image")
         return mesh
 
-        
-    def set_parameters(self,
-                 gamma=None,
-                 weights=None,
-                 confidence=None,
-                 tdens2image=None):
+    def set_optimal_transport_parameters(self, source, sink, 
+                                         gamma=0.8,
+                                         kappa=1.0,
+                                         Neumann = [[0,"on_boundary"]],
+                                         Dirichlet=None,
+                                         tolerance_unbalance=1e-12,
+                                         force_balance=False):
         """
-        Set all niot parameter
+        Set optimal transport parameters
+        Args:
+        source: firedrake function with source term
+        sink: firedrake function with sink term
+        gamma: penalization parameter
+        kappa: local resistivity parameter
+        Neumann: list of Neumann boundary conditions
+        Dirichlet: list of Dirichlet boundary conditions
+        tolerance_unbalance: tolerance to check if source and sink are balanced
+        force_balance: boolean to force balancing sink to ensure problem to be well posed
         """
-        if gamma is not None:
-            if gamma<0:
-                raise ValueError(f"Gamma must be greater than zero")
-            self.gamma = gamma
+
+        # Check data consistency
+        mass_source = assemble(source*dx)
+        mass_sink = assemble(sink*dx)
+        mass_Neumann = 0#assemble(Neumann*dS)
+
+        mass_balance = mass_source - mass_sink + mass_Neumann
+
+        print("mass_source",mass_source)
+        print("mass_sink",mass_sink)
+        print("mass_Neumann",mass_Neumann)
+        print("mass_balance",mass_balance)
+
+        # create hard copy because we may scale
+        # the source and sink termsnp_
+        self.source = cp(source)
+        self.sink = cp(sink)
+        if abs(mass_balance) > tolerance_unbalance :
+            if force_balance:
+                with self.sink.dat.vec as f:
+                    f.scale(mass_source / mass_sink)
+            else:
+                raise ValueError("Source and sink terms are not balanced")
+
         
+        self.forcing = self.source - self.sink
+        rhs = assemble(self.forcing * self.fems.pot_test * dx)
+        with rhs.dat.vec as f:
+            self.f_norm  = f.norm()
+        self.gamma = gamma
+        self.kappa = kappa
+        self.Neumann = Neumann
+        self.Dirichlet = Dirichlet
+       
+    def set_inpainting_parameters(self,
+                 weights=np.array([1.0,1.0,0.0]),
+                 confidence=1.0,
+                 tdens2image=lambda x: x):
+        """
+        Set inpainting specific parameters 
+        Args:
+        weights: array with weights of the discrepancy, penalization and transport energy
+        confidence: confidence of the observed data
+        tdens2image: function that maps tdens to image
+
+        Returns:
+        None
+        """
         if weights is not None:
             if len(weights)!=3:
                 raise ValueError(f"3 weights are required, Transport Energy, Discrepancy, Penalization")
             self.weights = weights
 
         if confidence is not None:
-            self.confidence  = self.convert_data(confidence)
-            self.confidence.rename('confidence','confidence')
+            self.confidence = self.convert_data(confidence)
+            #self.confidence.rename('confidence','confidence')
         
-        if tdens2image is not None:
-            self.tdens2image = tdens2image
+        self.tdens2image = tdens2image
 
     def numpy2function(self, value, name=None):
         """
@@ -404,143 +421,171 @@ class NiotSolver:
                 return data
             else:
                 raise ValueError("Data not defined on the same mesh of the solver")
+        elif isinstance(data, float):
+            return Constant(data)
+
         elif isinstance(data, constant.Constant):
             return data 
         else:
             raise ValueError("Type "+str(type(data))+" not supported")
-
-    def set_inout_flow(self, source, sink, force_balance=False, tolerance=1e-10):
-        """
-        Set source and sink member of niot_solver class
-
-        Args:
-        source: (numpy 2d-3d array or function) inlet ratio
-        sink:  (numpy 2d-3d array or function) outlet ratio
-        force balance: (bolean) balance sink term 
-        """
-
-        # Ensure to store source and sink as functions
-        self.source = self.convert_data(source)
-        self.source.rename('source','source')
-        self.sink = self.convert_data(sink)
-        self.sink.rename('sink','sink')
-
-        mass_source = assemble(self.source*dx)
-        mass_sink = assemble(self.sink*dx)
-
-        if abs(mass_source-mass_sink) > tolerance :
-            if force_balance:
-                with self.sink.dat.vec as f:
-                    f.scale(mass_source / mass_sink)
-            else:
-                raise ValueError("Source and sink terms are not balanced")
-
+   
     def create_solution(self):
         return self.fems.create_solution()
-
-    def save_solution(self, sol, file_name):
-        self.fems.save_solution(sol,file_name)
-
-    def save_inputs(self, file_name):
-        out_file = File(file_name)
-        out_file.write(self.source, self.sink, self.observed, self.confidence)
-        
-    def print_info(self, msg, priority):
+    
+    def solve(self, ctrl, sol):
         """
-        Print messagge to stdout and to log 
-        file according to priority passed
+        Args:
+        ctrl: Class with controls  (tol, max_iter, deltat, etc.)
+        sol: Mixed function [pot,tdens]. It is changed in place.
+
+        Returns:
+         ierr : control flag. It is 0 if everthing worked.
         """
-        
-        if (self.ctrl.verbose > priority):
-            print(msg)        
+
+        ierr = self.solve_pot_PDE(ctrl, sol)
+        iter = 0
+        ierr_dmk = 0
+        while ierr_dmk == 0:
+            # get inputs
+
+            # update with restarts
+            sol_old = cp(sol)
+            nrestart = 0 
+            while nrestart < ctrl.max_restart:
+                ierr = self.iterate(ctrl, sol)
+                if ierr == 0:
+                    break
+                else:
+                    nrestart +=1
+                    print(ierr)
+                    # reset controls after failure
+                    ctrl.deltat = ctrl.deltat_contraction * ctrl.deltat
+                    print(f' Failure in due to {SNESReasons[ierr]}. Restarting with deltat = {ctrl.deltat:.2e}')
+
+                    # restore old solution
+                    sol = cp(sol_old)
+
+            if (ierr != 0):
+                print('ierr',ierr)
+                break
+
+            # study state of convergence
+            iter += 1
+            pot, tdens = sol.split()
+            pot_old, tdens_old = sol_old.split()
+            #var_tdens = (
+            #    assemble(dot(tdens-tdens_old,tdens-tdens_old)*dx(degree=0)) 
+            #    / ( assemble(dot(tdens_old,tdens_old)*dx(degree=0)) * ctrl.deltat))
             
-    def discrepancy(self, problem, pot, tdens ):
+            tdens_h = Function(self.fems.tdens_space)
+            tdens_h.assign(tdens)
+            tdens_PDE = derivative(self.Lagrangian(pot,tdens_h),tdens_h)
+            f = assemble(tdens_PDE)
+            d = self.fems.tdens_mass_matrix.createVecLeft()
+            with f.dat.vec_ro as f_vec:
+                self.fems.tdens_inv_mass_matrix.solve(f_vec,d)
+                var_tdens = d.norm(PETSc.NormType.NORM_INFINITY)
+
+            avg_outer = self.outer_iterations / self.nonlinear_iterations
+            print(utilities.color('green',
+                              f"It: {iter} "+
+                    f" dt: {ctrl.deltat:.1e}"+
+                    f" var:{var_tdens:.1e}"
+                    f" nsym:{self.nonlinear_iterations:1d}"+
+                    f" avgouter: {avg_outer:.1f}"))
+            with tdens.dat.vec_ro as v:
+                print(msg_bounds(v,'tdens'))
+
+            # check convergence
+            if (var_tdens < ctrl.tol ):
+                ierr_dmk = 0
+                break
+
+            # break if max iter is reached
+            if (iter == ctrl.max_iter):
+                ierr_dmk = 1
+        
+        return ierr_dmk
+              
+    def discrepancy(self, pot, tdens ):
         """
         Measure the discrepancy between I(tdens) and the observed data.
         """
-        dis = self.confidence * ( problem.observed - self.tdens2image(tdens))**2 * dx
+        dis = self.confidence * ( self.img_observed - self.tdens2image(tdens))**2 * dx
         return dis
 
-    def penalty(self, forcing, gamma, pot, tdens): 
+    def penalization(self, pot, tdens): 
         """ 
-        Definition of the branch transport penalization
-        """        
-        otp_pen = ( forcing * pot - 0.5 * tdens * dot(grad(pot), grad(pot))
-                    + 0.5 * tdens ** gamma /  gamma ) * dx
+        Definition of the penalization functional as the branched transport energy
+        in FCP2021 (use Citations.print_all() to see the reference)
+        The penalization is defined as
+        :math:`\int_{\Omega} f u dx - \frac{\mu |\nabla u|^2}{2}+ \frac{1}{2\gamma} \mu^{\gamma} dx`
+        """
+        gamma = self.gamma
+        if self.spaces == 'CR1DG0':        
+            otp_pen = ( ( self.source - self.sink) * pot * dx 
+                        - 0.5 * tdens / self.kappa**2 * dot(grad(pot), grad(pot)) * dx
+                        + 0.5 * tdens ** gamma /  gamma  * dx 
+            )
+            #if self.Neumann is not None:
+            #    n = FacetNormal(self.mesh)
+            #    opt_pen += dot(self.Neumann,n) * pot * ds
+                      
+        elif self.spaces == 'DG0DG0':
+            facet_tdens = avg(tdens/self.kappa**2)
+            otp_pen = ( (self.source - self.sink) * pot * dx
+                        - 0.5 * facet_tdens * jump(pot)**2 / self.fems.delta_h * dS
+                        + 0.5 * tdens ** gamma /  gamma  * dx )
         return otp_pen
+    
 
-    def regularization(self, problem, pot, tdens):
+    def regularization(self, pot, tdens):
         """ penalty
         Definition of the regularization term
         """
-        return 0*dx(domain=self.fems.pot_space.mesh())
+        return 0*dx(domain=self.mesh)
     
-    def energy(self, problem, pot, tdens):
+    def Lagrangian(self, pot, tdens):
         """ 
         Definition of energy minimizated by the niot solver
         """
-        ene = ( self.weights[0] * self.discrepancy(problem,pot,tdens)
-               + self.weights[1] * self.penalty(problem.forcing,self.gamma,pot,tdens)
-               + self.weights[2] * self.regularization(problem,pot,tdens)
+        Lag = ( self.weights[0] * self.discrepancy(pot,tdens)
+               + self.weights[1] * self.penalization(pot,tdens)
+               + self.weights[2] * self.regularization(pot,tdens)
                )
-        return ene
-
-    def step4positive(self, tdens_vec, increment_vec, lower_bound):
-        """
-        Return the step that ensure tdens and slack are positive
-        """        
-        # get the step length that ensure positiveness of slack and tdens
-        step = get_step_lenght(tdens_vec,increment_vec,lower_bound)
-        
-        return step
-
+        return Lag
     
-    def pot_PDE(self, problem, tdpot):
-        F = ( tdpot.tdens * inner(grad(tdpot.pot),grad(self.pot_test))
-              - problem.forcing * self.pot_test)* dx
-        bc = None
-
-                                    
-    def syncronize(self, sol, ctrl):
+    def solve_pot_PDE(self, ctrl, sol):
         """        
         Args:
-         sol: Class with unkowns (tdens, pot in this case)
-         ctrl:  Class with controls how we solve
+         sol: Mixed function [pot,tdens], changed in place.
+            The pot component is updated so that it solves the PDE
+            associated to the Lagrangian for a given tdens.
+         ctrl: Class with controls how we solve
 
         Returns:
         ierr  : control flag (=0 if everthing worked)
         """
-        # pot0 is the initial guess
-        # tden0 is the given data
-        pot0, tdens0 = sol.split()
-        # we need to write the unknown as a function in a single space
-        # not a component of a mixed space 
-        pot = Function(self.fems.pot_space)
+        # Define the PDE for pot varible only 
+        # TODO: is there a better way to do define the PDE 
+        # obtain taking the partial derivative of the Lagrangian?   
+        pot, tdens = sol.split()
+        pot_unknown = Function(self.fems.pot_space)
+        pot_unknown.assign(pot)
+        # we scale by the norm of the forcing term
+        # to ensure that we get the relative residual
+        pot_PDE = 1/self.f_norm * derivative(self.Lagrangian(pot_unknown,tdens),pot_unknown)
+        pot_bcs = self.Dirichlet
+        #test = TestFunction(self.fems.pot_space)
+        #pot_PDE = self.forcing * test * dx + tdens * inner(grad(pot_unknown), grad(test)) * dx 
+        # Define the Nonlinear variational problem (it is linear in this case)
+        u_prob = NonlinearVariationalProblem(pot_PDE, pot_unknown)#, bcs=pot_bcs)
 
-        # current state as the initial solution
-        # TODO: faster via to copy the values of pot0
-        pot.interpolate(pot0) 
-        
-        # fix tdens and solve with Euler-Lagrange eqs. w.r.t to pot
-        # (the resulting PDE is linear and is given by
-        # PDE_pot = (problem.forcing*test-tdens0*dot(grad(pot),grad(test)))*dx
-        # PDE_pot = derivative(self.energy(problem, pot, tdens0), pot)
-        test = self.fems.pot_test
-        
-        if (self.spaces == 'CR1DG0'):
-            PDE_pot = tdens0 * inner(grad(pot),grad(test)) * dx - (self.source-self.sink) * test * dx
-        elif (self.spaces == 'DG0DG0'):
-            tdens_facet = avg(tdens0)
-            PDE_pot = tdens_facet * jump(pot) * jump(test) / self.fems.delta_h * dS - (self.source-self.sink) * test * dx
-        
-        u_prob = NonlinearVariationalProblem(PDE_pot, pot)
-
-        # the context dictionary can be used to pass 
-        # variable for building preconditioners
+        # set the solver parameters
         snes_ctrl={
-            "snes_rtol": ctrl.nonlinear_tol,
-            "snes_atol": 1e-6,
-            "snes_stol": 1e-6,
+            "snes_rtol": 1e-16,
+            "snes_atol": ctrl.nonlinear_tol,
+            "snes_stol": 1e-16,
             "snes_type": 'newtonls',
             "snes_max_it": ctrl.nonlinear_max_iter,
             # krylov solver controls
@@ -555,10 +600,11 @@ class NiotSolver:
         if ctrl.verbose >= 1:
             snes_ctrl["snes_monitor"] = None
         if  ctrl.verbose >= 2:
-                snes_ctrl["ksp_monitor"] = None
+            snes_ctrl["ksp_monitor"] = None
         
-        context ={} 
-        nullspace = VectorSpaceBasis(constant=True)
+        context ={} # left to pass information to the solver
+        if self.Dirichlet is None:
+            nullspace = VectorSpaceBasis(constant=True)
         snes_solver = NonlinearVariationalSolver(u_prob,
                                                 solver_parameters=snes_ctrl,
                                                 nullspace=nullspace,
@@ -568,15 +614,88 @@ class NiotSolver:
         # solve the problem
         utilities.my_solve(snes_solver)
         ierr = 0 if snes_solver.snes.getConvergedReason()>0 else snes_solver.snes.getConvergedReason()
-        self.linear_iter = snes_solver.snes.getLinearSolveIterations()
+        
+        # get info of solver
+        self.nonlinear_iterations = snes_solver.snes.getIterationNumber()
+        self.outer_iterations = snes_solver.snes.getLinearSolveIterations()
         
         # move the pot solution in sol
-        sol.sub(0).assign(pot)
+        sol.sub(0).assign(pot_unknown)
 
         return ierr
-        
     
-    def iterate(self, sol, ctrl):
+    def tdens_mirror_descent(self, ctrl, sol):
+        """
+        Procedure for the update of tdens using mirror descent
+        """
+
+        # compute update
+        pot, tdens = sol.split()
+        
+        # compute gradient of energy w.r.t. tdens
+        pot, tdens = sol.split()
+        tdens_h = Function(self.fems.tdens_space)
+        tdens_h.assign(tdens)
+        PDE_tdens = derivative(self.Lagrangian(pot,tdens_h),tdens_h)
+        bcs_tdens = None
+        
+        
+        # compute update vectors using mass matrix
+        rhs_ode = assemble(PDE_tdens, bcs=bcs_tdens)
+        update = Function(self.fems.tdens_space)
+        scaling = Function(self.fems.tdens_space)
+        scaling.interpolate(tdens_h)#**(2-self.gamma))
+        with rhs_ode.dat.vec as rhs, scaling.dat.vec_ro as scaling_vec, update.dat.vec as d, tdens_h.dat.vec_ro as tdens_vec:
+            # scale the gradient w.r.t. tdens by tdens itself
+            rhs *= scaling_vec
+            # scale by the inverse mass matrix
+            self.fems.tdens_inv_mass_matrix.solve(rhs, d)
+            # update
+            tdens_vec.axpy(-ctrl.deltat, d)
+
+        utilities.threshold_from_below(tdens_h, ctrl.tdens_min)
+
+        sol.sub(1).assign(tdens_h)
+        
+        # compute pot associated to new tdens
+        ierr = self.solve_pot_PDE(ctrl, sol)
+        
+        return ierr
+    
+    def gfvar_gradient_descent(self, ctrl, sol):
+        """
+        Update of gfvar using gradient descent direction
+        """
+
+        # convert tdens to gfvar
+        pot, tdens = sol.split()
+        gfvar = Function(self.tdens_space)
+        gfvar.interpolate(sqrt(tdens))
+
+        # compute gradient of energy w.r.t. gfvar
+        PDE = derivative(self.Lagrangian(problem,pot,gfvar**2),gfvar)
+        bcs_gfvar = None
+        
+
+        # compute update vectors using mass matrix
+        rhs_ode = assemble(PDE, bcs=bcs_gfvar)
+        update = Function(self.tdens_space)
+        with rhs_ode.dat.vec as rhs, gfvar.dat.vec_ro as gfvar_vec, update.dat.vec as d:
+            # scale by the inverse mass matrix
+            self.tdens_inv_mass_matrix.solve(rhs, d)
+            # update
+            gfvar_vec.axpy(-ctrl.deltat, d)
+
+        # convert gfvar to tdens
+        self.threshold_from_below(gfvar, below=sqrt(ctrl.tdens_min))
+        sol.sub(1).assign(gfvar**2)
+
+        # compute pot associated to new tdens
+        ierr = self.solve_pot_PDE(ctrl, sol)
+        print(ierr)
+        return ierr
+        
+    def iterate(self, ctrl, sol):
         """
         Args:
         problem: Class with inputs  (rhs, q_exponent)
@@ -586,7 +705,7 @@ class NiotSolver:
          sol : solution updated from time t^k to t^{k+1} 
 
         """
-        if (ctrl.time_discretization_method == 'mirrow_descent'):
+        if (ctrl.time_discretization_method == 'mirror_descent'):
             # the new tdens is computed as
             #
             # tdens_new  = tdens - deltat * tdens(\nabla_tdens Ene)
@@ -606,15 +725,18 @@ class NiotSolver:
             test_tdens = TestFunction(self.fems.tdens_space)
             gamma = self.gamma
             if (self.spaces == 'CR1DG0'):
-                direction = assemble(-(
-                    self.weights[0] * (
-                        tdens_k ** (2 - gamma) * (
-                            - dot(grad(pot_k), grad(pot_k))
-                            + tdens_k**(gamma-1) )
-                    ) * test_tdens * dx
-                    + self.weights[1] * self.confidence * (tdens_k - self.observed) * test_tdens * dx
-                    #+ self.weights[2] * inner(grad(tdens_k), grad(test_tdens)) * dx 
-                ))
+                gradient = assemble((
+                    self.weights[0] * tdens_k**(2-gamma) / (self.kappa **2)*(- dot(grad(pot_k), grad(pot_k)) + tdens_k**(gamma-1) )
+                    + self.weights[1] * self.confidence * (tdens_k - self.img_observed) 
+                    ) * test_tdens * dx )
+                
+                direction = Function(self.fems.tdens_space)
+                # take minus and scale by tdens_k 
+                with gradient.dat.vec as g, tdens_k.dat.vec as td, direction.dat.vec as d:
+                    g.scale(-1.0)
+                    #d.pointwiseMult(g,td)
+                    g.copy(d)
+
             elif (self.spaces == 'DG0DG0'):
                 tdens_facet = avg(tdens_k**(2-gamma))
                 test_facet = avg(test_tdens)
@@ -630,6 +752,7 @@ class NiotSolver:
                 self.fems.tdens_inv_mass_matrix.solve(rhs,d)
                 print(msg_bounds(d,'increment tdens'))
 
+                
                 if (ctrl.deltat_control == 'adaptive'):
                     _,d_max = d.max()
                     if (d_max < 0):
@@ -639,7 +762,8 @@ class NiotSolver:
                     ctrl.deltat = step
                 elif (ctrl.deltat_control == 'expansive'):
                     step = max(min(ctrl.deltat * ctrl.deltat_expansion, ctrl.deltat_max),ctrl.deltat_min)
-                elif (ctrl.deltat_control == 'fixed'):
+                    ctrl.deltat = step
+                elif (ctrl.deltat_control == 'constant'):
                     step = ctrl.deltat 
                 print('step',step)
                
@@ -652,88 +776,60 @@ class NiotSolver:
                 self.fems.tdens_space) 
             sol.sub(1).assign(lift_tdens)
 
-            pot_old, tdens_new = sol.split()
-         
             # compute pot associated to new tdens
-            ierr = self.syncronize( sol, ctrl)
+            ierr = self.solve_pot_PDE(ctrl, sol)
             
-            self.nonlinear_iter = 1
             return ierr            
+        elif (ctrl.time_discretization_method == 'tdens_mirror_descent'):
+            ierr = self.tdens_mirror_descent(ctrl, sol)
+            return ierr
+        elif (ctrl.time_discretization_method == 'gfvar_gradient_descent'):
+            ierr = self.gfvar_gradient_descent(ctrl, sol)
+            return ierr
         else:
-            print('value: self.ctrl.time_discretization_method not supported. Passed:',self.ctrl.time_discretization_method )
+            print('value: self.ctrl.time_discretization_method not supported. Passed:',ctrl.time_discretization_method )
             ierr = 1
-            #return tdpot, ierr, self;
-
-    def solve(self, sol, ctrl):
+            return      
+    
+    def save_solution(self, sol, file_name):
         """
-        Args:
-        problem: Class with inputs  (rhs, q_exponent)
-        sol  : Class with unkowns (pot,tdens, in this case)
+        Save into a file the solution [pot,tdens] and velocity
+        """
+        self.fems.save_solution(sol,file_name)
 
-        Returns:
-         sol : solution updated from time t^k to t^{k+1} 
+    def save_inputs(self, file_name):
+        out_file = File(file_name)
+        out_file.write(self.source, self.sink, self.img_observed, self.confidence)
 
+    def heat_smoothing(self, density, tau=0.1, num_steps=1, tdens=1.0):
+        """
+        Smooth a density using heat equation
         """
 
-        ierr = self.syncronize( sol, ctrl)
-        iter = 0
-        ierr_dmk = 0
-        while ierr_dmk == 0:
-            # get inputs
+        # create the function space
+        space = FunctionSpace(self.mesh, "CG", 1)
+        new_density = Function(space)
+        new_density.interpolate(density) 
 
-            # update with restarts
-            sol_old = cp(sol)
-            nrestart = 0 
-            while nrestart < ctrl.max_restart:
-                ierr = self.iterate(sol, ctrl)
-                if ierr == 0:
-                    break
-                else:
-                    nrestart +=1
-                    
-                    # reset controls after failure
-                    ctrl.deltat = ctrl.deltat_contraction * ctrl.deltat
-                    print(f' Failure in due to {SNESReasons[ierr]}. Restarting with deltat = {ctrl.deltat:.2e}')
-
-                    # restore old solution
-                    sol = cp(sol_old)
-
-            if (ierr != 0):
-                print('ierr',ierr)
-                break
-
-            # study state of convergence
-            iter += 1
-            pot, tdens = sol.split()
-            pot_old, tdens_old = sol_old.split()
-            #var_tdens = (
-            #    assemble(dot(tdens-tdens_old,tdens-tdens_old)*dx(degree=0)) 
-            #    / ( assemble(dot(tdens_old,tdens_old)*dx(degree=0)) * ctrl.deltat))
-            gamma = self.gamma
-            test_tdens = TestFunction(self.fems.tdens_space)
-            steady_state = assemble(tdens**(2-gamma)*(
-                inner(grad(pot),grad(pot))-tdens**(gamma-1))*test_tdens*dx)
-            d = self.fems.tdens_mass_matrix.createVecLeft()
-            with steady_state.dat.vec_ro as v:
-                self.fems.tdens_inv_mass_matrix.solve(v,d)
-                var_tdens = d.norm(PETSc.NormType.NORM_INFINITY)
-
-            avg_outer = self.linear_iter / self.nonlinear_iter
-            print(f"It: {iter} "+
-                    f" deltat: {ctrl.deltat:.2e}"+
-                    f" var:{var_tdens:.2e}"
-                    f" nsym: {self.nonlinear_iter:.2f}"+
-                    f" avgkrylov: {avg_outer:.2f}")
-            with tdens.dat.vec_ro as v:
-                print(msg_bounds(v,'tdens'))
-
-            # check convergence
-            if (var_tdens < ctrl.tol ):
-                ierr_dmk = 0
-                break
-
-            # break if max iter is reached
-            if (iter == ctrl.max_iter):
-                ierr_dmk = 1
         
-        return ierr_dmk
+        # define the matrix corresponding to one step of the heat equation
+        # with homogeneous Neumann boundary conditions
+        test = TestFunction(space)
+        trial = TrialFunction(space)
+        heat_matrix = assemble( 1/tau *test *trial *dx + tdens * inner(grad(test), grad(trial)) * dx).M.handle
+        inv_heat_matrix = linalg.LinSolMatrix(heat_matrix, space,
+                                              solver_parameters={
+                                                  'ksp_type':'cg',
+                                                  'ksp_rtol': 1e-6,
+                                                  'pc_type':'hypre'})
+        steps=0       
+        while steps < num_steps:
+            rhs = assemble(1/tau * test * new_density * dx)
+            with rhs.dat.vec as f, new_density.dat.vec as d:    
+                inv_heat_matrix.solve(f,d)
+                steps += 1
+
+        smooth_density = Function(density.function_space())
+        smooth_density.interpolate(new_density)
+
+        return smooth_density

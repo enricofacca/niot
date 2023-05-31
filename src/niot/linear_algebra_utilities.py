@@ -3,6 +3,7 @@ from firedrake import MixedVectorSpaceBasis
 from time import process_time
 import sys
 from slepc4py import SLEPc
+
 def study_eigenvalues(test_matrix):
     E = SLEPc.EPS(); E.create()
     E.setOperators(test_matrix)

@@ -4,6 +4,8 @@ from firedrake import dmhooks
 from petsc4py import PETSc
 from firedrake import FunctionSpace
 from firedrake import Citations
+from firedrake import Function
+from firedrake import conditional
 
 
 """
