@@ -6,8 +6,9 @@ from firedrake import FunctionSpace
 from firedrake import Citations
 from firedrake import Function
 from firedrake import conditional
+from firedrake import File
 
-
+import os
 """
 Define a variable to store the reason of the SNES solver
 """
@@ -51,6 +52,31 @@ def msg_bounds(vec,label):
     min = vec.min()[1]
     max = vec.max()[1]
     return "".join([f'{min:2.1e}','<=',label,'<=',f'{max:2.1e}'])
+
+def save2pvd(functions,filename):
+    """
+    Save a list of functions to a pvd file
+    """
+    # check exension
+    if (filename[-4:] != '.pvd'):
+        raise ValueError("The filename must have extension .pvd")
+
+    if (type(functions) != list):
+        functions = [functions]
+    out_file = File(filename)
+    out_file.write(*functions)
+
+    # get file name without extension
+    filename = filename[:-4]
+    # Firedrake appends _0 to vtu
+    # We remove it
+    firedrake_vtu_name = filename+'_0.vtu'
+    new_vtu_name = filename+'.vtu'
+
+    # rename vtu file
+    os.rename(firedrake_vtu_name,new_vtu_name)
+
+
 
 
 def my_newton(flag, f_norm, tol=1e-6, max_iter=10):
@@ -125,14 +151,13 @@ def threshold_from_below(func, lower_bound):
     func.assign(temp)
 
 
-import re
 
 # find all occurrences of a substring in a string
 
 #find the position of all @ in the text
 def include_citations(filename):
     """
-    Include the in filename 
+    Include bibtex entries in filename 
     to the citations system of Firedrake and Petsc
     (see https://www.firedrakeproject.org/citations.html)
     
@@ -142,7 +167,7 @@ def include_citations(filename):
     Returns:
         empty
     
-    The code uses brute force code, but avoid using 
+    The code is hard written, but avoid using 
     libraries that are not in the standard python distribution.
     """
 
@@ -178,6 +203,4 @@ def include_citations(filename):
         entries.append([keyword,content])
 
     for cit in entries:
-        print("Adding citation: "+cit[0])
-        print(cit[1])
         Citations().add(cit[0],cit[1]+'\n')
