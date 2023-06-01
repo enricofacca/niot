@@ -31,29 +31,29 @@ utilities.include_citations('../citations/citations.bib')
 def msg_bounds(vec,label):
     min = vec.min()[1]
     max = vec.max()[1]
-    return "".join([f'{min:2.1e}','<=',label,'<=',f'{max:2.1e}'])
+    return ''.join([f'{min:2.1e}','<=',label,'<=',f'{max:2.1e}'])
 
 def get_step_lenght(x,increment,x_lower_bound=0.0,step_lower_bound=1e-16):
-    """
+    '''
     Get the step lenght to ensure that the new iterate is above as the lower bound
-    """
+    '''
     np_x = x.array
     np_increment = increment.array
     #print(utilities.msg_bounds(x,'x'))
     #print(utilities.msg_bounds(increment,'increment'))
     negative = (np_increment<0).any()
-    #print("negative",negative)
+    #print('negative',negative)
     if negative:
         negative_indeces  = np.where(np_increment<0)[0]
         #print('negative',len(negative_indeces),'size',len(np_increment))
         #print(np.min(np_increment[negative_indeces]))
         #print(np.min(np_x[negative_indeces]))
         step = np.min((x_lower_bound-np_x[negative_indeces])/np_increment[negative_indeces])
-        #print("step lenght", step)
+        #print('step lenght', step)
         if step<0:
-            #print("x",np_x)
-            #print("increment",np_increment)
-            raise ValueError("step lenght is negative")
+            #print('x',np_x)
+            #print('increment',np_increment)
+            raise ValueError('step lenght is negative')
         if (step<step_lower_bound):
             step = 0
         return step
@@ -62,21 +62,21 @@ def get_step_lenght(x,increment,x_lower_bound=0.0,step_lower_bound=1e-16):
 
 
 class SpaceDiscretization:
-    """
+    '''
     Class containg fem discretization variables
-    """
+    '''
     
     # include relevant citations
-    Citations().register("FCP2021")
+    Citations().register('FCP2021')
     def __init__(self, mesh, pot_space='CR', pot_deg=1, tdens_space='DG', tdens_deg=0):
        #tdens_fem='DG0',pot_fem='P1'):
-       """
+       '''
        Initialize FEM spaces used to discretized the problem
-       """  
+       '''  
        # For Pot unknow, create fem, function space, trial and test functions
        #meshes = MeshHierarchy(mesh, 1)
-       #print("meshes",meshes)
-       #print("meshes",len(meshes))
+       #print('meshes',meshes)
+       #print('meshes',len(meshes))
 
        self.pot_fem = FiniteElement(pot_space, mesh.ufl_cell(), pot_deg)
        self.pot_space = FunctionSpace(mesh, self.pot_fem)
@@ -100,7 +100,7 @@ class SpaceDiscretization:
       
        # create mass matrix $M_i,j=\int_{\xhi_l,\xhi_m}$ with
        # $\xhi_l$ funciton of Tdens
-       self.tdens_mass_matrix = assemble( inner(self.tdens_trial,self.tdens_test)*dx ,mat_type="aij").M.handle
+       self.tdens_mass_matrix = assemble( inner(self.tdens_trial,self.tdens_test)*dx ,mat_type='aij').M.handle
        self.tdens_inv_mass_matrix = linalg.LinSolMatrix(self.tdens_mass_matrix, self.tdens_space,
                     solver_parameters={
                         'ksp_type':'cg',
@@ -118,10 +118,10 @@ class SpaceDiscretization:
 
 
     def create_solution(self):
-        """
+        '''
         Create a mixed function sol=(pot,tdens) 
         defined on the mixed function space.
-        """
+        '''
         sol = Function(self.pot_tdens_space,name=('pot','tdens'))
         sol.sub(0).vector()[:] = 0.0
         sol.sub(1).vector()[:] = 1.0
@@ -129,24 +129,24 @@ class SpaceDiscretization:
         return sol
 
     def save_solution(self, sol, file_name):
-        """
+        '''
         Save solution to file
-        """
+        '''
         pot, tdens = sol.split()
-        pot.rename("pot","Kantorovich Potential")
-        tdens.rename("tdens","Optimal Transport Tdens")
+        pot.rename('pot','Potential')
+        tdens.rename('tdens','Optimal Transport Tdens')
 
         DG0_vec = VectorFunctionSpace(self.pot_space.mesh(),'DG',0)
         vel = Function(DG0_vec)
         vel.interpolate(-tdens*grad(pot))
-        vel.rename("vel","Velocity")
-        out_file = File(file_name)
-        out_file.write(pot, tdens, vel)
+        vel.rename('vel','Velocity')
+
+        utilities.save2pvd([pot, tdens, vel],file_name)
                     
 class Controls:
-    """
+    '''
     Class with Dmk Solver 
-    """
+    '''
     def __init__(self,
                 tol=1e-2,
                 time_discretization_method='mirror_descent',
@@ -157,9 +157,9 @@ class Controls:
                 nonlinear_max_iter=30,
                 linear_max_iter=1000,
                 ):
-        """
+        '''
         Set the controls of the Dmk algorithm
-        """
+        '''
         #: float: stop tolerance
         self.tol = tol
 
@@ -209,10 +209,10 @@ class Controls:
         self.file_log = 'niot.log'
 
     def print_info(self, msg, priority=0, color='black'):
-        """
+        '''
         Print messagge to stdout and to log 
         file according to priority passed
-        """        
+        '''        
         if (self.verbose > priority):
             if color != 'black':
                 msg = utilities.color_msg(color, msg)
@@ -220,7 +220,7 @@ class Controls:
 
  
 class NiotSolver:
-    """
+    '''
     Solver for the network inpaiting problem-
     Args:
     spaces: strings denoting the discretization scheme used
@@ -228,19 +228,18 @@ class NiotSolver:
     numpy_source: numpy 2d/3d array describing inlet flow
     numpy_sink: numpy 2d/3d array describing outlet flow
     force_balance: boolean to force balancing sink to ensure problem to be well posed
-    """
+    '''
 
     # register citations using Citations class in firedrake
-    Citations().register("FCP2021")
+    Citations().register('FCP2021')
 
     def __init__(self, spaces, numpy_corrupted):
-        """
+        '''
         Initialize solver (spatial discretization) from numpy_image (2d or 3d data)
 
-        """
+        '''
         # create mesh from image
         self.spaces = spaces
-        print('spaces', spaces)
         if spaces == 'CR1DG0':
             self.mesh = self.build_mesh_from_numpy(numpy_corrupted, mesh_type='simplicial')
             self.mesh_type = 'simplicial'
@@ -252,9 +251,11 @@ class NiotSolver:
             # create FEM spaces
             self.fems = SpaceDiscretization(self.mesh,'DG',0,'DG',0)
         else:
-            raise ValueError("Wrong spaces only (pot,tdens) in (CR1,DG0) or (DG0,DG0) implemented")
+            raise ValueError('Wrong spaces only (pot,tdens) in (CR1,DG0) or (DG0,DG0) implemented')
+        self.mesh.name = 'mesh'
 
-        self.DG0 = FunctionSpace(self.mesh, "DG", 0)
+
+        self.DG0 = FunctionSpace(self.mesh, 'DG', 0)
 
         # set function 
         self.img_observed = self.numpy2function(numpy_corrupted)
@@ -271,14 +272,14 @@ class NiotSolver:
         self.nonlinear_res = 0.0
 
     def build_mesh_from_numpy(self, np_image, mesh_type='simplicial'): 
-        """
+        '''
         Create a mesh (first axis size=1) from a numpy array
-        """
+        '''
         if (mesh_type == 'simplicial'):
             quadrilateral = False
         elif (mesh_type == 'cartesian'):
             quadrilateral = True
-        print(f"Mesh type {mesh_type} quadrilateral {quadrilateral}")
+        print(f'Mesh type {mesh_type} quadrilateral {quadrilateral}')
         
         if (np_image.ndim == 2):
             height, width  = np_image.shape
@@ -287,19 +288,19 @@ class NiotSolver:
                 reorder=False)
                 
         elif (np_image.ndim == 3):
-            raise NotImplementedError("3D not implemented")
+            raise NotImplementedError('3D not implemented')
         else:
-            raise ValueError("Wrong dimension of image")
+            raise ValueError('Wrong dimension of image')
         return mesh
 
     def set_optimal_transport_parameters(self, source, sink, 
                                          gamma=0.8,
                                          kappa=1.0,
-                                         Neumann = [[0,"on_boundary"]],
+                                         Neumann = [[0,'on_boundary']],
                                          Dirichlet=None,
                                          tolerance_unbalance=1e-12,
                                          force_balance=False):
-        """
+        '''
         Set optimal transport parameters
         Args:
         source: firedrake function with source term
@@ -310,7 +311,7 @@ class NiotSolver:
         Dirichlet: list of Dirichlet boundary conditions
         tolerance_unbalance: tolerance to check if source and sink are balanced
         force_balance: boolean to force balancing sink to ensure problem to be well posed
-        """
+        '''
 
         # Check data consistency
         mass_source = assemble(source*dx)
@@ -319,10 +320,10 @@ class NiotSolver:
 
         mass_balance = mass_source - mass_sink + mass_Neumann
 
-        print("mass_source",mass_source)
-        print("mass_sink",mass_sink)
-        print("mass_Neumann",mass_Neumann)
-        print("mass_balance",mass_balance)
+        print('mass_source',mass_source)
+        print('mass_sink',mass_sink)
+        print('mass_Neumann',mass_Neumann)
+        print('mass_balance',mass_balance)
 
         # create hard copy because we may scale
         # the source and sink termsnp_
@@ -333,7 +334,7 @@ class NiotSolver:
                 with self.sink.dat.vec as f:
                     f.scale(mass_source / mass_sink)
             else:
-                raise ValueError("Source and sink terms are not balanced")
+                raise ValueError('Source and sink terms are not balanced')
 
         
         self.forcing = self.source - self.sink
@@ -349,7 +350,7 @@ class NiotSolver:
                  weights=np.array([1.0,1.0,0.0]),
                  confidence=1.0,
                  tdens2image=lambda x: x):
-        """
+        '''
         Set inpainting specific parameters 
         Args:
         weights: array with weights of the discrepancy, penalization and transport energy
@@ -358,10 +359,10 @@ class NiotSolver:
 
         Returns:
         None
-        """
+        '''
         if weights is not None:
             if len(weights)!=3:
-                raise ValueError(f"3 weights are required, Transport Energy, Discrepancy, Penalization")
+                raise ValueError(f'3 weights are required, Transport Energy, Discrepancy, Penalization')
             self.weights = weights
 
         if confidence is not None:
@@ -371,14 +372,14 @@ class NiotSolver:
         self.tdens2image = tdens2image
 
     def numpy2function(self, value, name=None):
-        """
+        '''
         Convert np array (2d o 3d) into a function compatible with the mesh solver.
         Args:
         
         value: numpy array (2d or 3d) with images values
 
         returns: piecewise constant firedake function 
-        """ 
+        ''' 
         
         # we flip vertically because images are read from left, right, top to bottom
         value = np.flip(value,0)
@@ -397,7 +398,7 @@ class NiotSolver:
                 with img_function.dat.vec as d:
                     d.array = triangles_image
             else:
-                raise ValueError("3d data not implemented yet")
+                raise ValueError('3d data not implemented yet')
             if (name is not None):
                 img_function.rename(name,name)
             return img_function
@@ -420,27 +421,27 @@ class NiotSolver:
             if data.function_space().mesh() == self.mesh:
                 return data
             else:
-                raise ValueError("Data not defined on the same mesh of the solver")
+                raise ValueError('Data not defined on the same mesh of the solver')
         elif isinstance(data, float):
             return Constant(data)
 
         elif isinstance(data, constant.Constant):
             return data 
         else:
-            raise ValueError("Type "+str(type(data))+" not supported")
+            raise ValueError('Type '+str(type(data))+' not supported')
    
     def create_solution(self):
         return self.fems.create_solution()
     
     def solve(self, ctrl, sol):
-        """
+        '''
         Args:
         ctrl: Class with controls  (tol, max_iter, deltat, etc.)
         sol: Mixed function [pot,tdens]. It is changed in place.
 
         Returns:
          ierr : control flag. It is 0 if everthing worked.
-        """
+        '''
 
         ierr = self.solve_pot_PDE(ctrl, sol)
         iter = 0
@@ -488,11 +489,11 @@ class NiotSolver:
 
             avg_outer = self.outer_iterations / self.nonlinear_iterations
             print(utilities.color('green',
-                              f"It: {iter} "+
-                    f" dt: {ctrl.deltat:.1e}"+
-                    f" var:{var_tdens:.1e}"
-                    f" nsym:{self.nonlinear_iterations:1d}"+
-                    f" avgouter: {avg_outer:.1f}"))
+                              f'It: {iter} '+
+                    f' dt: {ctrl.deltat:.1e}'+
+                    f' var:{var_tdens:.1e}'
+                    f' nsym:{self.nonlinear_iterations:1d}'+
+                    f' avgouter: {avg_outer:.1f}'))
             with tdens.dat.vec_ro as v:
                 print(msg_bounds(v,'tdens'))
 
@@ -508,19 +509,19 @@ class NiotSolver:
         return ierr_dmk
               
     def discrepancy(self, pot, tdens ):
-        """
+        '''
         Measure the discrepancy between I(tdens) and the observed data.
-        """
+        '''
         dis = self.confidence * ( self.img_observed - self.tdens2image(tdens))**2 * dx
         return dis
 
     def penalization(self, pot, tdens): 
-        """ 
+        ''' 
         Definition of the penalization functional as the branched transport energy
         in FCP2021 (use Citations.print_all() to see the reference)
         The penalization is defined as
         :math:`\int_{\Omega} f u dx - \frac{\mu |\nabla u|^2}{2}+ \frac{1}{2\gamma} \mu^{\gamma} dx`
-        """
+        '''
         gamma = self.gamma
         if self.spaces == 'CR1DG0':        
             otp_pen = ( ( self.source - self.sink) * pot * dx 
@@ -540,15 +541,20 @@ class NiotSolver:
     
 
     def regularization(self, pot, tdens):
-        """ penalty
+        ''' 
         Definition of the regularization term
-        """
+        '''
         return 0*dx(domain=self.mesh)
     
     def Lagrangian(self, pot, tdens):
-        """ 
+        ''' 
         Definition of energy minimizated by the niot solver
-        """
+        args:
+            pot: potential function
+            tdens: transport density function
+        returns:
+            Lag: Lagrangian functional = w_0*discrepancy + w_1*penalization + w_2*regularization
+        '''
         Lag = ( self.weights[0] * self.discrepancy(pot,tdens)
                + self.weights[1] * self.penalization(pot,tdens)
                + self.weights[2] * self.regularization(pot,tdens)
@@ -556,16 +562,18 @@ class NiotSolver:
         return Lag
     
     def solve_pot_PDE(self, ctrl, sol):
-        """        
-        Args:
-         sol: Mixed function [pot,tdens], changed in place.
-            The pot component is updated so that it solves the PDE
-            associated to the Lagrangian for a given tdens.
-         ctrl: Class with controls how we solve
+        '''
+        The pot in sol=[pot,tdens] is updated so that it solves the PDE
+        associated to the Lagrangian for a given tdens.
+        
+        args:
+            ctrl: Class with controls how we solve
+            sol: Mixed function [pot,tdens], changed in place.
+         
 
-        Returns:
-        ierr  : control flag (=0 if everthing worked)
-        """
+        returns:
+            ierr : control flag (=0 if everthing worked)
+        '''
         # Define the PDE for pot varible only 
         # TODO: is there a better way to do define the PDE 
         # obtain taking the partial derivative of the Lagrangian?   
@@ -583,11 +591,11 @@ class NiotSolver:
 
         # set the solver parameters
         snes_ctrl={
-            "snes_rtol": 1e-16,
-            "snes_atol": ctrl.nonlinear_tol,
-            "snes_stol": 1e-16,
-            "snes_type": 'newtonls',
-            "snes_max_it": ctrl.nonlinear_max_iter,
+            'snes_rtol': 1e-16,
+            'snes_atol': ctrl.nonlinear_tol,
+            'snes_stol': 1e-16,
+            'snes_type': 'newtonls',
+            'snes_max_it': ctrl.nonlinear_max_iter,
             # krylov solver controls
             'ksp_type': 'cg',
             'ksp_atol': 1e-30,
@@ -598,9 +606,9 @@ class NiotSolver:
             'pc_type': 'hypre',
         }
         if ctrl.verbose >= 1:
-            snes_ctrl["snes_monitor"] = None
+            snes_ctrl['snes_monitor'] = None
         if  ctrl.verbose >= 2:
-            snes_ctrl["ksp_monitor"] = None
+            snes_ctrl['ksp_monitor'] = None
         
         context ={} # left to pass information to the solver
         if self.Dirichlet is None:
@@ -625,9 +633,14 @@ class NiotSolver:
         return ierr
     
     def tdens_mirror_descent(self, ctrl, sol):
-        """
-        Procedure for the update of tdens using mirror descent
-        """
+        '''
+        Procedure for the update of tdens using mirror descent.
+        args:
+            ctrl : Class with controls  (tol, max_iter, deltat, etc.)
+            sol : Class with mixed function [pot,tdens]. It is changed in place.
+        returns:
+            ierr : control flag. It is 0 if everthing worked.
+        '''
 
         # compute update
         pot, tdens = sol.split()
@@ -663,9 +676,15 @@ class NiotSolver:
         return ierr
     
     def gfvar_gradient_descent(self, ctrl, sol):
-        """
+        '''
+        Update of using transformation tdens=gfvar**2 and gradient descent
+        args:
+            ctrl : Class with controls  (tol, max_iter, deltat, etc.)
+            sol : Class with unkowns (pot,tdens, in this case)
+        returns:
+            ierr : control flag. It is 0 if everthing worked.
         Update of gfvar using gradient descent direction
-        """
+        '''
 
         # convert tdens to gfvar
         pot, tdens = sol.split()
@@ -696,15 +715,15 @@ class NiotSolver:
         return ierr
         
     def iterate(self, ctrl, sol):
-        """
+        '''
         Args:
-        problem: Class with inputs  (rhs, q_exponent)
-        sol  : Class with unkowns (pot,tdens, in this case)
+         ctrl : Class with controls  (tol, max_iter, deltat, etc.)
+         solution updated from time t^k to t^{k+1} solution updated from time t^k to t^{k+1} sol : Class with unkowns (pot,tdens, in this case)
 
         Returns:
-         sol : solution updated from time t^k to t^{k+1} 
+         ierr : control flag. It is 0 if everthing worked.
 
-        """
+        '''
         if (ctrl.time_discretization_method == 'mirror_descent'):
             # the new tdens is computed as
             #
@@ -726,8 +745,8 @@ class NiotSolver:
             gamma = self.gamma
             if (self.spaces == 'CR1DG0'):
                 gradient = assemble((
-                    self.weights[0] * tdens_k**(2-gamma) / (self.kappa **2)*(- dot(grad(pot_k), grad(pot_k)) + tdens_k**(gamma-1) )
-                    + self.weights[1] * self.confidence * (tdens_k - self.img_observed) 
+                    self.weights[1] * tdens_k**(2-gamma) / (self.kappa **2)*(- dot(grad(pot_k), grad(pot_k)) + tdens_k**(gamma-1) )
+                    + self.weights[0] * self.confidence * (tdens_k - self.img_observed) 
                     ) * test_tdens * dx )
                 
                 direction = Function(self.fems.tdens_space)
@@ -741,9 +760,9 @@ class NiotSolver:
                 tdens_facet = avg(tdens_k**(2-gamma))
                 test_facet = avg(test_tdens)
                 direction = assemble(-(
-                    - self.weights[0] * test_facet* tdens_facet * jump(pot_k) **2 / self.fems.delta_h * dS
-                    + self.weights[0] * tdens_k * test_tdens * dx
-                    + self.weights[1] * self.confidence * (tdens_k - self.observed) * test_tdens*dx
+                    - self.weights[1] * test_facet* tdens_facet * jump(pot_k) **2 / self.fems.delta_h * dS
+                    + self.weights[1] * tdens_k * test_tdens * dx
+                    + self.weights[0] * self.confidence * (tdens_k - self.observed) * test_tdens*dx
                     #+ self.weights[2] * inner(grad(tdens), grad(test_tdens)) * dx
                 ))
 
@@ -791,45 +810,158 @@ class NiotSolver:
             ierr = 1
             return      
     
-    def save_solution(self, sol, file_name):
-        """
+    def save_solution(self, sol, filename):
+        '''
         Save into a file the solution [pot,tdens] and velocity
-        """
-        self.fems.save_solution(sol,file_name)
+        '''
+        self.fems.save_solution(sol,filename)
+
+    def save_checkpoint(self, sol, filename):
+        '''
+        Write solution to a checkpoint file
+        '''
+        # check extension
+        if (filename[-3:] != '.h5'):
+            raise ValueError('The filename must have extension .h5')
+
+        with CheckpointFile(filename, 'w') as afile:
+            afile.save_mesh(self.mesh)  
+            sol.rename('sol','Solution')
+            afile.save_function(sol)
+        
+
+    def load_checkpoint(self, filename):
+        '''
+        Load solution from a checkpoint file
+        '''
+         # check extension
+        if (filename[-3:] != '.h5'):
+            raise ValueError('The filename must have extension .h5')
+
+        with CheckpointFile(filename, 'r') as afile:
+            mesh = afile.load_mesh('mesh')
+            sol = afile.load_function(mesh, 'sol')
+        return sol 
+    
 
     def save_inputs(self, file_name):
-        out_file = File(file_name)
-        out_file.write(self.source, self.sink, self.img_observed, self.confidence)
+        '''
+        Save to file the inputs of the solver
+        '''
+        utilities.save2pvd(
+            [self.source,
+             self.sink,
+             self.img_observed,
+             self.confidence],
+             file_name)
 
-    def heat_smoothing(self, density, tau=0.1, num_steps=1, tdens=1.0):
-        """
-        Smooth a density using heat equation
-        """
+def heat_spread(density, tau=0.1):
+    '''
+    Spread a density using the porous medium equation,
+    :math:`\partial_t \rho - \nabla \cdot ( \nabla \rho)=0`.
+    '''
+    # create the function space
+    mesh = density.function_space().mesh()
+    space = FunctionSpace(mesh, 'CG', 1)
+    new_density = Function(space)
+    new_density.interpolate(density)
+ 
+    test = TestFunction(space)
+    PDE = ( 
+        1/tau * (new_density - density) * test  * dx 
+        + inner(grad(new_density), grad(test)) * dx
+        )
+    problem = NonlinearVariationalProblem(PDE, new_density)
 
-        # create the function space
-        space = FunctionSpace(self.mesh, "CG", 1)
-        new_density = Function(space)
-        new_density.interpolate(density) 
+    # set solver. One Newton step is required for m=1
+    ctrl={
+            'snes_rtol': 1e-16,
+            'snes_atol': 1e-4,
+            'snes_stol': 1e-16,
+            'snes_type': 'newtonls',
+            'snes_max_it': 20,
+            'snes_monitor': None,
+            # krylov solver controls
+            'ksp_type': 'cg',
+            'ksp_atol': 1e-30,
+            'ksp_rtol': 1e-8,
+            'ksp_divtol': 1e4,
+            'ksp_max_it' : 100,
+            # preconditioner controls
+            'pc_type': 'hypre',
+        }
+    snes_solver = NonlinearVariationalSolver(problem, solver_parameters=ctrl)
+    
+    # solve the problem
+    utilities.my_solve(snes_solver)
+    ierr = 0 if snes_solver.snes.getConvergedReason()>0 else snes_solver.snes.getConvergedReason()
+    if (ierr != 0):
+        print('ierr',ierr)
+        print(f' Failure in due to {SNESReasons[ierr]}')
+        raise ValueError('Newton solver failed')
+    
+    # return the solution in the same function space of the input
+    smooth_density = Function(density.function_space())
+    smooth_density.interpolate(new_density)
 
-        
-        # define the matrix corresponding to one step of the heat equation
-        # with homogeneous Neumann boundary conditions
+    return smooth_density
+
+def spread(density, tau=0.1, m_exponent=1, nsteps=1):
+    '''
+    Spread a density using the porous medium equation,
+    :math:`\partial_t \rho - \nabla \cdot (\rho^m-1 \nabla \rho)=0`.
+    '''
+    # create the function space
+    mesh = density.function_space().mesh()
+    space = FunctionSpace(mesh, 'CG', 1)
+    log_density_initial = Function(space)
+    log_density_initial.interpolate(ln(density))
+    log_density = cp(log_density_initial)
+
+    nstep = 1
+    while nstep <= nsteps:
+        # define the PDE
+        # m=1 is the heat equation 
         test = TestFunction(space)
-        trial = TrialFunction(space)
-        heat_matrix = assemble( 1/tau *test *trial *dx + tdens * inner(grad(test), grad(trial)) * dx).M.handle
-        inv_heat_matrix = linalg.LinSolMatrix(heat_matrix, space,
-                                              solver_parameters={
-                                                  'ksp_type':'cg',
-                                                  'ksp_rtol': 1e-6,
-                                                  'pc_type':'hypre'})
-        steps=0       
-        while steps < num_steps:
-            rhs = assemble(1/tau * test * new_density * dx)
-            with rhs.dat.vec as f, new_density.dat.vec as d:    
-                inv_heat_matrix.solve(f,d)
-                steps += 1
+        PDE = ( 
+            1/tau * (exp(log_density) - exp(log_density_initial)) * test  * dx 
+            + m_exponent * exp(m_exponent * log_density_initial) * inner(grad(log_density), grad(test)) * dx
+            )
+        problem = NonlinearVariationalProblem(PDE, log_density)
 
-        smooth_density = Function(density.function_space())
-        smooth_density.interpolate(new_density)
+        # set solver. One Newton step is required for m=1
+        ctrl={
+                'snes_rtol': 1e-16,
+                'snes_atol': 1e-4,
+                'snes_stol': 1e-16,
+                'snes_type': 'newtonls',
+                'snes_linesearch_type':'bt',
+                'snes_max_it': 20,
+                'snes_monitor': None,
+                # krylov solver controls
+                'ksp_type': 'gmres',
+                'ksp_atol': 1e-30,
+                'ksp_rtol': 1e-8,
+                'ksp_divtol': 1e4,
+                'ksp_max_it' : 100,
+                # preconditioner controls
+                'pc_type': 'hypre',
+            }
+        snes_solver = NonlinearVariationalSolver(problem, solver_parameters=ctrl)
+        
+        # solve the problem
+        utilities.my_solve(snes_solver)
+        ierr = 0 if snes_solver.snes.getConvergedReason()>0 else snes_solver.snes.getConvergedReason()
+        if (ierr != 0):
+            print('ierr',ierr)
+            print(f' Failure in due to {SNESReasons[ierr]}')
+            raise ValueError('Newton solver failed')
+        
+        nstep += 1
+        log_density_initial.assign(log_density)
 
-        return smooth_density
+    # return the solution in the same function space of the input
+    smooth_density = Function(density.function_space())
+    smooth_density.interpolate(exp(log_density))
+
+    return smooth_density
