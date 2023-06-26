@@ -7,8 +7,11 @@ from firedrake import Citations
 from firedrake import Function
 from firedrake import conditional
 from firedrake import File
+from firedrake import solving_utils
 
 import os
+import numpy as np
+
 """
 Define a variable to store the reason of the SNES solver
 """
@@ -18,35 +21,6 @@ def _make_reasons(reasons):
 SNESReasons = _make_reasons(PETSc.SNES.ConvergedReason())
 
 
-def my_solve(solver):
-    """
-    Call the solve methodof the NonLinearVariational class without invoking 
-    check_snes_convergence(self.snes) that would raise an error that will stop the program.
-    Copy from https://github.com/firedrakeproject/firedrake/blob/master/firedrake/variational_solver.py
-    """
-    
-    
-    # Make sure the DM has this solver's callback functions
-    solver._ctx.set_function(solver.snes)
-    solver._ctx.set_jacobian(solver.snes)
-
-    # Make sure appcontext is attached to the DM before we solve.
-    dm = solver.snes.getDM()
-    for dbc in solver._problem.dirichlet_bcs():
-        dbc.apply(solver._problem.u)
-
-    work = solver._work
-    with solver._problem.u.dat.vec as u:
-        u.copy(work)
-        with ExitStack() as stack:
-            # Ensure options database has full set of options (so monitors
-            # work right)
-            for ctx in chain((solver.inserted_options(), dmhooks.add_hooks(dm, solver, appctx=solver._ctx)),
-                                solver._transfer_operators):
-                stack.enter_context(ctx)
-            solver.snes.solve(None, work)
-        work.copy(u)
-    solver._setup = True
 
 def msg_bounds(vec,label):
     min = vec.min()[1]
@@ -204,3 +178,118 @@ def include_citations(filename):
 
     for cit in entries:
         Citations().add(cit[0],cit[1]+'\n')
+
+
+def y_branch(coordinates, masses, alpha):
+    """
+    Given a forcing term with 3 Dirac masses and the branch exponent alpha,
+    returns the optimal topology of the network and the points of the network.
+    See 
+    @article{xia2003optimal,
+    title={Optimal paths related to transport problems},
+    author={Xia, Qinglan},
+    journal={Communications in Contemporary Mathematics},
+    volume={5},
+    number={02},
+    pages={251--279},
+    year={2003},
+    publisher={World Scientific}
+    }
+
+    Args:
+    2dcordinates:list of the coordinate of the forcing term
+    masses: the values of the forcing term (they must sum to zero)
+    alpha: branching exponent
+
+    return:
+    v: topology of the optimal network
+    p: points in the optimal network( if the y-shape is optimal and there is
+       a biforcation node, the node coordinate are appended to 2dcoordinates)  
+    """
+
+    points=np.array(coordinates)
+    masses=abs(np.array(masses))
+
+    print(points)
+
+    
+    # there are 3 masses combinations since sum(masses)=0
+    # +, -, -
+    # +, +, - => -, -, + (reverse flow)
+    # -, +, + => +, -, - (reverse flow)
+    # -, -, + 
+    # but everthing can be reduced to the first configuration
+    # where one source sends to two sink
+
+    coord_O = points[0,:]
+    coord_Q = points[1,:]
+    coord_P = points[2,:]
+
+
+    m_O=abs(masses[0])
+    m_Q=abs(masses[1])
+    m_P=abs(masses[2])
+
+    OP=coord_P-coord_O
+    OQ=coord_Q-coord_O
+    QP=coord_P-coord_Q
+
+    OQP=np.arccos( np.dot(-OQ, QP)/ ( np.sqrt(np.dot(OQ,OQ)) * np.sqrt(np.dot(QP,QP) )))
+    QPO=np.arccos( np.dot(-OP,-QP)/ ( np.sqrt(np.dot(OP,OP)) * np.sqrt(np.dot(QP,QP) )))
+    POQ=np.arccos( np.dot( OQ, OP)/ ( np.sqrt(np.dot(OQ,OQ)) * np.sqrt(np.dot(OP,OP) )))
+    
+    k_1=(m_P/m_O)**(2*alpha)
+    k_2=(m_Q/m_O)**(2*alpha)
+
+    theta_1=np.arccos( (k_2-k_1-1)/(2*np.sqrt(k_1))     )
+    theta_2=np.arccos( (k_1-k_2-1)/(2*np.sqrt(k_2))     )
+    theta_3=np.arccos( (1-k_1-k_2)/(2*np.sqrt(k_1*k_2)) )
+    
+    v=[];
+    if (POQ>=theta_3):
+        B_opt=coord_O
+        v.append([0,1])
+        v.append([0,2])
+        p = cp(points)
+    elif ( (OQP>=theta_1) & (POQ<theta_3)):
+        B_opt=coord_Q
+        v[:,0]=[0,1]
+        v[:,1]=[1,2]
+        p = cp(points)
+    elif ( (QPO>=theta_2) & (POQ<theta_3)):
+        B_opt=coord_P
+        v[:,0]=[0,2]
+        v[:,1]=[1,2]
+        p = cp(points)
+    else:
+        QM=np.dot(OP,OQ)/np.dot(OP,OP) * OP - OQ
+        PH=np.dot(OP,OQ)/np.dot(OQ,OQ) * OQ - OP
+        
+        R=(coord_O+coord_P)/2.0 - (np.cos(theta_1)/np.sin(theta_1))/2.0 * np.sqrt(np.dot(OP,OP)/ np.dot(QM,QM) )* QM
+        S=(coord_O+coord_Q)/2.0 - (np.cos(theta_2)/np.sin(theta_2))/2.0 * np.sqrt(np.dot(OQ,OQ)/ np.dot(PH,PH) ) * PH
+        RO=coord_O-R
+        RS=S-R
+        
+        B_opt=2*( (1-np.dot(RO,RS) / np.dot(RS,RS)) *R + np.dot(RO,RS)/np.dot(RS,RS)*S)-coord_O
+        
+        #p_B=tuple([tuple(i) for i in B_opt])
+        #p_B=[i for i in enumerate(B_opt)]
+        p_B=B_opt.tolist()
+
+        p = np.zeros([4,2])
+        p[0:3,:] = points
+        p[3,:] = p_B
+        v.append([0,3])
+        v.append([1,3])
+        v.append([2,3])
+        
+    return p,v
+
+
+def sizeof_fmt(num, suffix='B'):
+    ''' by Fred Cirera,  https://stackoverflow.com/a/1094933/1870254, modified'''
+    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
+        if abs(num) < 1024.0:
+            return "%3.1f %s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f %s%s" % (num, 'Yi', suffix)
