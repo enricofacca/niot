@@ -20,6 +20,8 @@ import numpy as np
 sys.path.append('../src/niot')
 from niot import NiotSolver
 from niot import Controls
+from niot import spread
+from niot import heat_spread
 import image2dat as i2d
 
 from ufl import *
@@ -45,8 +47,9 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,directo
 
     # create problem label
     label = [f"scale{scaling_size:.2f}",
+             f"discr{weights[0]:.1e}",
              f"gamma{gamma:.1e}",
-             f"weight{weights[1]:.1e}",
+             f"reg{weights[2]:.1e}",
              f"initial{curropted_as_initial_guess:d}"]
     label = "_".join(label)
     print("Problem label: "+label)
@@ -54,8 +57,9 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,directo
 
     # convert images to numpy matrices
     # 1 is the white background
-    np_sources = i2d.image2matrix(img_sources,scaling_size)
-    np_sinks = i2d.image2matrix(img_sinks,scaling_size)
+    scaling_forcing = 1e1
+    np_sources = i2d.image2matrix(img_sources,scaling_size) * scaling_forcing
+    np_sinks = i2d.image2matrix(img_sinks,scaling_size) * scaling_forcing
     np_networks = i2d.image2matrix(img_networks,scaling_size)
     np_masks = i2d.image2matrix(img_masks,scaling_size)
     
@@ -70,26 +74,38 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,directo
     np_confidence = (1.0 - np_masks) #/ (blurred_networks + 1e-1)
 
     # Init. solver for a given reconstruction problem
-    niot_solver = NiotSolver('CR1DG0', np_corrupted)
+    niot_solver = NiotSolver('DG0DG0', np_corrupted)
     
-
     # save inputs     
     fire_sources = niot_solver.numpy2function(np_sources, name="sources")
     fire_sinks = niot_solver.numpy2function(np_sinks, name="sinks")
     fire_networks = niot_solver.numpy2function(np_networks, name="networks")
     fire_corrupted = niot_solver.numpy2function(np_corrupted, name="corrupted")
     fire_masks = niot_solver.numpy2function(np_masks, name="masks")
+    fire_confidence = niot_solver.numpy2function(np_confidence, name="confidence")
     CG1 = fire.FunctionSpace(niot_solver.mesh ,'CG',1)
     fire_masks_for_contour = Function(CG1)
     fire_masks_for_contour.interpolate(fire_masks).rename("mask_countour","masks")
-    fire_confidence = niot_solver.numpy2function(np_confidence, name="confidence")
-    fire_blurred_networks = niot_solver.numpy2function(blurred_networks, name="blurred_networks")
+    fire_networks_for_contour = Function(CG1)
+    fire_networks_for_contour.interpolate(fire_networks).rename("networks_countour","networks")
+    fire_corrupted_for_contour = Function(CG1)
+    fire_corrupted_for_contour.interpolate(fire_corrupted).rename("corrupted_countour","corrupted")
 
-    out_file = File(os.path.join(directory,"inputs_recostruction.pvd"))
-    out_file.write(fire_sources, fire_sinks, fire_networks,fire_masks,fire_masks_for_contour,fire_corrupted, fire_confidence, fire_blurred_networks)
+
+    filename = os.path.join(directory,"inputs_recostruction.pvd")
+    utilities.save2pvd([fire_sources,
+                     fire_sinks,
+                     fire_networks,
+                     fire_networks_for_contour,
+                     fire_masks,
+                     fire_masks_for_contour,
+                     fire_corrupted,
+                    fire_corrupted_for_contour,
+                     fire_confidence],
+                    filename)
     #niot_solver.save_inputs(os.path.join(directory,"inputs_recostruction.pvd"))
     
-    #kappa = fire_confidence + 1.0
+    #kappa = 1.0/(1.0 + fire_confidence + 1e-4)
     kappa = 1.0
 
     niot_solver.set_optimal_transport_parameters(fire_sources, fire_sinks,
@@ -102,20 +118,28 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,directo
     niot_solver.save_inputs(os.path.join(directory,"parameters_recostruction.pvd"))
     
     ctrl = Controls(
-        tol=1e-4,
+        tol=1e-2,
         time_discretization_method='mirror_descent',
-        deltat=0.1,
-        max_iter=200,
+        deltat=1e-4,
+        max_iter=4000,
         nonlinear_tol=1e-6,
         linear_tol=1e-6,
         nonlinear_max_iter=30,
         linear_max_iter=1000)
 
-    ctrl.deltat_control = 'expansive'
-    ctrl.deltat_expansion = 1.05
-    ctrl.deltat_min = 0.01
-    ctrl.deltat_max = 0.2
+    ctrl.deltat_control = 'expansive'#'adaptive'
+    ctrl.deltat_expansion = 1.01
+    ctrl.deltat_min = 1e-3
+    ctrl.deltat_max = 0.05
     ctrl.verbose = 1
+    ctrl.max_restarts = 5
+    
+    ctrl.save_solution = 'no'
+    ctrl.save_solution_every = 10
+    ctrl.save_directory = os.path.join(directory,'evolution')
+    
+    if (not os.path.exists(ctrl.save_directory)):
+        os.makedirs(ctrl.save_directory)
     
     #
     # solve the problem
@@ -123,32 +147,48 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,directo
         
     sol = niot_solver.create_solution() # [pot, tdens] functions
     if corrupted_as_initial_guess == 1:
-        sol.sub(1).assign(1e2*fire_corrupted+1e-6)
+        sol.sub(1).assign(fire_corrupted+1e-6)
     
     # solve the problem
     ierr = niot_solver.solve(ctrl, sol)
     print("Error code: ",ierr)
 
     # save solution
-    filaname = os.path.join(directory,'sol_'+label+'.pvd')
-    print("Saving solution to "+filaname)
+    filename = os.path.join(directory,'sol_'+label+'.pvd')
+    print("Saving solution to "+filename)
     niot_solver.save_solution(sol,os.path.join(directory,'sol_'+label+'.pvd'))
-    
-    pot, tdens = sol.split()
-    tdens_plot = Function(niot_solver.fems.tdens_space).interpolate(tdens)
-    support = Function(niot_solver.fems.tdens_space).interpolate(conditional(tdens>1e2*ctrl.tdens_min,1,0))    
-    i2d.function2image(tdens_plot,os.path.join(directory,label+"tdens.png"),vmin=ctrl.tdens_min)
-    i2d.function2image(tdens_plot,os.path.join(directory,label+"support_tdens.png"),vmin=ctrl.tdens_min)
 
-    tdens_smooth_0 = niot_solver.heat_smoothing(tdens_plot,tau=1e-4)
-    tdens_smooth_0.rename("tdens_smooth_1","tdens_smooth_1")
-    tdens_smooth_1 = niot_solver.heat_smoothing(tdens_plot,tau=1e-8,tdens=tdens_plot)
-    tdens_smooth_1.rename("tdens_smooth_tdens","tdens_smooth_tdens")
+    filename = os.path.join(directory, f'sol_{label}.h5')
+    niot_solver.save_checkpoint(sol, filename)
+    #sol = niot_solver.load_checkpoint(filename)
+
+    _, tdens = sol.subfunctions
+    DG0 = FunctionSpace(sol.function_space().mesh(),'DG',0)
+    tdens_plot = Function(DG0)
+    tdens_plot.interpolate(tdens)
+
+   
+    support = Function(DG0).interpolate(conditional(tdens>1e2*ctrl.tdens_min,1,0))    
+    i2d.function2image(tdens_plot, os.path.join(directory,label+"tdens.png"),vmin=ctrl.tdens_min)
+    i2d.function2image(support, os.path.join(directory, label+"support_tdens.png"),vmin=ctrl.tdens_min)
+
+    return 
+    tdens_smooth_1 = heat_spread(tdens_plot,tau=1e-4)
+    tdens_smooth_1.rename("tdens_smooth_1","tdens_smooth_1")
+
+    #tdens_smooth_15 = spread(tdens_plot,tau=1e-5,m_exponent=1.5)
+    #tdens_smooth_15.rename("tdens_smooth_15","tdens_smooth_15")
+    
+
+    tdens_smooth_2 = spread(tdens_plot,tau=1e-4,m_exponent=2, nsteps=100)
+    tdens_smooth_2.rename("tdens_smooth_2","tdens_smooth_2")
+    
 
     filename = os.path.join(directory,'smooth_tdens'+label+'.pvd')
-    print("Saving smoothed tdens to "+filename)
-    file = File(filename)
-    file.write(tdens_smooth_0,tdens_smooth_1)
+    utilities.save2pvd([tdens_smooth_1,
+                        #tdens_smooth_15,
+                        tdens_smooth_2],
+                        filename)
 
 
 
@@ -186,18 +226,33 @@ if (__name__ == '__main__'):
     # results are stored in runs/mask
     directory_example = os.path.dirname(sys.argv[1])
     
-    img_sources = get_image_path(directory_example,'*sources*.png')
-    img_sinks = get_image_path(directory_example,'*sinks*.png')
-    img_networks = get_image_path(directory_example,'*networks*.png')
-    
-    print('arg:',sys.argv[1:])
+    #img_sources = get_image_path(directory_example,'*sources*.png')
+    #img_sinks = get_image_path(directory_example,'*sinks*.png')
+    #img_networks = get_image_path(directory_example,'*networks*.png')
 
-    img_masks = sys.argv[2]
-    gamma = float(sys.argv[3])
-    weight_discrepancy = float(sys.argv[4])
-    curropted_as_initial_guess = int(sys.argv[5])
-    scaling_size = float(sys.argv[6])
-    weights = np.array([1.0, weight_discrepancy, 1e-16])
+    img_sources, img_sinks, img_networks, img_masks = sys.argv[1:5]
+
+    nargs = 5
+    directory = os.path.abspath(sys.argv[nargs])
+    nargs += 1
+    gamma = float(sys.argv[nargs])
+    nargs += 1
+    weight_discrepancy = float(sys.argv[nargs])
+    nargs += 1
+    weight_regularization = float(sys.argv[nargs])
+    nargs += 1
+    curropted_as_initial_guess = int(sys.argv[nargs])
+    nargs += 1
+    scaling_size = float(sys.argv[nargs])
+
+    print ("directory = ",directory)
+    print ("gamma = ",gamma)
+    print ("weight_discrepancy = ",weight_discrepancy)
+    print ("weight_regularization = ",weight_regularization)
+    print ("curropted_as_initial_guess = ",curropted_as_initial_guess)
+    print ("scaling_size = ",scaling_size)
+    
+    weights = np.array([weight_discrepancy, 1.0, weight_regularization])
 
     
     dir_mask = os.path.dirname(img_masks)
