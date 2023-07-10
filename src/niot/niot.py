@@ -13,6 +13,7 @@ import os
 import utilities
 import linear_algebra_utilities as linalg
 from petsc4py import PETSc
+import time 
 
 SNESReasons = utilities._make_reasons(PETSc.SNES.ConvergedReason())
 
@@ -504,8 +505,9 @@ class NiotSolver:
         if (self.mesh_type == 'cartesian'):
             DG0 = FunctionSpace(self.mesh,'DG',0)
             img_function = Function(DG0)
+            value_flipped = np.flip(value,0)
             with img_function.dat.vec as d:
-                d.array = value.flatten('F')
+                d.array = value_flipped.flatten('F')
             if (name is not None):
                 img_function.rename(name,name)
             return img_function
@@ -677,13 +679,20 @@ class NiotSolver:
         Definition of the regularization term
         '''
         #return 0.5 * tdens ** 2 * dx
+        if abs(self.weights[2])<1e-16:
+            return 0*dx(domain=self.mesh)
+        
         if self.spaces == 'DG0DG0':
             return jump(tdens)**2 / self.fems.delta_h * dS
         elif self.spaces == 'CR1DG0':
-            if (abs(self.weights[2])>1e-16):
-                raise NotImplementedError('Regularization not implemented for CR1DG0')
-            else:
-                return 0*dx(domain=self.mesh)
+            # DG0 laplacian taken from 
+            # https://www.firedrakeproject.org/demos/saddle_point_systems.py.html
+            alpha = Constant(4.0)
+            h = CellSize(self.mesh)
+            h_avg = (h('+') + h('-'))/2
+            n = FacetNormal(self.mesh)
+            reg = 0.5 * alpha/h_avg * inner(jump(tdens, n), jump(tdens, n)) * dS
+            return reg
             
         
     
@@ -729,7 +738,7 @@ class NiotSolver:
         #test = TestFunction(self.fems.pot_space)
         #pot_PDE = self.forcing * test * dx + tdens * inner(grad(pot_unknown), grad(test)) * dx 
         # Define the Nonlinear variational problem (it is linear in this case)
-        u_prob = NonlinearVariationalProblem(pot_PDE, pot_unknown)#, bcs=pot_bcs)
+        self.u_prob = NonlinearVariationalProblem(pot_PDE, pot_unknown)#, bcs=pot_bcs)
 
         # set the solver parameters
         snes_ctrl={
@@ -755,23 +764,30 @@ class NiotSolver:
         context ={} # left to pass information to the solver
         if self.Dirichlet is None:
             nullspace = VectorSpaceBasis(constant=True,comm=COMM_WORLD)
-        print('def solver')
-        snes_solver = NonlinearVariationalSolver(u_prob,
+        
+        self.snes_solver = NonlinearVariationalSolver(self.u_prob,
                                                 solver_parameters=snes_ctrl,
                                                 nullspace=nullspace,
                                                 appctx=context)
-        snes_solver.snes.setConvergenceHistory()        
+        self.snes_solver.snes.setConvergenceHistory()        
         
         # solve the problem
         try:
-            snes_solver.solve()
-            ierr = 0
+            self.snes_solver.solve()
         except:
-            ierr = snes_solver.snes.getConvergedReason()
+            pass
+        ierr = self.snes_solver.snes.getConvergedReason()
         
+        print('ierr',ierr)
+            
+        if (ierr < 0):
+            print(f' Failure in due to {SNESReasons[ierr]}')
+        else:
+            ierr = 0
+
         # get info of solver
-        self.nonlinear_iterations = snes_solver.snes.getIterationNumber()
-        self.outer_iterations = snes_solver.snes.getLinearSolveIterations()
+        self.nonlinear_iterations = self.snes_solver.snes.getIterationNumber()
+        self.outer_iterations = self.snes_solver.snes.getLinearSolveIterations()
         
         
 
@@ -808,8 +824,10 @@ class NiotSolver:
             rhs *= scaling_vec
             # scale by the inverse mass matrix
             self.fems.tdens_inv_mass_matrix.solve(rhs, d)
-            #self.fems.inv_laplacian_smoothing.solve(rhs,d)
             # update
+            # update
+            step = ctrl.set_step(d)
+            ctrl.deltat = step
             tdens_vec.axpy(-ctrl.deltat, d)
 
         utilities.threshold_from_below(tdens_h, ctrl.tdens_min)
@@ -823,11 +841,11 @@ class NiotSolver:
         return ierr
     
     def gfvar2tdens(self,gfvar):
-        #return gfvar**(2/self.gamma)
-        return 2*atan(gfvar)
+        return gfvar**(2/self.gamma)
+        #return 2*atan(gfvar)
     def tdens2gfvar(self,tdens):
-        #return tdens**(self.gamma/2)
-        return tan(tdens/2)
+        return tdens**(self.gamma/2)
+        #return tan(tdens/2)
     
     def gfvar_gradient_descent(self, ctrl, sol):
         '''
@@ -918,8 +936,11 @@ class NiotSolver:
             PDE_tdens = (PDE_tdens_discr + PDE_tdens_opt + PDE_tdens_reg)
         
             # compute update vectors using mass matrix
-            rhs_ode = assemble(PDE_tdens_discr + PDE_tdens_opt, bcs=bcs_tdens)
-            rhs_reg = assemble(PDE_tdens_reg, bcs=bcs_tdens)
+            time_start = time.time()
+            rhs_ode = assemble(PDE_tdens_discr + PDE_tdens_opt + PDE_tdens_reg, bcs=bcs_tdens)
+            time_stop = time.time()
+            print(f'assemble time = {time_stop-time_start}')
+            #rhs_reg = assemble(PDE_tdens_reg, bcs=bcs_tdens)
             update = Function(self.fems.tdens_space)
             scaling = Function(self.fems.tdens_space)
             scaling.interpolate(tdens_h**(2-self.gamma))
@@ -927,9 +948,10 @@ class NiotSolver:
                 # scale the gradient w.r.t. tdens by tdens itself
                 rhs *= scaling_vec
 
-                if abs(self.weights[2])>1e-16:
-                    with rhs_reg.dat.vec_ro as rhs_reg_vec: 
-                        rhs.axpy(1., rhs_reg_vec)
+                #if abs(self.weights[2])>1e-16:
+                #    print('regularization')
+                #    with rhs_reg.dat.vec_ro as rhs_reg_vec: 
+                #        rhs.axpy(1., rhs_reg_vec)
                 # scale by the inverse mass matrix
                 self.fems.tdens_inv_mass_matrix.solve(rhs, d)
                 # set step size
@@ -946,7 +968,10 @@ class NiotSolver:
             sol.sub(1).assign(tdens_h)
             
             # compute pot associated to new tdens
+            time_start = time.time()
             ierr = self.solve_pot_PDE(ctrl, sol)
+            time_stop = time.time()
+            print(f'solve_pot_PDE time = {time_stop-time_start}')
             
             return ierr            
         
@@ -1052,8 +1077,7 @@ def heat_spread(density, tau=0.1):
     if (ierr != 0):
         print('ierr',ierr)
         print(f' Failure in due to {SNESReasons[ierr]}')
-        raise ValueError('Newton solver failed')
-    
+        
     # return the solution in the same function space of the input
     smooth_density = Function(density.function_space())
     smooth_density.interpolate(new_density)
@@ -1109,7 +1133,7 @@ def spread(density, tau=0.1, m_exponent=1, nsteps=1):
             ierr = 0
         except:
             ierr = snes_solver.snes.getConvergedReason()
-            
+
         if (ierr != 0):
             print('ierr',ierr)
             print(f' Failure in due to {SNESReasons[ierr]}')
