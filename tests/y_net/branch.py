@@ -19,8 +19,8 @@ def svg2png_ink(draw, output_png_path):
     Save drawSvg.Drawing object as png file using inkscape
     since drawSvg does not support filters.
     """
-    width = draw.width
-    height = draw.height
+    width = draw.width*2
+    height = draw.height*2
 
     
     svg_str = draw.asSvg()
@@ -152,10 +152,15 @@ def y_branch(coordinates, masses, alpha):
 
 if (__name__ == '__main__') :
     width = int(sys.argv[1])
+    left = float(sys.argv[2])
+    right = float(sys.argv[3])
+    alpha = float(sys.argv[4])
+    label = sys.argv[5]
 
-    coord_points = [[25,0],[0,50],[50,50]]
-    masses = [1.0,-0.4,-0.6]
-    alpha = 0.6
+    x_len = 50
+    y_len = 100
+    coord_points = [[x_len/2,0],[0,y_len],[x_len,y_len]]
+    masses = [1.0,-left,-right]
     coord, topol = y_branch(coord_points,masses,alpha)
 
     fluxes = [abs(f) for f in masses]
@@ -165,8 +170,7 @@ if (__name__ == '__main__') :
     print('coordinates')
     print(coord)
 
-    x_len = 50
-    y_len = 50
+    
     
     background = draw.Drawing(x_len, y_len,  origin=(0,0))
     background.setPixelScale(50)  # Set number of pixels per geometry unit
@@ -180,45 +184,41 @@ if (__name__ == '__main__') :
     sinks = cp(background)
     masks = cp(background)
     networks = cp(background)
-    all_y = cp(background)
-    all_v = cp(background)
+    all = cp(background)
     base = cp(background)
 
 
-    scale = 5
+    scale = 2
     # Draw network
+    if len(topol) == 2:
+        # v-shaped network
+        fluxes=fluxes[1:]
+
     for i, edge in enumerate(topol):
         n1,n2=edge
         line = draw.Line(coord[n1][0], coord[n1][1],coord[n2][0], coord[n2][1],
                             stroke='black', stroke_width=scale*fluxes[i], fill='none')
         
         networks.append(line)
-        all_y.append(line)
-    node=3
-    circle = draw.Circle(coord[node][0], coord[node][1], scale/2,
+        all.append(line)
+    
+    if (len(coord)==4):
+        node=3
+        circle = draw.Circle(coord[node][0], coord[node][1], scale/2,
                                        fill='black')
-    all_y.append(circle)
-    base.append(circle)
+        all.append(circle)
+        base.append(circle)
+    
 
-    #all_y.append(draw.Text('$f^+$', 25, 25, 10, fill='blue'))  # 8pt text at (-10, -35)
-
-    fluxes=fluxes[1:]
-    for i, edge in enumerate([[0,1],[0,2]]):
-        n1,n2=edge
-        line = draw.Line(coord[n1][0], coord[n1][1],coord[n2][0], coord[n2][1],
-                         stroke='black', stroke_width=scale*fluxes[i], fill='none')
-        all_v.append(line)
-
-    # Draw nodes
-    scale=5 
+    # Draw sources and sinks
+    scale=scale/2 
     for node, value in enumerate(masses):
         if (value > 0):
             circle = draw.Circle(coord[node][0], coord[node][1], scale*np.sqrt(abs(value)),
                                        fill='red')
             
             sources.append(circle)
-            all_y.append(circle)
-            all_v.append(circle)
+            all.append(circle)
             base.append(circle)
             
         elif (value < 0):
@@ -226,8 +226,7 @@ if (__name__ == '__main__') :
                                      fill='blue')
 
             sinks.append(circle)
-            all_y.append(circle)
-            all_v.append(circle)
+            all.append(circle)
             base.append(circle)
             
     # Draw maskssucced
@@ -242,25 +241,22 @@ if (__name__ == '__main__') :
     
     
 
-    sources.saveSvg('sources.svg')
-    sinks.saveSvg('sinks.svg')
-    networks.saveSvg('networks.svg')
-    masks.saveSvg('masks'+str(width)+'.svg')
-    corrupted.saveSvg('corrupted'+str(width)+'.svg')
-    all_y.saveSvg('y.svg')
-    all_v.saveSvg('v.svg')
-    base.saveSvg('base.svg')
+    sources.saveSvg(label+'sources.svg')
+    sinks.saveSvg(label+'sinks.svg')
+    networks.saveSvg(label+'networks.svg')
+    masks.saveSvg(label+'masks'+str(width)+'.svg')
+    corrupted.saveSvg(label+'corrupted'+str(width)+'.svg')
+    all.saveSvg(label+'all.svg')
+    base.saveSvg(label+'base.svg')
 
-    svg2pdf('y.svg','y.pdf')
-    svg2pdf('v.svg','v.pdf')
-    svg2pdf('corrupted'+str(width)+'.svg','corrupted'+str(width)+'.pdf')
+    svg2pdf(label+'all.svg',label+'all.pdf')
+    svg2pdf(label+'corrupted'+str(width)+'.svg',label+'corrupted'+str(width)+'.pdf')
     
 
-    svg2png_ink(sources, 'sources.png')
-    svg2png_ink(sinks, 'sinks.png')
-    svg2png_ink(networks, 'networks.png')
-    svg2png_ink(masks, 'masks'+str(width)+'.png')
-    svg2png_ink(corrupted, 'corrupted'+str(width)+'.png')
-    svg2png_ink(all_y, 'y.png')
-    svg2png_ink(all_v, 'v.png')
-    svg2png_ink(base,'base.png')
+    svg2png_ink(sources, label+'sources.png')
+    svg2png_ink(sinks, label+'sinks.png')
+    svg2png_ink(networks, label+'networks.png')
+    svg2png_ink(masks, label+'masks'+str(width)+'.png')
+    svg2png_ink(corrupted, label+'corrupted'+str(width)+'.png')
+    svg2png_ink(all, label+'all.png')
+    svg2png_ink(base, label+'base.png')
