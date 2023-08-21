@@ -124,28 +124,6 @@ class SpaceDiscretization:
 
         self.pot_is, self.tdens_is = self.pot_tdens_space.dof_dset.field_ises
 
-        #trial = TrialFunction(self.tdens_space)
-        #test = TestFunction(self.tdens_space)
-
-
-        # delta_smoothing = 1e-1
-        # laplacian_smoothing_matrix = assemble(
-        #     test * trial * dx 
-        #     + delta_smoothing * jump(test) * jump(trial)*dS).M.handle
-    
-        # self.inv_laplacian_smoothing = linalg.LinSolMatrix(
-        #     laplacian_smoothing_matrix,
-        #     self.tdens_space,
-        #     solver_parameters={
-        #         'ksp_type':'cg',
-        #         'ksp_rtol': 1e-6,
-        #         'pc_type':'hypre'}
-        #         )
-
-
-
-
-
 
     def create_solution(self):
         '''
@@ -329,11 +307,23 @@ class NiotSolver:
         self.nonlinear_iterations = 0
         self.nonlinear_res = 0.0
 
+        # cached functions
+        self.rhs_ode = Function(self.fems.tdens_space)
+        self.tdens_h = Function(self.fems.tdens_space)
+        self.tdens_h.rename('tdens_h')
+        self.pot_h = Function(self.fems.pot_space)
+
+        alpha = Constant(4.0)
+        h = CellSize(self.mesh)
+        h_avg = (h('+') + h('-'))/2.0
+        self.DG0_scaling = alpha/h_avg
+        self.normal = FacetNormal(self.mesh)
+
+
     def build_mesh_from_numpy(self, np_image, mesh_type='simplicial'): 
         '''
         Create a mesh (first axis size=1) from a numpy array
         '''
-        
         
         if (np_image.ndim == 2):
             if (mesh_type == 'simplicial'):
@@ -343,6 +333,11 @@ class NiotSolver:
             print(f'Mesh type {mesh_type} quadrilateral {quadrilateral}')
             
             height, width  = np_image.shape
+            print(f'{width=} {height=}')
+            self.nx = height
+            self.ny = width
+            self.nz = 0
+
             mesh = RectangleMesh(
                 width,
                 height,
@@ -355,6 +350,10 @@ class NiotSolver:
                 
         elif (np_image.ndim == 3):
             height, width, depth = np_image.shape
+            self.nx = width
+            self.ny = height
+            self.nz = depth
+
             if (mesh_type == 'simplicial'):
                 hexahedral = False
             elif (mesh_type == 'cartesian'):
@@ -511,6 +510,45 @@ class NiotSolver:
             if (name is not None):
                 img_function.rename(name,name)
             return img_function
+        
+    def function2numpy(self, function):
+        """
+        Convert function to numpy array (2d or 3d).
+        If the mesh is simplicial, the function is averaged neighbouring cells.
+        If the mesh is cartesian, the results is reshaped to the original image shape.
+        """
+        if (self.mesh_type == 'simplicial'):
+            # Each pixel is splitted in two triangles.
+            if self.mesh.geometric_dimension() == 2:
+                # get the values of the function
+                with function.dat.vec_ro as f:
+                    value = f.array
+                    print(f'{value.shape=}')
+                    # reshape the values in a matrix of size (2,nx*ny)
+                    value = value.reshape([-1,2])
+                    # average the values along the first dimension
+                    value = np.mean(value,1)
+                    print(f'{value.shape=}')
+                    # reshape the values in a matrix of size (nx,ny)
+                    value = value.reshape([self.nx,self.ny],order='F')
+
+                    return np.flip(value,0)
+                
+            elif self.mesh.geometric_dimension() == 3:
+                raise NotImplementedError('3D mesh not implemented yet')
+
+                
+        if (self.mesh_type == 'cartesian'):
+            # get the values of the function
+            with function.dat.vec_ro as f:
+                value = f.array
+                # reshape the values in a matrix of size (nx,ny)
+                new_shape = [self.nx,self.ny]
+                if self.mesh.geometric_dimension() == 3:
+                    new_shape.append(self.nz)
+                value = value.reshape(new_shape,order='F')
+                return np.flip(value,0)
+
 
     def convert_data(self, data):
         print(type(data))
@@ -572,13 +610,18 @@ class NiotSolver:
         Returns:
          ierr : control flag. It is 0 if everthing worked.
         '''
-
+        print('solving pot_0')
         ierr = self.solve_pot_PDE(ctrl, sol)
+        avg_outer = self.outer_iterations / max(self.nonlinear_iterations,1)
+        print(utilities.color('green',
+                            f'It: {0} '+
+                f' avgouter: {avg_outer:.1f}'))
+
         iter = 0
         ierr_dmk = 0
         sol_old = cp(sol)
         while ierr_dmk == 0:
-            # get inputs
+            # get input
 
             # update with restarts
             sol_old.assign(sol)
@@ -591,7 +634,7 @@ class NiotSolver:
                     nrestart +=1
                     print(ierr)
                     # reset controls after failure
-                    ctrl.deltat = ctrl.deltat_contraction * ctrl.deltat
+                    ctrl.deltat = max(ctrl.deltat_min,ctrl.deltat_contraction * ctrl.deltat)
                     print(f' Failure in due to {SNESReasons[ierr]}. Restarting with deltat = {ctrl.deltat:.2e}')
 
                     # restore old solution
@@ -687,11 +730,7 @@ class NiotSolver:
         elif self.spaces == 'CR1DG0':
             # DG0 laplacian taken from 
             # https://www.firedrakeproject.org/demos/saddle_point_systems.py.html
-            alpha = Constant(4.0)
-            h = CellSize(self.mesh)
-            h_avg = (h('+') + h('-'))/2
-            n = FacetNormal(self.mesh)
-            reg = 0.5 * alpha/h_avg * inner(jump(tdens, n), jump(tdens, n)) * dS
+            reg = 0.5 * self.DG0_scaling * inner(jump(tdens, self.normal), jump(tdens, self.normal)) * dS
             return reg
             
         
@@ -745,7 +784,7 @@ class NiotSolver:
             'snes_rtol': 1e-16,
             'snes_atol': ctrl.nonlinear_tol,
             'snes_stol': 1e-16,
-            'snes_type': 'newtonls',
+            'snes_type': 'ksponly',
             'snes_max_it': ctrl.nonlinear_max_iter,
             # krylov solver controls
             'ksp_type': 'cg',
@@ -909,6 +948,63 @@ class NiotSolver:
         ierr = self.solve_pot_PDE(ctrl, sol)
         print(ierr)
         return ierr
+    
+    def mirror_descent(self, ctrl, sol):
+        # Tdens is udpdate along the direction of the gradient
+        # of the energy w.r.t. tdens multiply by tdens**(2-gamma)
+        # 
+        #
+        pot, tdens = sol.subfunctions
+        self.tdens_h.assign(tdens)
+        print('weights',self.weights)
+        PDE_tdens_discr = derivative(self.weights[0]*self.discrepancy(pot,self.tdens_h),self.tdens_h)
+        PDE_tdens_opt = derivative(self.weights[1]*self.penalization(pot,self.tdens_h),self.tdens_h)
+        PDE_tdens_reg = derivative(self.weights[2]*self.regularization(pot,self.tdens_h),self.tdens_h)
+        if (self.spaces=='CR1DG0' and self.weights[2]>1e-16):
+            test = self.fems.tdens_test
+            PDE_tdens_reg = self.weights[2] * self.DG0_scaling * inner(jump(self.tdens_h, self.normal), jump(test, self.normal)) * dS
+        bcs_tdens = None
+
+        self.PDE_tdens = (PDE_tdens_discr + PDE_tdens_opt + PDE_tdens_reg)
+    
+        # compute update vectors using mass matrix
+        time_start = time.time()
+        rhs_ode = assemble(self.PDE_tdens, bcs=bcs_tdens)
+        time_stop = time.time()
+        #rhs_reg = assemble(PDE_tdens_reg, bcs=bcs_tdens)
+        update = Function(self.fems.tdens_space)
+        scaling = Function(self.fems.tdens_space)
+        scaling.interpolate(self.tdens_h**(2-self.gamma))
+        with rhs_ode.dat.vec as rhs, scaling.dat.vec_ro as scaling_vec, update.dat.vec as d, self.tdens_h.dat.vec_ro as tdens_vec:
+            # scale the gradient w.r.t. tdens by tdens itself
+            rhs *= scaling_vec
+
+            #if abs(self.weights[2])>1e-16:
+            #    print('regularization')
+            #    with rhs_reg.dat.vec_ro as rhs_reg_vec: 
+            #        rhs.axpy(1., rhs_reg_vec)
+            # scale by the inverse mass matrix
+            self.fems.tdens_inv_mass_matrix.solve(rhs, d)
+            # set step size
+            step = ctrl.set_step(d)
+            ctrl.deltat = step
+            print('step',step)
+            # update
+            tdens_vec.axpy(-step, d)
+
+        # threshold from below tdens
+        utilities.threshold_from_below(self.tdens_h, ctrl.tdens_min)
+
+        # assign new tdens to solution
+        sol.sub(1).assign(self.tdens_h)
+        
+        # compute pot associated to new tdens
+        time_start = time.time()
+        ierr = self.solve_pot_PDE(ctrl, sol)
+        time_stop = time.time()
+        ctrl.print_info(f'solve_pot_PDE time = {time_stop-time_start}', priority=2)
+        
+        return ierr            
         
     def iterate(self, ctrl, sol):
         '''
@@ -921,63 +1017,13 @@ class NiotSolver:
 
         '''
         if (ctrl.time_discretization_method == 'mirror_descent'):
-            # Tdens is udpdate along the direction of the gradient
-            # of the energy w.r.t. tdens multiply by tdens**(2-gamma)
-            # 
-            #
-            pot, tdens = sol.subfunctions
-            tdens_h = Function(self.fems.tdens_space)
-            tdens_h.assign(tdens)
-            PDE_tdens_discr = derivative(self.weights[0]*self.discrepancy(pot,tdens_h),tdens_h)
-            PDE_tdens_opt = derivative(self.weights[1]*self.penalization(pot,tdens_h),tdens_h)
-            PDE_tdens_reg = derivative(self.weights[2]*self.regularization(pot,tdens_h),tdens_h)
-            bcs_tdens = None
-
-            PDE_tdens = (PDE_tdens_discr + PDE_tdens_opt + PDE_tdens_reg)
-        
-            # compute update vectors using mass matrix
-            time_start = time.time()
-            rhs_ode = assemble(PDE_tdens_discr + PDE_tdens_opt + PDE_tdens_reg, bcs=bcs_tdens)
-            time_stop = time.time()
-            print(f'assemble time = {time_stop-time_start}')
-            #rhs_reg = assemble(PDE_tdens_reg, bcs=bcs_tdens)
-            update = Function(self.fems.tdens_space)
-            scaling = Function(self.fems.tdens_space)
-            scaling.interpolate(tdens_h**(2-self.gamma))
-            with rhs_ode.dat.vec as rhs, scaling.dat.vec_ro as scaling_vec, update.dat.vec as d, tdens_h.dat.vec_ro as tdens_vec:
-                # scale the gradient w.r.t. tdens by tdens itself
-                rhs *= scaling_vec
-
-                #if abs(self.weights[2])>1e-16:
-                #    print('regularization')
-                #    with rhs_reg.dat.vec_ro as rhs_reg_vec: 
-                #        rhs.axpy(1., rhs_reg_vec)
-                # scale by the inverse mass matrix
-                self.fems.tdens_inv_mass_matrix.solve(rhs, d)
-                # set step size
-                step = ctrl.set_step(d)
-                ctrl.deltat = step
-                print('step',step)
-                # update
-                tdens_vec.axpy(-step, d)
-
-            # threshold from below tdens
-            utilities.threshold_from_below(tdens_h, ctrl.tdens_min)
-
-            # assign new tdens to solution
-            sol.sub(1).assign(tdens_h)
-            
-            # compute pot associated to new tdens
-            time_start = time.time()
-            ierr = self.solve_pot_PDE(ctrl, sol)
-            time_stop = time.time()
-            print(f'solve_pot_PDE time = {time_stop-time_start}')
-            
-            return ierr            
+            ierr = self.mirror_descent(ctrl, sol)
+            return ierr
         
         elif (ctrl.time_discretization_method == 'tdens_mirror_descent'):
             ierr = self.tdens_mirror_descent(ctrl, sol)
             return ierr
+        
         elif (ctrl.time_discretization_method == 'gfvar_gradient_descent'):
             ierr = self.gfvar_gradient_descent(ctrl, sol)
             return ierr
