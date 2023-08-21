@@ -8,7 +8,13 @@ from copy import deepcopy as cp
 import firedrake as fire
 import matplotlib.pyplot as plt
 
-def image2matrix(img_name,factor=1):
+def image2matrix(img_name, normalize=True, invert=True, factor=1):
+   """
+   Given a path to an image, return a numpy matrix.
+   The image is converted to greyscale, and it can be normalized ([0,255] to [0,1])
+   and inverted (black to white and viceversa).
+   """
+
    #open file in fileList:
    img_file = Image.open(img_name)
 
@@ -21,9 +27,6 @@ def image2matrix(img_name,factor=1):
    width, height = img_file.size
    
 
-   format = img_file.format
-   mode = img_file.mode
-
    # Make image Greyscale
    img_grey = img_file.convert('L')
 
@@ -31,24 +34,32 @@ def image2matrix(img_name,factor=1):
    print ('Pixels : '+str(img_grey.size[0])+' x '+ str(img_grey.size[1]))
    value = np.asarray(img_grey.getdata(), dtype=float)
    value = value.reshape((img_grey.size[1], img_grey.size[0]))
-   value = 1-value/255
-
+   if invert:
+      value = 255 - value
+   
+   if normalize:
+      value = value/255
+   
    return value
 
-def matrix2image(numpy_matrix, image_path, lenght_unit=100):
-   """ Given a (numpy) matrix with values between 0 and 1
-   save a grayscale image to file. Grayscale is flipped,
-   which means that 0 is white and 1 is white
+def matrix2image(numpy_matrix, image_path, normalized=True, inverted=True):
+   """ Given a (numpy) matrix,
+   save a grayscale image to file. Grayscale can be inverted.
    """
    # Creates PIL image
-   img = Image.fromarray(np.uint8((1-numpy_matrix) * 255) , 'L')
+   copy = cp(numpy_matrix) 
+   if normalized:
+      # normalize to [0,255]
+      # this can lead to rounding errors
+      copy = copy * 255
+   else:
+      copy = 255 * copy/np.max(copy)
+
+   # invert black and white (to have a white background when array is zero) 
+   if inverted:
+      copy = 255 - copy
+   img = Image.fromarray(np.uint8(copy),'L')
    img.save(image_path)
-
-   # alternative
-   #from scipy.misc import toimage
-   #im = toimage(numpy_matrix)
-   #im.save(image_path)
-
 
 def matrix2function(value,cartesian_mesh):
    """
@@ -73,17 +84,52 @@ def matrix2function(value,cartesian_mesh):
 
    return img_function
 
-def function2image(function,image_path,vmin=0):
+def function2image(function,image_path,colorbar=True,vmin=None,vmax=None):
    """
    Print a firedrake function to grayscale image (0=white, >0=black)
    using matplotlib tools in firedrake
    """
    fig, axes = plt.subplots()
+   if vmin is None:
+      with function.dat.vec_ro as d:
+         vmin = d.min()[1]
+   if vmax is None:
+      with function.dat.vec_ro as d:
+         vmax = d.max()[1]
+   print(f'{vmin=}{vmax=}')
+   
    colors = fire.tricontourf(function, 
-      axes=axes, cmap='gray_r', vmin=vmin)
-   fig.colorbar(colors)
-   plt.gca().set_aspect('equal')
-   plt.savefig(image_path)
+      axes=axes, 
+      #cmap='gray_r',
+      cmap='Greys',
+      #cmap='binary',
+      extend="both", vmin=vmin, vmax=vmax)
+   
+   if colorbar:
+      #plt.gca().set_aspect('equal')
+      fig.colorbar(colors)
+      
+      fig.subplots_adjust(bottom = 0)
+      fig.subplots_adjust(top = 1)
+      fig.subplots_adjust(right = 1)
+      fig.subplots_adjust(left = 0)
+      
+      plt.gca().axis('off')
+      plt.gca().axis('tight')
+      plt.gca().axis('equal')
+   else:
+      fig.subplots_adjust(bottom = 0)
+      fig.subplots_adjust(top = 1)
+      fig.subplots_adjust(right = 1)
+      fig.subplots_adjust(left = 0)
+      plt.gca().axis('off')
+      plt.gca().axis('tight')
+   
+   
+
+  
+   
+   plt.savefig(image_path)#,bbox_inches='tight',transparent=True, pad_inches=0)
    
 def corrupt_image(path_original,path_corrupted,path_masks):
    """
