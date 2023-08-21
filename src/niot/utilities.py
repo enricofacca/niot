@@ -51,6 +51,15 @@ def save2pvd(functions,filename):
     os.rename(firedrake_vtu_name,new_vtu_name)
 
 
+def get_subfunction(function, index):
+    """
+    Return the subfunction of a function in a mixed space
+    """
+    functions = function.subfunctions()
+    function_spaces = function.function_space()
+    function = Function(function_spaces[index])
+    function.assign(functions[index])
+    return function
 
 
 def my_newton(flag, f_norm, tol=1e-6, max_iter=10):
