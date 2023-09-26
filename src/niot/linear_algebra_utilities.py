@@ -265,6 +265,11 @@ class LinSol(OptionsManager):
         self.final_res = 0.0
         self.last_cpu = 0.0
 
+    def __del__(self):
+        PETSc.garbage_cleanup(comm=PETSc.COMM_WORLD)
+        if hasattr(self, "ksp"):
+            self.ksp.destroy()
+
     @cached_property
     def test_space(self):
         return self.A.a.arguments()[0].function_space()
@@ -532,7 +537,11 @@ class LinSolMatrix(OptionsManager):
         self.solved = 0
         self.cumulative_iterations = 0
 
-    
+    def __del__(self):
+        PETSc.garbage_cleanup(comm=PETSc.COMM_WORLD)
+        if hasattr(self, "ksp"):
+            self.ksp.destroy()
+
     @PETSc.Log.EventDecorator()
     def solve(self, b, x):
         if not self.ksp.getInitialGuessNonzero():
