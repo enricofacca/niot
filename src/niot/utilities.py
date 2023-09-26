@@ -8,7 +8,9 @@ from firedrake import Function
 from firedrake import conditional
 from firedrake import File
 from firedrake import solving_utils
+from firedrake.assign import Assigner
 
+from memory_profiler import profile
 import os
 import numpy as np
 
@@ -121,7 +123,10 @@ def color(color,str):
         return f'{bcolors.UNDERLINE}{str}{bcolors.ENDC}'
     else:
         return str
+    
 
+    
+@profile
 def threshold_from_below(func, lower_bound):
     """
     Limit a function from below
@@ -129,10 +134,14 @@ def threshold_from_below(func, lower_bound):
         func (Function): function to be limited from below (in place)
         lower_bound (float): lower bound
     """
+    
     temp = Function(func.function_space())
-    temp.interpolate(conditional(func>lower_bound,func,lower_bound))
-    func.assign(temp)
-
+    temp = func.copy(deepcopy=True)
+    func.interpolate(conditional(func>lower_bound,func,lower_bound))
+    #assigner = Assigner(func,temp)
+    #assigner.assign()
+    
+    del temp
 
 
 # find all occurrences of a substring in a string
