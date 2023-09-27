@@ -15,9 +15,9 @@
    id="svg1094"
    sodipodi:docname="mask1_small.svg"
    inkscape:version="1.0.2 (1.0.2+r75+1)"
-   inkscape:export-filename="/home/fh/google_drive/work/projects/niot/tests/y_net_hand_drawing/img_mask1_large_rgb.png"
-   inkscape:export-xdpi="8"
-   inkscape:export-ydpi="8"
+   inkscape:export-filename="/home/fh/google_drive/work/projects/niot/tests/y_net_hand_drawing/mask1_small_cc.png"
+   inkscape:export-xdpi="2"
+   inkscape:export-ydpi="2"
    inkscape:label="Layer">
   <metadata
      id="metadata1098">
@@ -40,20 +40,28 @@
      guidetolerance="10"
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
-     inkscape:window-width="1853"
-     inkscape:window-height="1018"
+     inkscape:window-width="1673"
+     inkscape:window-height="754"
      id="namedview1096"
      showgrid="false"
      inkscape:zoom="0.23277955"
-     inkscape:cx="1009.2775"
-     inkscape:cy="840.2364"
-     inkscape:window-x="67"
-     inkscape:window-y="1114"
-     inkscape:window-maximized="1"
+     inkscape:cx="-1462.8303"
+     inkscape:cy="1058.052"
+     inkscape:window-x="136"
+     inkscape:window-y="181"
+     inkscape:window-maximized="0"
      inkscape:current-layer="svg1094"
      inkscape:document-rotation="0" />
   <defs
      id="defs1082">
+    <linearGradient
+       id="linearGradient874"
+       osb:paint="solid">
+      <stop
+         style="stop-color:#000000;stop-opacity:1;"
+         offset="0"
+         id="stop872" />
+    </linearGradient>
     <linearGradient
        id="linearGradient4841"
        osb:paint="solid">
@@ -195,7 +203,7 @@
      y="-38.003963"
      inkscape:label="mask3_medium" />
   <rect
-     style="display:inline;opacity:1;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:0;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none"
+     style="display:inline;opacity:1;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:0;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
      id="rect5227"
      width="17.425116"
      height="6.6744876"
@@ -219,7 +227,7 @@
      y="-34.100807"
      inkscape:label="mask2_medium" />
   <rect
-     style="display:inline;opacity:1;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:0;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none"
+     style="display:inline;opacity:1;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:0;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
      id="rect5229"
      width="14.249313"
      height="5.2439799"
@@ -243,7 +251,7 @@
      y="-16.415493"
      inkscape:label="mask1_medium" />
   <rect
-     style="display:inline;opacity:1;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:0;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none"
+     style="display:inline;opacity:1;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:0;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
      id="rect848"
      width="17.893618"
      height="4.1880007"

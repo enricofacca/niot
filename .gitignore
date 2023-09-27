@@ -6,3 +6,6 @@ test/*/runs/
 *vscode*
 *.svg
 *.png
+*.npy
+*.h5
+*.dat

@@ -10,9 +10,8 @@ Usage example:
 The results are saved in directorry name according 
 to mask and parameters used in lines/runs/
 """
-
+import argparse
 import sys
-import glob
 import os
 from copy import deepcopy as cp
 import numpy as np
@@ -37,7 +36,7 @@ import firedrake as fire
 import utilities as utilities
 
 
-def y_network(ref, weight_discrepancy, gamma, regularation, label=''):
+def y_network(ref, weight_discrepancy, gamma, regularation, space_pot='CR1',label=''):
     # pure optimization problem
     weights=[weight_discrepancy, gamma, regularation]
     
@@ -54,16 +53,31 @@ def y_network(ref, weight_discrepancy, gamma, regularation, label=''):
 
     size = ndiv_x//10
     scale = 1e1
-
     np_sources[-size:,ndiv_x//2-size:ndiv_x//2+size] = 1.0 *scale
-    size=ndiv_x//2
     np_sinks[0:size:,0:size] = 0.5 * scale
-    np_sinks[0:size:,-size:] = 0.5 * scale  
-
+    np_sinks[0:size:,-size:] = 0.5 * scale
+  
     extra_width = ndiv_x//2
     extra = np.zeros([ndiv_y,extra_width])
     np_sources = np.concatenate([extra,np_sources,extra],axis=1)
     np_sinks = np.concatenate([extra,np_sinks,extra],axis=1)
+
+
+    # create problem label   
+    ndiv_x = 80*2**ref
+    ndiv_y = 80*2**ref
+    # x ~ columns
+    # y ~ rows
+    shape = [ndiv_y,ndiv_x]
+    np_sources = np.zeros(shape)
+    np_sinks = np.zeros(shape)
+
+    size = ndiv_x//10
+    scale = 1e1
+    np_sources[-size:,ndiv_x//2-size:ndiv_x//2+size] = 1.0 *scale
+    size = ndiv_x//2
+    np_sinks[0:size:,0:size] = 0.5 * scale
+    np_sinks[0:size:,-size:] = 0.5 * scale
 
 
     np_networks = np.zeros(np_sources.shape)
@@ -74,8 +88,8 @@ def y_network(ref, weight_discrepancy, gamma, regularation, label=''):
     np_confidence = np.ones(np_corrupted.shape)
 
     # Init. solver for a given reconstruction problem
-    niot_solver = NiotSolver('CR1DG0', np_corrupted)
-    label='CR1_'+label
+    niot_solver = NiotSolver(space_pot+'DG0', np_corrupted)
+    label=space_pot+'_'+label
     
 
     # save inputs     
@@ -122,7 +136,7 @@ def y_network(ref, weight_discrepancy, gamma, regularation, label=''):
         #time_discretization_method='tdens_mirror_descent',
         time_discretization_method='mirror_descent',
         #time_discretization_method='gfvar_gradient_descent',
-        deltat=1e-3,
+        deltat=1e-2,
         max_iter=2000,
         nonlinear_tol=1e-5,
         linear_tol=1e-6,
@@ -134,7 +148,7 @@ def y_network(ref, weight_discrepancy, gamma, regularation, label=''):
     #ctrl.deltat_control = 'adaptive'
     ctrl.deltat_expansion = 1.01
     ctrl.deltat_min = 1e-3
-    ctrl.deltat_max = 0.05
+    ctrl.deltat_max = 0.1
     ctrl.verbose = 1
     ctrl.max_restarts = 5
 
@@ -151,6 +165,7 @@ def y_network(ref, weight_discrepancy, gamma, regularation, label=''):
 
     # save solution
     filename = os.path.join(directory,label+'.pvd')
+    print(f'Saving in{filename}')
     niot_solver.save_solution(sol,filename)
 
     #filename = os.path.join(directory,'y_network_checkpoint.h5')
@@ -169,12 +184,20 @@ def y_network(ref, weight_discrepancy, gamma, regularation, label=''):
 
 if (__name__ == '__main__'):
     # parse command line arguments
-    ref= int(sys.argv[1])
-    weight_discrepancy = float(sys.argv[2])
-    gamma = float(sys.argv[3])
-    regularation = float(sys.argv[4])
-    try:
-        label = sys.argv[5]
-    except:
-        label = ''
-    ierr = y_network(ref, weight_discrepancy, gamma, regularation, label)
+    parser = argparse.ArgumentParser(description='Run niot solver with y_network')
+    parser.add_argument('--ref', type=int, help="Number of refiniment")
+    parser.add_argument('--w', type=float, default=1.0, help="Weight discrepancy")                 
+    parser.add_argument('--gamma', type=float, default=0.5, help="gamma of branched transport")
+    parser.add_argument('--v', type=float, default=0.0, help="viscosity regularation factor")
+    parser.add_argument('--space_pot', type=str, default='DG0', help="space for the potential")
+    parser.add_argument('--label', type=str, default='', help="label for the run")
+    #ref= int(sys.argv[1])
+    #weight_discrepancy = float(sys.argv[2])
+    #gamma = float(sys.argv[3])
+    #regularation = float(sys.argv[4])
+    #try:
+    #    label = sys.argv[5]
+    #except:
+    #    label = ''
+    args = parser.parse_args()
+    ierr = y_network(args.ref,  args.w, args.gamma, args.v, args.space_pot, args.label)
