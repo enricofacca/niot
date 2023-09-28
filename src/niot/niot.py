@@ -19,7 +19,7 @@ SNESReasons = utilities._make_reasons(PETSc.SNES.ConvergedReason())
 
 # function operations
 from firedrake import *
-from firedrake_adjoint import * # ReducedFunctional, Control
+from firedrake_adjoint import ReducedFunctional, Control
 
 
 #from linear_algebra_firedrake import transpose
