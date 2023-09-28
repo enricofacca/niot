@@ -14,12 +14,14 @@ import utilities
 import linear_algebra_utilities as linalg
 from petsc4py import PETSc
 import time 
-from memory_profiler import profile
+import gc
 SNESReasons = utilities._make_reasons(PETSc.SNES.ConvergedReason())
 
 # function operations
 from firedrake import *
+from firedrake_adjoint import *
 
+from memory_profiler import profile
 #from linear_algebra_firedrake import transpose
 
 from petsc4py import PETSc as p4pyPETSc
@@ -110,9 +112,11 @@ class SpaceDiscretization:
         # create mass matrix $M_i,j=\int_{\xhi_l,\xhi_m}$ with
         # $\xhi_l$ funciton of Tdens
         self.tdens_mass_matrix = assemble( inner(self.tdens_trial,self.tdens_test)*dx ,mat_type='aij').M.handle
-        self.tdens_inv_mass_matrix = linalg.LinSolMatrix(self.tdens_mass_matrix, self.tdens_space,
+        self.tdens_inv_mass_matrix = linalg.LinSolMatrix(
+            self.tdens_mass_matrix,
+            self.tdens_space,
                         solver_parameters={
-                            'ksp_type':'cg',
+                            'ksp_type':'preonly',
                             'ksp_rtol': 1e-6,
                             'pc_type':'jacobi'})
 
@@ -124,7 +128,6 @@ class SpaceDiscretization:
 
         self.pot_is, self.tdens_is = self.pot_tdens_space.dof_dset.field_ises
 
-        
 
     def create_solution(self):
         '''
@@ -267,7 +270,7 @@ class NiotSolver:
     # register citations using Citations class in firedrake
     Citations().register('FCP2021')
 
-    def __init__(self, spaces, numpy_corrupted):
+    def __init__(self, spaces, numpy_corrupted, cell2facet='arithmetic_mean'):
         '''
         Initialize solver (spatial discretization) from numpy_image (2d or 3d data)
 
@@ -291,6 +294,9 @@ class NiotSolver:
         self.mesh.name = 'mesh'
         print(f'Number of cells: {self.mesh.num_cells()}')
 
+        # set cell to facet map
+        self.cell2facet = cell2facet
+
         self.DG0 = FunctionSpace(self.mesh, 'DG', 0)
 
         # set function 
@@ -312,33 +318,41 @@ class NiotSolver:
         self.rhs_ode = Function(self.fems.tdens_space)
         self.tdens_h = Function(self.fems.tdens_space)
         self.tdens_h.rename('tdens_h')
-        self.pot_h = Function(self.fems.pot_space)
 
         alpha = Constant(4.0)
         h = CellSize(self.mesh)
         h_avg = (h('+') + h('-'))/2.0
         self.DG0_scaling = alpha/h_avg
         self.normal = FacetNormal(self.mesh)
-        
-        
-    def setup_pot_solver(self,ctrl):
-        self.pot_PDE = 1/self.f_norm * derivative(self.Lagrangian(self.pot_h,self.tdens_h),self.pot_h)
-        #test = TestFunction(self.fems.pot_space)
-        #pot_PDE = self.forcing * test * dx + tdens * inner(grad(pot_unknown), grad(test)) * dx 
-        # Define the Nonlinear variational problem (it is linear in this case)
-        self.u_prob = NonlinearVariationalProblem(self.pot_PDE, self.pot_h)#, bcs=pot_bcs)
 
+        
+        # we scale by the norm of the forcing term
+        # to ensure that we get the relative residual
+        self.pot_h = Function(self.fems.pot_space)
+        self.pot_h.rename('pot_h')
+        
+        #self.pot_PDE = derivative(self.Lagrangian(self.pot_h,self.tdens_h),self.pot_h)
+        #self.pot_bcs = self.Dirichlet
+
+        #self.pot_variational_problem = NonlinearVariationalProblem(self.pot_PDE, self.pot_unknown, bcs=pot_bcs)
+
+    def setup_pot_PDE_solver(self, ctrl):
+        
+
+        self.pot_PDE = derivative(self.Lagrangian(self.pot_h,self.tdens_h),self.pot_h)
+        self.pot_bcs = self.Dirichlet
+        self.pot_variational_problem = NonlinearVariationalProblem(self.pot_PDE, self.pot_h, bcs=self.pot_bcs)
         # set the solver parameters
         snes_ctrl={
             'snes_rtol': 1e-16,
             'snes_atol': ctrl.nonlinear_tol,
-            'snes_stol': 1e-16,
-            'snes_type': 'ksponly',
+            'snes_stol': 1e-50,
+            'snes_type': 'newtonls',
             'snes_max_it': ctrl.nonlinear_max_iter,
             # krylov solver controls
             'ksp_type': 'cg',
-            'ksp_atol': 1e-30,
-            'ksp_rtol': ctrl.nonlinear_tol,
+            'ksp_atol': ctrl.nonlinear_tol*100,
+            'ksp_rtol': ctrl.nonlinear_tol*100,
             'ksp_divtol': 1e4,
             'ksp_max_it' : 100,
             # preconditioner controls
@@ -351,14 +365,17 @@ class NiotSolver:
         
         context ={} # left to pass information to the solver
         if self.Dirichlet is None:
-            nullspace = VectorSpaceBasis(constant=True,comm=COMM_WORLD)
+            self.pot_nullspace = VectorSpaceBasis(constant=True,comm=COMM_WORLD)
         
-        self.snes_solver = NonlinearVariationalSolver(self.u_prob,
-                                                solver_parameters=snes_ctrl,
-                                                nullspace=nullspace,
-                                                appctx=context)
-        self.snes_solver.snes.setConvergenceHistory()        
-        
+        self.pot_solver = NonlinearVariationalSolver(
+            self.pot_variational_problem,
+            solver_parameters=snes_ctrl,
+            nullspace=self.pot_nullspace,
+            appctx=context)
+       
+        self.pot_solver.snes.setConvergenceHistory()        
+        print("SETUP DONEx")
+
 
     def build_mesh_from_numpy(self, np_image, mesh_type='simplicial'): 
         '''
@@ -419,7 +436,8 @@ class NiotSolver:
                                          Neumann = [[0,'on_boundary']],
                                          Dirichlet=None,
                                          tolerance_unbalance=1e-12,
-                                         force_balance=False):
+                                         force_balance=False,
+                                         tdens_min=1e-8):
         '''
         Set optimal transport parameters
         Args:
@@ -462,9 +480,11 @@ class NiotSolver:
         with rhs.dat.vec as f:
             self.f_norm  = f.norm()
         self.gamma = gamma
-        self.kappa = kappa
+        self.kappa = 1.0#project(Constant(kappa), self.fems.tdens_space)
         self.Neumann = Neumann
         self.Dirichlet = Dirichlet
+
+        self.tdens_min = tdens_min
        
     def set_inpainting_parameters(self,
                  weights=np.array([1.0,1.0,0.0]),
@@ -489,7 +509,37 @@ class NiotSolver:
             self.confidence = self.convert_data(confidence)
             #self.confidence.rename('confidence','confidence')
         
+
         self.tdens2image = tdens2image
+
+    def laplacian_smoother(self, deltat):
+        """
+        Smooth a tdens variable with a laplacian smoothing
+        """
+        if self.mesh_type == 'simplicial':
+            raise NotImplementedError('Laplacian smoothing not implemented for simplicial meshes')
+        elif self.mesh_type == 'cartesian':
+            # define a laplacian matrix for smoothing
+            if self.mesh_type == 'cartesian':
+                test = TestFunction(self.fems.tdens_space)
+                trial = TrialFunction(self.fems.tdens_space)
+                self.tdens_Laplacian = assemble(self.DG0_scaling * dot(jump(trial),jump(test)) * dS).M.handle
+                self.Laplacian_smoothin = (1 / deltat * self.fems.tdens_mass_matrix + self.tdens_Laplacian)
+                self.Laplacian_smoothin = linalg.LinSolMatrix(
+                    self.Laplacian_smoothin,
+                    self.fems.tdens_space,
+                    solver_parameters={
+                        'ksp_type':'cg',
+                        'ksp_rtol': 1e-6,
+                        'pc_type':'hypre'}
+                )
+                def smoother(tdens):
+                    with tdens.dat.vec as tdens_vec:
+                        self.Laplacian_smoothin.solve(tdens_vec,tdens_vec)
+                return smoother
+            
+
+
 
     def numpy2function(self, value, name=None):
         '''
@@ -619,7 +669,7 @@ class NiotSolver:
             filename = os.path.join(ctrl.save_directory,f'sol{current_iteration:06d}.pvd')
             self.save_solution(sol,filename)
         
-
+    #@profile
     def residual(self, sol):
         """
         Return the residual of the minimization problem
@@ -627,9 +677,13 @@ class NiotSolver:
         """
         pot, tdens = sol.subfunctions
 
-        tdens_h = Function(self.fems.tdens_space)
+        tdens_h = Function(self.fems.tdens_space) 
         tdens_h.assign(tdens)
-        tdens_PDE = derivative(self.Lagrangian(pot,tdens_h),tdens_h)
+
+        pot_h = Function(self.fems.pot_space)
+        pot_h.assign(pot)
+
+        tdens_PDE = derivative(self.Lagrangian(pot_h,tdens_h),tdens_h)
         f = assemble(tdens_PDE)
         d = self.fems.tdens_mass_matrix.createVecLeft()
         with f.dat.vec_ro as f_vec, tdens_h.dat.vec as tdens_vec:
@@ -641,7 +695,177 @@ class NiotSolver:
     def create_solution(self):
         return self.fems.create_solution()
     
-    def solve(self, ctrl, sol):
+    @profile
+    def solve(self, ctrl, sol_ini):
+        '''
+        Args:
+        ctrl: Class with controls  (tol, max_iter, deltat, etc.)
+        sol: Mixed function [pot,tdens]. It is changed in place.
+
+        Returns:
+         ierr : control flag. It is 0 if everthing worked.
+        '''
+        sol = Function(sol_ini.function_space())    
+        sol_old = Function(sol_ini.function_space())
+        sol.assign(sol_ini)
+        
+        print('solving pot_0')
+        self.setup_pot_PDE_solver(ctrl)
+        ierr = self.solve_pot_PDE(ctrl, sol)
+        avg_outer = self.outer_iterations / max(self.nonlinear_iterations,1)
+        print(utilities.color('green',
+                            f'It: {0} '+
+                f' avgouter: {avg_outer:.1f}'))
+
+        iter = 0
+        ierr_dmk = 0
+
+        while ierr_dmk == 0:
+            # get input
+
+            # update with restarts
+            sol_old.assign(sol)
+            nrestart = 0 
+            while nrestart < ctrl.max_restart:
+                #ierr = self.iterate(ctrl, sol)
+                ierr = self.mirror_descent(ctrl, sol)
+                
+                
+                
+                if ierr == 0:
+                    break
+                else:
+                    nrestart +=1
+                    print(ierr)
+                    # reset controls after failure
+                    ctrl.deltat = max(ctrl.deltat_min,ctrl.deltat_contraction * ctrl.deltat)
+                    print(f' Failure in due to {SNESReasons[ierr]}. Restarting with deltat = {ctrl.deltat:.2e}')
+
+                    # restore old solution
+                    sol.assign(sol_old)
+
+            if (ierr != 0):
+                print('ierr',ierr)
+                break
+
+            # study state of convergence
+            iter += 1
+            
+            var_tdens = self.residual(sol)
+            avg_outer = self.outer_iterations / max(self.nonlinear_iterations,1)
+            print(utilities.color('green',
+                              f'It: {iter} '+
+                    f' dt: {ctrl.deltat:.1e}'+
+                    f' var:{var_tdens:.1e}'
+                    f' nsym:{self.nonlinear_iterations:1d}'+
+                    f' avgouter: {avg_outer:.1f}'))
+            with sol.dat.vec_ro as sol_vec:
+                tdens_vec = sol_vec.getSubVector(self.fems.tdens_is)
+                print(msg_bounds(tdens_vec,'tdens'))
+
+            # save data    
+            self.record_algorithm(sol, ctrl, iter)
+
+            # check convergence
+            if (var_tdens < ctrl.tol ):
+                ierr_dmk = 0
+                break
+
+            # break if max iter is reached
+            if (iter == ctrl.max_iter):
+                ierr_dmk = 1
+            
+        
+        return ierr_dmk
+    
+    @profile
+    def old_solve_pot_PDE(self, ctrl, sol):
+        '''
+        The pot in sol=[pot,tdens] is updated so that it solves the PDE
+        associated to the Lagrangian for a given tdens.
+        
+        argsolve(ses:
+            ctrl: Class with controls how we solve
+            sol: Mixed function [pot,tdens], changed in place.
+         
+
+        returns:
+            ierr : control flag (=0 if everthing worked)
+        '''
+        # Define the PDE for pot varible only 
+        # TODO: is there a better way to do define the PDE 
+        # obtain taking the partial derivative of the Lagrangian?   
+        pot, tdens = sol.subfunctions
+        pot_unknown = Function(self.fems.pot_space)
+        pot_unknown.assign(pot)
+
+        # we scale by the norm of the forcing term
+        # to ensure that we get the relative residual
+        pot_PDE = 1/self.f_norm * derivative(self.Lagrangian(pot_unknown,tdens),pot_unknown)
+        pot_bcs = self.Dirichlet
+        #test = TestFunction(self.fems.pot_space)
+        #pot_PDE = self.forcing * test * dx + tdens * inner(grad(pot_unknown), grad(test)) * dx 
+        # Define the Nonlinear variational problem (it is linear in this case)
+        self.u_prob = NonlinearVariationalProblem(pot_PDE, pot_unknown)#, bcs=pot_bcs)
+
+        # set the solver parameters
+        snes_ctrl={
+            'snes_rtol': 1e-16,
+            'snes_atol': ctrl.nonlinear_tol,
+            'snes_stol': 1e-16,
+            'snes_type': 'ksponly',
+            'snes_max_it': ctrl.nonlinear_max_iter,
+            # krylov solver controls
+            'ksp_type': 'cg',
+            'ksp_atol': 1e-30,
+            'ksp_rtol': ctrl.nonlinear_tol,
+            'ksp_divtol': 1e4,
+            'ksp_max_it' : 100,
+            # preconditioner controls
+            'pc_type': 'hypre',
+        }
+        if ctrl.verbose >= 1:
+            snes_ctrl['snes_monitor'] = None
+        if  ctrl.verbose >= 2:
+            snes_ctrl['ksp_monitor'] = None
+        
+        context ={} # left to pass information to the solver
+        if self.Dirichlet is None:
+            nullspace = VectorSpaceBasis(constant=True,comm=COMM_WORLD)
+        
+        self.snes_solver = NonlinearVariationalSolver(self.u_prob,
+                                                solver_parameters=snes_ctrl,
+                                                nullspace=nullspace,
+                                                appctx=context)
+        self.snes_solver.snes.setConvergenceHistory()        
+        
+        # solve the problem
+        try:
+            self.snes_solver.solve()
+        except:
+            pass
+        ierr = self.snes_solver.snes.getConvergedReason()
+        
+        print('ierr',ierr)
+            
+        if (ierr < 0):
+            print(f' Failure in due to {SNESReasons[ierr]}')
+        else:
+            ierr = 0
+
+        # get info of solver
+        self.nonlinear_iterations = self.snes_solver.snes.getIterationNumber()
+        self.outer_iterations = self.snes_solver.snes.getLinearSolveIterations()
+        
+        
+
+        # move the pot solution in sol
+        sol.sub(0).assign(pot_unknown)
+
+        return ierr
+    
+    @profile
+    def old_solve(self, ctrl, sol):
         '''
         Args:
         ctrl: Class with controls  (tol, max_iter, deltat, etc.)
@@ -651,8 +875,7 @@ class NiotSolver:
          ierr : control flag. It is 0 if everthing worked.
         '''
         print('solving pot_0')
-        self.setup_pot_solver(ctrl)
-        ierr = self.solve_pot_PDE(ctrl, sol)
+        ierr = self.old_solve_pot_PDE(ctrl, sol)
         avg_outer = self.outer_iterations / max(self.nonlinear_iterations,1)
         print(utilities.color('green',
                             f'It: {0} '+
@@ -713,7 +936,8 @@ class NiotSolver:
                 ierr_dmk = 1
         
         return ierr_dmk
-              
+
+
     def discrepancy(self, pot, tdens ):
         '''
         Measure the discrepancy between I(tdens) and the observed data.
@@ -727,14 +951,22 @@ class NiotSolver:
         '''
         if self.spaces == 'CR1DG0':        
             joule_fun = ( ( self.source - self.sink) * pot * dx 
-                        - 0.5 * tdens / self.kappa**2 * dot(grad(pot), grad(pot)) * dx
+                        - 0.5 * (tdens+self.tdens_min) / self.kappa**2 * dot(grad(pot), grad(pot)) * dx
             )
             #if self.Neumann is not None:
             #    n = FacetNormal(self.mesh)
             #    opt_pen += dot(self.Neumann,n) * pot * ds
                       
         elif self.spaces == 'DG0DG0':
-            facet_tdens = avg(tdens/self.kappa**2)
+            #if self.cell2facet == 'arithmetic_mean':
+            facet_tdens = avg((tdens+self.tdens_min)/self.kappa**2)
+            #elif self.cell2facet == 'harmonic_mean':
+            #    l,r = (tdens('+')+self.tdens_min)/self.kappa('+')**2, (tdens('-')+self.tdens_min)/self.kappa('-')**2
+            #    facet_tdens = 2*l*r/(l+r)
+            #else:
+            #    raise ValueError('Wrong cell2facet method.Passed '+self.cell2facet+' but only arithmetic_mean and harmonic_mean are implementedcell2facet')
+            #facet_tdens = harmonic_mean((tdens('+')+self.tdens_min)/self.kappa('+')**2,(tdens('-')+self.tdens_min)/self.kappa('-')**2)
+            
             joule_fun = ( (self.source - self.sink) * pot * dx
                         - 0.5 * facet_tdens * jump(pot)**2 / self.fems.delta_h * dS)
         return joule_fun
@@ -791,12 +1023,13 @@ class NiotSolver:
                )
         return Lag
     
+    @profile
     def solve_pot_PDE(self, ctrl, sol):
         '''
         The pot in sol=[pot,tdens] is updated so that it solves the PDE
         associated to the Lagrangian for a given tdens.
         
-        argsolve(ses:
+        args:
             ctrl: Class with controls how we solve
             sol: Mixed function [pot,tdens], changed in place.
          
@@ -807,32 +1040,43 @@ class NiotSolver:
         # Define the PDE for pot varible only 
         # TODO: is there a better way to do define the PDE 
         # obtain taking the partial derivative of the Lagrangian?   
+        pot, tdens = sol.subfunctions
         
-        if False:
-            pot, tdens = sol.subfunctions
-            pot_unknown = self.pot_h
-            pot_unknown.assign(pot)
+        
+        self.tdens_h.assign(tdens)
+        #pot_h = self.pot_h#Function(self.fems.pot_space)
+        self.pot_h.assign(pot)
+        #with sol.dat.vec_ro as sol_vec, self.tdens_h.dat.vec_ro as tdens_vec, self.pot_h.dat.vec_ro as pot_vec:
+        #    sol_pot_vec = sol_vec.getSubVector(self.fems.pot_is)
+        #    sol_tdens_vec = sol_vec.getSubVector(self.fems.tdens_is)
+        #    sol_pot_vec.copy(pot_vec)
+        #    sol_tdens_vec.copy(tdens_vec)
+            
 
+        if hasattr(self, 'pot_solver'):
+            self.snes_solver = self.pot_solver
+        else:
             # we scale by the norm of the forcing term
             # to ensure that we get the relative residual
-            pot_PDE = 1/self.f_norm * derivative(self.Lagrangian(pot_unknown,tdens),pot_unknown)
-            pot_bcs = self.Dirichlet
+            pot_PDE = 1/self.f_norm * derivative(self.Lagrangian(self.pot_h,tdens),self.pot_h)
+            #pot_bcs = self.Dirichlet
             #test = TestFunction(self.fems.pot_space)
             #pot_PDE = self.forcing * test * dx + tdens * inner(grad(pot_unknown), grad(test)) * dx 
             # Define the Nonlinear variational problem (it is linear in this case)
-            self.u_prob = NonlinearVariationalProblem(pot_PDE, pot_unknown)#, bcs=pot_bcs)
+            
+            self.u_prob = NonlinearVariationalProblem(pot_PDE, self.pot_h)#, bcs=pot_bcs)
 
             # set the solver parameters
             snes_ctrl={
                 'snes_rtol': 1e-16,
                 'snes_atol': ctrl.nonlinear_tol,
-                'snes_stol': 1e-16,
-                'snes_type': 'ksponly',
+                'snes_stol': 1e-50,
+                'snes_type': 'newtonls',
                 'snes_max_it': ctrl.nonlinear_max_iter,
                 # krylov solver controls
                 'ksp_type': 'cg',
-                'ksp_atol': 1e-30,
-                'ksp_rtol': ctrl.nonlinear_tol,
+                'ksp_atol': ctrl.nonlinear_tol*100,
+                'ksp_rtol': ctrl.nonlinear_tol*100,
                 'ksp_divtol': 1e4,
                 'ksp_max_it' : 100,
                 # preconditioner controls
@@ -852,19 +1096,18 @@ class NiotSolver:
                                                     nullspace=nullspace,
                                                     appctx=context)
             self.snes_solver.snes.setConvergenceHistory()        
-        
-        pot, tdens = sol.subfunctions
-        self.pot_h.assign(pot)
-        self.tdens_h.assign(tdens)
-
+            
         # solve the problem
-        try:
-            self.snes_solver.solve()
-        except:
-            pass
+        #try:
+        print(hasattr(self, 'pot_solver'))
+        self.snes_solver.solve()
+        #except:
+        #    pass
+        #test = TestFunction(self.fems.pot_space)
+        #pot_PDE = self.forcing * test * dx - tdens * inner(grad(pot_h), grad(test)) * dx
+
         ierr = self.snes_solver.snes.getConvergedReason()
-        
-        print('ierr',ierr)
+        print(f' SNES reason in due to {SNESReasons[ierr]}')
             
         if (ierr < 0):
             print(f' Failure in due to {SNESReasons[ierr]}')
@@ -875,10 +1118,17 @@ class NiotSolver:
         self.nonlinear_iterations = self.snes_solver.snes.getIterationNumber()
         self.outer_iterations = self.snes_solver.snes.getLinearSolveIterations()
         
-        
-
         # move the pot solution in sol
         sol.sub(0).assign(self.pot_h)
+
+        #if not hasattr(self, 'pot_solver'):
+            # try to clean memory
+        #    comm = snes_solver._problem.u.function_space().mesh()._comm
+        #    PETSc.garbage_cleanup(comm=comm)
+            #del snes_solver
+            #del u_prob
+
+        
 
         return ierr
     
@@ -902,6 +1152,7 @@ class NiotSolver:
         
         # compute update vectors using mass matrix
         rhs_ode = assemble(PDE_tdens, bcs=bcs_tdens)
+        
         update = Function(self.fems.tdens_space)
         scaling = Function(self.fems.tdens_space)
         scaling.interpolate(tdens_h)#**(2-self.gamma))
@@ -916,13 +1167,15 @@ class NiotSolver:
             ctrl.deltat = step
             tdens_vec.axpy(-ctrl.deltat, d)
 
-        utilities.threshold_from_below(tdens_h, ctrl.tdens_min)
+        with tdens_h.dat.vec_ro as tdens_vec:
+            print(msg_bounds(tdens_vec,'updated'))
+        utilities.threshold_from_below(tdens_h, 0)#ctrl.tdens_min)
 
         sol.sub(1).assign(tdens_h)
         
         
         # compute pot associated to new tdens
-        ierr = self.solve_pot_PDE(ctrl, sol)
+        ierr = self.old_solve_pot_PDE(ctrl, sol)
         
         return ierr
     
@@ -988,7 +1241,7 @@ class NiotSolver:
             gfvar_vec.axpy(-step, d)
 
         # convert gfvar to tdens
-        utilities.threshold_from_below(gfvar, self.tdens2gfvar(ctrl.tdens_min))
+        utilities.threshold_from_below(gfvar, self.tdens2gfvar(0))#ctrl.tdens_min))
         sol.sub(1).assign(self.gfvar2tdens(gfvar))
 
         # compute pot associated to new tdens
@@ -996,6 +1249,7 @@ class NiotSolver:
         print(ierr)
         return ierr
     
+    #@profile
     def mirror_descent(self, ctrl, sol):
         # Tdens is udpdate along the direction of the gradient
         # of the energy w.r.t. tdens multiply by tdens**(2-gamma)
@@ -1005,6 +1259,14 @@ class NiotSolver:
         self.tdens_h.assign(tdens)
         print('weights',self.weights)
         PDE_tdens_discr = derivative(self.weights[0]*self.discrepancy(pot,self.tdens_h),self.tdens_h)
+        #reduced_discrepancy = ReducedFunctional(assemble(self.discrepancy(pot,self.tdens_h)),Control(self.tdens_h))
+        #rhs_discr = reduced_discrepancy.derivative()
+        #rhs_pde = assemble(PDE_tdens_discr)
+        #with rhs_discr.dat.vec as rhs_discr_vec, rhs_pde.dat.vec_ro as rhs_pde_vec:
+        #    rhs_discr_vec.axpy(-1, rhs_pde_vec)
+        #    print(f'{rhs_pde_vec.norm()=}')
+        #rhs_discr = rhs_pde
+
         PDE_tdens_opt = derivative(self.weights[1]*self.penalization(pot,self.tdens_h),self.tdens_h)
         PDE_tdens_reg = derivative(self.weights[2]*self.regularization(pot,self.tdens_h),self.tdens_h)
         if (self.spaces=='CR1DG0' and self.weights[2]>1e-16):
@@ -1017,6 +1279,9 @@ class NiotSolver:
         # compute update vectors using mass matrix
         time_start = time.time()
         rhs_ode = assemble(self.PDE_tdens, bcs=bcs_tdens)
+        
+        #with rhs_discr.dat.vec_ro as rhs_discr_vec, rhs_ode.dat.vec_ro as rhs_ode_vec:
+        #    rhs_ode_vec.axpy(self.weights[0], rhs_discr_vec)
         time_stop = time.time()
         #rhs_reg = assemble(PDE_tdens_reg, bcs=bcs_tdens)
         update = Function(self.fems.tdens_space)
@@ -1039,20 +1304,29 @@ class NiotSolver:
             # update
             tdens_vec.axpy(-step, d)
 
+        with self.tdens_h.dat.vec_ro as tdens_vec:
+            print(msg_bounds(tdens_vec,'updated'))
+        
+
         # threshold from below tdens
-        utilities.threshold_from_below(self.tdens_h, ctrl.tdens_min)
+        #utilities.threshold_from_below(self.tdens_h, 0)
 
         # assign new tdens to solution
         sol.sub(1).assign(self.tdens_h)
+        with sol.dat.vec_ro as sol_vec, self.tdens_h.dat.vec_ro as tdens_vec:
+            #sol_vec.restoreSubVector(self.fems.tdens_is, tdens_vec)
+            tdens_vec = sol_vec.getSubVector(self.fems.tdens_is)
+            print(msg_bounds(tdens_vec,'tdens'))
         
         # compute pot associated to new tdens
         time_start = time.time()
-        ierr = self.solve_pot_PDE(ctrl, sol)
+        ierr = self.old_solve_pot_PDE(ctrl, sol)
         time_stop = time.time()
         ctrl.print_info(f'solve_pot_PDE time = {time_stop-time_start}', priority=2)
         
         return ierr            
-        
+
+    #@profile    
     def iterate(self, ctrl, sol):
         '''
         Args:
