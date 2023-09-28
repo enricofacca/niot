@@ -19,6 +19,8 @@ SNESReasons = utilities._make_reasons(PETSc.SNES.ConvergedReason())
 
 # function operations
 from firedrake import *
+#from firedrake_adjoint import *
+
 
 #from linear_algebra_firedrake import transpose
 
@@ -252,6 +254,8 @@ class Controls:
                 msg = utilities.color_msg(color, msg)
             print(msg)   
 
+
+
  
 class NiotSolver:
     '''
@@ -267,12 +271,10 @@ class NiotSolver:
     # register citations using Citations class in firedrake
     Citations().register('FCP2021')
 
-    def __init__(self, spaces, numpy_corrupted):
+    def __init__(self, spaces, numpy_corrupted, DG0_cell2face='harmonic_mean'):
         '''
         Initialize solver (spatial discretization) from numpy_image (2d or 3d data)
-
         '''
-        # create mesh from image
         self.spaces = spaces
         if spaces == 'CR1DG0':
             print('building mesh')
@@ -300,7 +302,7 @@ class NiotSolver:
         self.set_inpainting_parameters(
             weights=[1.0,1.0,0.0],
             confidence=1.0,
-            tdens2image=lambda x: x)
+            tdens2image='identity')
         
         
         # init infos
@@ -320,40 +322,56 @@ class NiotSolver:
         self.DG0_scaling = alpha/h_avg
         self.normal = FacetNormal(self.mesh)
         
+        if ((DG0_cell2face == 'arithmetic_mean') or
+            (DG0_cell2face == 'harmonic_mean')):
+            self.DG0_cell2face = DG0_cell2face
+        else:   
+            raise ValueError('Wrong DG0_cell2face method. Passed '+DG0_cell2face+
+                            '\n Only arithmetic_mean and harmonic_mean are implemented')
+        
         
     def setup_pot_solver(self,ctrl):
-        self.pot_PDE = 1/self.f_norm * derivative(self.Lagrangian(self.pot_h,self.tdens_h),self.pot_h)
+        self.pot_PDE = derivative(self.Lagrangian(self.pot_h,self.tdens_h),self.pot_h)
+        self.weighted_Laplacian = derivative(-self.pot_PDE,self.pot_h)
+        self.rhs = self.forcing * self.fems.pot_test * dx
+
         #test = TestFunction(self.fems.pot_space)
         #pot_PDE = self.forcing * test * dx + tdens * inner(grad(pot_unknown), grad(test)) * dx 
         # Define the Nonlinear variational problem (it is linear in this case)
-        self.u_prob = NonlinearVariationalProblem(self.pot_PDE, self.pot_h)#, bcs=pot_bcs)
+        #self.u_prob = NonlinearVariationalProblem(self.pot_PDE, self.pot_h)#, bcs=pot_bcs)
+        self.u_prob = LinearVariationalProblem(self.weighted_Laplacian, self.rhs, self.pot_h)#, bcs=pot_bcs)
 
         # set the solver parameters
         snes_ctrl={
-            'snes_rtol': 1e-16,
-            'snes_atol': ctrl.nonlinear_tol,
-            'snes_stol': 1e-16,
-            'snes_type': 'ksponly',
-            'snes_max_it': ctrl.nonlinear_max_iter,
+            #'snes_rtol': 1e-16,
+            #'snes_atol': ctrl.nonlinear_tol,
+            #'snes_stol': 1e-16,
+            #'snes_type': 'ksponly',
+            #'snes_max_it': ctrl.nonlinear_max_iter,
             # krylov solver controls
             'ksp_type': 'cg',
-            'ksp_atol': 1e-30,
+            'ksp_atol': 1e-12,
             'ksp_rtol': ctrl.nonlinear_tol,
             'ksp_divtol': 1e4,
             'ksp_max_it' : 100,
+            'ksp_initial_guess_nonzero': True,
+            'ksp_norm_type': 'unpreconditioned',
             # preconditioner controls
             'pc_type': 'hypre',
+            'ksp_monitor_true_residual': None,
         }
+        print(ctrl.nonlinear_tol)
         if ctrl.verbose >= 1:
-            snes_ctrl['snes_monitor'] = None
-        if  ctrl.verbose >= 2:
-            snes_ctrl['ksp_monitor'] = None
+            pass#snes_ctrl['snes_monitor'] = None
+        if  ctrl.verbose >= 1:
+            pass#snes_ctrl['ksp_monitor'] = None
         
         context ={} # left to pass information to the solver
         if self.Dirichlet is None:
             nullspace = VectorSpaceBasis(constant=True,comm=COMM_WORLD)
         
-        self.snes_solver = NonlinearVariationalSolver(self.u_prob,
+        #self.snes_solver = NonlPDEinearVariationalSolver(self.u_prob,
+        self.snes_solver = LinearVariationalSolver(self.u_prob,
                                                 solver_parameters=snes_ctrl,
                                                 nullspace=nullspace,
                                                 appctx=context)
@@ -462,14 +480,23 @@ class NiotSolver:
         with rhs.dat.vec as f:
             self.f_norm  = f.norm()
         self.gamma = gamma
-        self.kappa = kappa
+        
+        self.kappa = Function(self.fems.tdens_space)
+        if isinstance(kappa, float):
+            self.kappa.assign(kappa)
+        elif isinstance(kappa, Function):
+            self.kappa.project(kappa)
         self.Neumann = Neumann
         self.Dirichlet = Dirichlet
+        #self.min_tdens = min_tdens
        
     def set_inpainting_parameters(self,
                  weights=np.array([1.0,1.0,0.0]),
                  confidence=1.0,
-                 tdens2image=lambda x: x):
+                 tdens2image='identity',
+                 #scaling=1.0, # used only if tdens2image is 'scaling'
+                 #sigma_smoothing=0.1 # used only if tdens2image is 'laplacian_smoothing'
+                 ):
         '''
         Set inpainting specific parameters 
         Args:
@@ -489,7 +516,35 @@ class NiotSolver:
             self.confidence = self.convert_data(confidence)
             #self.confidence.rename('confidence','confidence')
         
-        self.tdens2image = tdens2image
+
+        #print(f'{tdens2image=}')
+        if tdens2image == 'identity':
+            self.tdens2image = lambda x: x
+        #elif tdens2image == 'scaling':
+        #    self.scaling = scaling
+        #    self.tdens2image = lambda x: scaling*x
+        # elif tdens2image == 'laplacian_smoothing':
+        #     self.sigma_smoothing = sigma_smoothing
+        #     test = TestFunction(self.fems.tdens_space)  
+        #     trial = TrialFunction(self.fems.tdens_space)
+        #     if (self.mesh_type == 'cartesian'):
+        #         form = inner(test, trial)*dx + self.sigma_smoothing * inner(grad(test), grad(trial))*dx
+        #         self.LaplacianMatrix = assemble(form).M.handle
+        #     elif (self.mesh_type == 'simplicial'):
+        #         form = inner(test, trial)*dx + self.sigma_smoothing * inner(jump(test), jump(trial))  / self.fems.delta_h * dS 
+        #         self.LaplacianMatrix = assemble(form).M.handle
+        #     self.LaplacianSmoother = linalg.LinSolMatrix(self.LaplacianMatrix,
+        #                                                 self.fems.tdens_space, 
+        #                                                 solver_parameters={
+        #                                     'ksp_type': 'cg',
+        #                                     'ksp_rtol': 1e-10,
+        #                                     'pc_type': 'hypre'})
+            
+        #     self.tdens2image = lambda x: utils.LaplacianSmoothing(x,self.LaplacianSmoother)
+        else:
+            raise ValueError(f'Map tdens2iamge not supported {tdens2image}\n'
+                             +'Only identity, scaling and laplacian_smoothing are implemented')
+            
 
     def numpy2function(self, value, name=None):
         '''
@@ -727,14 +782,23 @@ class NiotSolver:
         '''
         if self.spaces == 'CR1DG0':        
             joule_fun = ( ( self.source - self.sink) * pot * dx 
-                        - 0.5 * tdens / self.kappa**2 * dot(grad(pot), grad(pot)) * dx
+                        - 0.5 * (tdens) / self.kappa**2 * dot(grad(pot), grad(pot)) * dx
             )
             #if self.Neumann is not None:
             #    n = FacetNormal(self.mesh)
             #    opt_pen += dot(self.Neumann,n) * pot * ds
                       
         elif self.spaces == 'DG0DG0':
-            facet_tdens = avg(tdens/self.kappa**2)
+            #if self.DG0_cell2face == 'arithmetic_mean':
+            facet_tdens = avg((tdens))#/self.kappa**2)
+            #elif self.DG0_cell2face == 'harmonic_mean':
+            #    left = (tdens('+')+self.min_tdens)/self.kappa('+')**2
+            #    right =(tdens('-')+self.min_tdens)/self.kappa('-')**2
+            #    facet_tdens = 2*left*right/(left+right)
+            #else:
+            #    raise ValueError('Wrong cell2facet method. Passed '+self.DG0_cell2facet+
+            #                     '\n Only arithmetic_mean and harmonic_mean are implemented')
+            
             joule_fun = ( (self.source - self.sink) * pot * dx
                         - 0.5 * facet_tdens * jump(pot)**2 / self.fems.delta_h * dS)
         return joule_fun
@@ -916,7 +980,7 @@ class NiotSolver:
             ctrl.deltat = step
             tdens_vec.axpy(-ctrl.deltat, d)
 
-        utilities.threshold_from_below(tdens_h, ctrl.tdens_min)
+        utilities.threshold_from_below(tdens_h, 0)
 
         sol.sub(1).assign(tdens_h)
         
@@ -988,7 +1052,7 @@ class NiotSolver:
             gfvar_vec.axpy(-step, d)
 
         # convert gfvar to tdens
-        utilities.threshold_from_below(gfvar, self.tdens2gfvar(ctrl.tdens_min))
+        utilities.threshold_from_below(gfvar, 0)
         sol.sub(1).assign(self.gfvar2tdens(gfvar))
 
         # compute pot associated to new tdens
@@ -996,6 +1060,7 @@ class NiotSolver:
         print(ierr)
         return ierr
     
+    @profile
     def mirror_descent(self, ctrl, sol):
         # Tdens is udpdate along the direction of the gradient
         # of the energy w.r.t. tdens multiply by tdens**(2-gamma)
@@ -1003,21 +1068,47 @@ class NiotSolver:
         #
         pot, tdens = sol.subfunctions
         self.tdens_h.assign(tdens)
-        print('weights',self.weights)
-        PDE_tdens_discr = derivative(self.weights[0]*self.discrepancy(pot,self.tdens_h),self.tdens_h)
-        PDE_tdens_opt = derivative(self.weights[1]*self.penalization(pot,self.tdens_h),self.tdens_h)
-        PDE_tdens_reg = derivative(self.weights[2]*self.regularization(pot,self.tdens_h),self.tdens_h)
-        if (self.spaces=='CR1DG0' and self.weights[2]>1e-16):
-            test = self.fems.tdens_test
-            PDE_tdens_reg = self.weights[2] * self.DG0_scaling * inner(jump(self.tdens_h, self.normal), jump(test, self.normal)) * dS
-        bcs_tdens = None
+       
+        new = False
+        if new:
+            lagrangian = assemble( 
+                self.weights[0]*self.discrepancy(pot,self.tdens_h)
+                + self.weights[1]*self.penalization(pot,self.tdens_h)
+                )
+            lagrangian_reduced = ReducedFunctional(lagrangian, Control(self.tdens_h))
+            rhs_ode = lagrangian_reduced.derivative()
 
-        self.PDE_tdens = (PDE_tdens_discr + PDE_tdens_opt + PDE_tdens_reg)
-    
-        # compute update vectors using mass matrix
-        time_start = time.time()
-        rhs_ode = assemble(self.PDE_tdens, bcs=bcs_tdens)
-        time_stop = time.time()
+            # need a special treatment for the regularization term
+            # when using triangle mesh for tdens
+            if abs(self.weights[2]) > 1e-10: # we can skip this computation otherwise 
+                if self.mesh_type == 'cartesian':
+                    reg = assemble(self.weights[2] * self.regularization(pot,self.tdens_h))
+                    reg = ReducedFunctional(reg, Control(self.tdens_h))
+                    rhs_ode_reg = reg.derivative()
+                elif self.mesh_type == 'simplicial':
+                    test = self.fems.tdens_test
+                    PDE_tdens_reg = self.weights[2] * self.DG0_scaling * inner(jump(self.tdens_h, self.normal), jump(test, self.normal)) * dS
+                    rhs_ode_reg = reg.derivative()
+                with rhs_ode.dat.vec as rhs, rhs_ode_reg.dat.vec_ro as rhs_reg:
+                    rhs.axpy(1., rhs_reg)
+        else:
+            PDE_tdens_discr = derivative(self.weights[0]*self.discrepancy(pot,self.tdens_h),self.tdens_h)
+            PDE_tdens_opt = derivative(self.weights[1]*self.penalization(pot,self.tdens_h),self.tdens_h)
+            
+            PDE_tdens_reg = derivative(self.weights[2]*self.regularization(pot,self.tdens_h),self.tdens_h)
+            if (self.spaces=='CR1DG0' and self.weights[2]>1e-16):
+                test = self.fems.tdens_test
+                PDE_tdens_reg = self.weights[2] * self.DG0_scaling * inner(jump(self.tdens_h, self.normal), jump(test, self.normal)) * dS
+            bcs_tdens = None
+
+            self.PDE_tdens = (PDE_tdens_discr + PDE_tdens_opt + PDE_tdens_reg)
+        
+            # compute update vectors using mass matrix
+            time_start = time.time()
+            rhs_ode = assemble(self.PDE_tdens, bcs=bcs_tdens)
+            time_stop = time.time()
+
+
         #rhs_reg = assemble(PDE_tdens_reg, bcs=bcs_tdens)
         update = Function(self.fems.tdens_space)
         scaling = Function(self.fems.tdens_space)
@@ -1040,7 +1131,7 @@ class NiotSolver:
             tdens_vec.axpy(-step, d)
 
         # threshold from below tdens
-        utilities.threshold_from_below(self.tdens_h, ctrl.tdens_min)
+        utilities.threshold_from_below(self.tdens_h, 0)
 
         # assign new tdens to solution
         sol.sub(1).assign(self.tdens_h)
