@@ -19,8 +19,10 @@ SNESReasons = utilities._make_reasons(PETSc.SNES.ConvergedReason())
 
 # function operations
 from firedrake import *
-from firedrake_adjoint import ReducedFunctional, Control
-
+#from firedrake_adjoint import ReducedFunctional, Control
+#from pyadjoint.reduced_functional import  ReducedFunctional
+#from pyadjoint.control import Control
+#import firedrake_adjoint as fireadj
 
 #from linear_algebra_firedrake import transpose
 
@@ -1072,13 +1074,13 @@ class NiotSolver:
         pot, tdens = sol.subfunctions
         self.tdens_h.assign(tdens)
        
-        new = True
+        new = False
         if new:
             lagrangian = assemble( 
                 self.weights[0]*self.discrepancy(pot,self.tdens_h)
                 + self.weights[1]*self.penalization(pot,self.tdens_h)
                 )
-            lagrangian_reduced = ReducedFunctional(lagrangian, Control(self.tdens_h))
+            lagrangian_reduced = fireadj.ReducedFunctional(lagrangian, fireadj.Control(self.tdens_h))
             rhs_ode = lagrangian_reduced.derivative()
 
             # need a special treatment for the regularization term
@@ -1086,7 +1088,7 @@ class NiotSolver:
             if abs(self.weights[2]) > 1e-10: # we can skip this computation otherwise 
                 if self.mesh_type == 'cartesian':
                     reg = assemble(self.weights[2] * self.regularization(pot,self.tdens_h))
-                    reg = ReducedFunctional(reg, Control(self.tdens_h))
+                    reg = fireadj.ReducedFunctional(reg, fireadj.Control(self.tdens_h))
                     rhs_ode_reg = reg.derivative()
                 elif self.mesh_type == 'simplicial':
                     test = self.fems.tdens_test
