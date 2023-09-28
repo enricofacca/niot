@@ -497,8 +497,8 @@ class NiotSolver:
                  weights=np.array([1.0,1.0,0.0]),
                  confidence=1.0,
                  tdens2image='identity',
-                 #scaling=1.0, # used only if tdens2image is 'scaling'
-                 #sigma_smoothing=0.1 # used only if tdens2image is 'laplacian_smoothing'
+                 scaling=1.0, # used only if tdens2image is 'scaling'
+                 sigma_smoothing=0.1 # used only if tdens2image is 'laplacian_smoothing'
                  ):
         '''
         Set inpainting specific parameters 
@@ -520,30 +520,30 @@ class NiotSolver:
             #self.confidence.rename('confidence','confidence')
         
 
-        #print(f'{tdens2image=}')
+        print(f'{tdens2image=}')
         if tdens2image == 'identity':
             self.tdens2image = lambda x: x
-        #elif tdens2image == 'scaling':
-        #    self.scaling = scaling
-        #    self.tdens2image = lambda x: scaling*x
-        # elif tdens2image == 'laplacian_smoothing':
-        #     self.sigma_smoothing = sigma_smoothing
-        #     test = TestFunction(self.fems.tdens_space)  
-        #     trial = TrialFunction(self.fems.tdens_space)
-        #     if (self.mesh_type == 'cartesian'):
-        #         form = inner(test, trial)*dx + self.sigma_smoothing * inner(grad(test), grad(trial))*dx
-        #         self.LaplacianMatrix = assemble(form).M.handle
-        #     elif (self.mesh_type == 'simplicial'):
-        #         form = inner(test, trial)*dx + self.sigma_smoothing * inner(jump(test), jump(trial))  / self.fems.delta_h * dS 
-        #         self.LaplacianMatrix = assemble(form).M.handle
-        #     self.LaplacianSmoother = linalg.LinSolMatrix(self.LaplacianMatrix,
-        #                                                 self.fems.tdens_space, 
-        #                                                 solver_parameters={
-        #                                     'ksp_type': 'cg',
-        #                                     'ksp_rtol': 1e-10,
-        #                                     'pc_type': 'hypre'})
+        elif tdens2image == 'scaling':
+            self.scaling = scaling
+            self.tdens2image = lambda x: scaling*x
+        elif tdens2image == 'laplacian_smoothing':
+            self.sigma_smoothing = sigma_smoothing
+            test = TestFunction(self.fems.tdens_space)  
+            trial = TrialFunction(self.fems.tdens_space)
+            if (self.mesh_type == 'cartesian'):
+                form = inner(test, trial)*dx + self.sigma_smoothing * inner(grad(test), grad(trial))*dx
+                self.LaplacianMatrix = assemble(form).M.handle
+            elif (self.mesh_type == 'simplicial'):
+                form = inner(test, trial)*dx + self.sigma_smoothing * inner(jump(test), jump(trial))  / self.fems.delta_h * dS 
+                self.LaplacianMatrix = assemble(form).M.handle
+            self.LaplacianSmoother = linalg.LinSolMatrix(self.LaplacianMatrix,
+                                                        self.fems.tdens_space, 
+                                                        solver_parameters={
+                                            'ksp_type': 'cg',
+                                            'ksp_rtol': 1e-10,
+                                            'pc_type': 'hypre'})
             
-        #     self.tdens2image = lambda x: utils.LaplacianSmoothing(x,self.LaplacianSmoother)
+            self.tdens2image = lambda x: utils.LaplacianSmoothing(x,self.LaplacianSmoother)
         else:
             raise ValueError(f'Map tdens2iamge not supported {tdens2image}\n'
                              +'Only identity, scaling and laplacian_smoothing are implemented')
@@ -1072,7 +1072,7 @@ class NiotSolver:
         pot, tdens = sol.subfunctions
         self.tdens_h.assign(tdens)
        
-        new = False
+        new = True
         if new:
             lagrangian = assemble( 
                 self.weights[0]*self.discrepancy(pot,self.tdens_h)
