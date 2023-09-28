@@ -437,7 +437,8 @@ class NiotSolver:
                                          Neumann = [[0,'on_boundary']],
                                          Dirichlet=None,
                                          tolerance_unbalance=1e-12,
-                                         force_balance=False):
+                                         force_balance=False,
+                                         min_tdens=1e-8):
         '''
         Set optimal transport parameters
         Args:
@@ -488,7 +489,7 @@ class NiotSolver:
             self.kappa.project(kappa)
         self.Neumann = Neumann
         self.Dirichlet = Dirichlet
-        #self.min_tdens = min_tdens
+        self.min_tdens = min_tdens
        
     def set_inpainting_parameters(self,
                  weights=np.array([1.0,1.0,0.0]),
@@ -790,7 +791,7 @@ class NiotSolver:
                       
         elif self.spaces == 'DG0DG0':
             #if self.DG0_cell2face == 'arithmetic_mean':
-            facet_tdens = avg((tdens))#/self.kappa**2)
+            facet_tdens = avg((tdens+self.min_tdens))#/self.kappa**2)
             #elif self.DG0_cell2face == 'harmonic_mean':
             #    left = (tdens('+')+self.min_tdens)/self.kappa('+')**2
             #    right =(tdens('-')+self.min_tdens)/self.kappa('-')**2

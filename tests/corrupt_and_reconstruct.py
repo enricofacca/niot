@@ -24,6 +24,7 @@ from niot import spread
 from niot import heat_spread
 import image2dat as i2d
 
+
 from ufl import *
 from firedrake import *
 from firedrake import norm
@@ -38,7 +39,7 @@ import utilities as utilities
 
 from scipy.ndimage import gaussian_filter
 
-@profile
+#@profile
 def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks, 
                             scaling_size,
                             fem,
@@ -93,7 +94,7 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
 
 
     # Init. solver for a given reconstruction problem
-    niot_solver = NiotSolver(fem, np_corrupted)#, cell2facet='harmoni_mean')
+    niot_solver = NiotSolver(fem, np_corrupted, DG0_cell2face = 'arithmetic_mean')
     
     # save inputs     
     fire_sources = niot_solver.numpy2function(np_sources, name="sources")
@@ -133,18 +134,20 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
                                                   gamma=gamma, 
                                                   kappa=kappa, 
                                                   force_balance=True,
-                                                  tdens_min=1e-8)
+                                                  min_tdens=1e-8)
     niot_solver.set_inpainting_parameters(weights=weights,
-                                         confidence=fire_confidence)
+                                         confidence=fire_confidence,
+                                         tdens2image='identity')#,#'laplacian_smoothing',
+                                         #sigma_smoothing=0.01)
     
     niot_solver.save_inputs(os.path.join(directory,"parameters_recostruction.pvd"))
     
     ctrl = Controls(
         tol=1e-2,
         time_discretization_method='mirror_descent',
-        deltat=1e-4,
-        max_iter=1000,
-        nonlinear_tol=1e-6,
+        deltat=1e-3,
+        max_iter=500,
+        nonlinear_tol=1e-5,
         linear_tol=1e-6,
         nonlinear_max_iter=30,
         linear_max_iter=1000)
@@ -171,11 +174,11 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
     if corrupted_as_initial_guess == 1:
         sol.sub(1).assign(fire_corrupted+1e-6)
 
-    print('solving pot_0')
-    ierr = niot_solver.solve_pot_PDE(ctrl, sol)
-    avg_outer = niot_solver.outer_iterations
-    print(utilities.color('green',f'It: {0} '+f' avgouter: {avg_outer:.1f}'))
-    initial_sol = cp(sol)
+    #print('solving pot_0')
+    #ierr = niot_solver.solve_pot_PDE(ctrl, sol)
+    #avg_outer = niot_solver.outer_iterations
+    #print(utilities.color('green',f'It: {0} '+f' avgouter: {avg_outer:.1f}'))
+    #initial_sol = cp(sol)
 
     # solve the problem
     ierr = niot_solver.solve(ctrl, sol)
@@ -194,13 +197,13 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
     vel.interpolate(-tdens * grad(pot))
     vel.rename('vel','Velocity')
 
-    initial_tdens = Function(niot_solver.fems.tdens_space)
-    initial_tdens.interpolate(initial_sol.subfunctions[1])
-    initial_tdens.rename('initial_tdens','Initial guess')
+    #initial_tdens = Function(niot_solver.fems.tdens_space)
+    #initial_tdens.interpolate(initial_sol.subfunctions[1])
+    #initial_tdens.rename('initial_tdens','Initial guess')
 
-    initial_pot = Function(niot_solver.fems.pot_space)
-    initial_pot.interpolate(initial_sol.subfunctions[0])
-    initial_pot.rename('initial_pot','Initial guess')
+    #initial_pot = Function(niot_solver.fems.pot_space)
+    #initial_pot.interpolate(initial_sol.subfunctions[0])
+    #initial_pot.rename('initial_pot','Initial guess')
 
     filename = os.path.join(runs_directory, f'{label}.pvd')
     print("Saving solution to "+filename)
@@ -208,7 +211,7 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
     utilities.save2pvd([pot, tdens, vel, 
                         niot_solver.source,
                         niot_solver.sink,
-                        initial_pot,initial_tdens,
+    #                    initial_pot,initial_tdens,
                         fire_networks,
                         fire_networks_for_contour,
                         fire_masks,
