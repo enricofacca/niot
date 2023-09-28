@@ -487,6 +487,8 @@ class NiotSolver:
             self.kappa.assign(kappa)
         elif isinstance(kappa, Function):
             self.kappa.project(kappa)
+        else:
+            raise ValueError('kappa must be a float or a function')
         self.Neumann = Neumann
         self.Dirichlet = Dirichlet
         self.min_tdens = min_tdens
@@ -790,15 +792,15 @@ class NiotSolver:
             #    opt_pen += dot(self.Neumann,n) * pot * ds
                       
         elif self.spaces == 'DG0DG0':
-            #if self.DG0_cell2face == 'arithmetic_mean':
-            facet_tdens = avg((tdens+self.min_tdens))#/self.kappa**2)
-            #elif self.DG0_cell2face == 'harmonic_mean':
-            #    left = (tdens('+')+self.min_tdens)/self.kappa('+')**2
-            #    right =(tdens('-')+self.min_tdens)/self.kappa('-')**2
-            #    facet_tdens = 2*left*right/(left+right)
-            #else:
-            #    raise ValueError('Wrong cell2facet method. Passed '+self.DG0_cell2facet+
-            #                     '\n Only arithmetic_mean and harmonic_mean are implemented')
+            if self.DG0_cell2face == 'arithmetic_mean':
+                facet_tdens = avg((tdens+self.min_tdens)/self.kappa**2)
+            elif self.DG0_cell2face == 'harmonic_mean':
+                left = (tdens('+')+self.min_tdens)/self.kappa('+')**2
+                right =(tdens('-')+self.min_tdens)/self.kappa('-')**2
+                facet_tdens = 2*left*right/(left+right)
+            else:
+                raise ValueError('Wrong cell2facet method. Passed '+self.DG0_cell2facet+
+                                 '\n Only arithmetic_mean and harmonic_mean are implemented')
             
             joule_fun = ( (self.source - self.sink) * pot * dx
                         - 0.5 * facet_tdens * jump(pot)**2 / self.fems.delta_h * dS)
