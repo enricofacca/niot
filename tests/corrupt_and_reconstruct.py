@@ -94,7 +94,7 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
 
 
     # Init. solver for a given reconstruction problem
-    niot_solver = NiotSolver(fem, np_corrupted, DG0_cell2face = 'arithmetic_mean')
+    niot_solver = NiotSolver(fem, np_corrupted, DG0_cell2face = 'harmonic_mean')
     
     # save inputs     
     fire_sources = niot_solver.numpy2function(np_sources, name="sources")
