@@ -22,7 +22,12 @@ from firedrake import *
 #from firedrake_adjoint import ReducedFunctional, Control
 #from pyadjoint.reduced_functional import  ReducedFunctional
 #from pyadjoint.control import Control
-#import firedrake_adjoint as fireadj
+
+#import firedrake.adjoint as fireadj # does not work ...
+#from firedrake.adjoint import * # does give error when interpoalte is called
+#import firedrake.adjoint.ReducedFunctional as ReducedFunctional # does not work ...
+from firedrake_adjoint import *
+#continue_annotation()
 
 #from linear_algebra_firedrake import transpose
 
@@ -113,7 +118,8 @@ class SpaceDiscretization:
         
         # create mass matrix $M_i,j=\int_{\xhi_l,\xhi_m}$ with
         # $\xhi_l$ funciton of Tdens
-        self.tdens_mass_matrix = assemble( inner(self.tdens_trial,self.tdens_test)*dx ,mat_type='aij').M.handle
+        mass_form = inner(self.tdens_trial,self.tdens_test)*dx
+        self.tdens_mass_matrix = assemble( mass_form ,mat_type='aij').M.handle
         self.tdens_inv_mass_matrix = linalg.LinSolMatrix(self.tdens_mass_matrix, self.tdens_space,
                         solver_parameters={
                             'ksp_type':'cg',
@@ -1074,27 +1080,27 @@ class NiotSolver:
         pot, tdens = sol.subfunctions
         self.tdens_h.assign(tdens)
        
-        new = False
+        new = True
         if new:
             lagrangian = assemble( 
                 self.weights[0]*self.discrepancy(pot,self.tdens_h)
                 + self.weights[1]*self.penalization(pot,self.tdens_h)
                 )
-            lagrangian_reduced = fireadj.ReducedFunctional(lagrangian, fireadj.Control(self.tdens_h))
-            rhs_ode = lagrangian_reduced.derivative()
+            lagrangian_reduced = ReducedFunctional(lagrangian, Control(self.tdens_h))
+            self.rhs_ode = lagrangian_reduced.derivative()
 
             # need a special treatment for the regularization term
             # when using triangle mesh for tdens
             if abs(self.weights[2]) > 1e-10: # we can skip this computation otherwise 
                 if self.mesh_type == 'cartesian':
                     reg = assemble(self.weights[2] * self.regularization(pot,self.tdens_h))
-                    reg = fireadj.ReducedFunctional(reg, fireadj.Control(self.tdens_h))
+                    reg = ReducedFunctional(reg, Control(self.tdens_h))
                     rhs_ode_reg = reg.derivative()
                 elif self.mesh_type == 'simplicial':
                     test = self.fems.tdens_test
                     PDE_tdens_reg = self.weights[2] * self.DG0_scaling * inner(jump(self.tdens_h, self.normal), jump(test, self.normal)) * dS
                     rhs_ode_reg = reg.derivative()
-                with rhs_ode.dat.vec as rhs, rhs_ode_reg.dat.vec_ro as rhs_reg:
+                with self.rhs_ode.dat.vec as rhs, rhs_ode_reg.dat.vec_ro as rhs_reg:
                     rhs.axpy(1., rhs_reg)
         else:
             PDE_tdens_discr = derivative(self.weights[0]*self.discrepancy(pot,self.tdens_h),self.tdens_h)
@@ -1118,7 +1124,7 @@ class NiotSolver:
         update = Function(self.fems.tdens_space)
         scaling = Function(self.fems.tdens_space)
         scaling.interpolate(self.tdens_h**(2-self.gamma))
-        with rhs_ode.dat.vec as rhs, scaling.dat.vec_ro as scaling_vec, update.dat.vec as d, self.tdens_h.dat.vec_ro as tdens_vec:
+        with self.rhs_ode.dat.vec as rhs, scaling.dat.vec_ro as scaling_vec, update.dat.vec as d, self.tdens_h.dat.vec_ro as tdens_vec:
             # scale the gradient w.r.t. tdens by tdens itself
             rhs *= scaling_vec
 
