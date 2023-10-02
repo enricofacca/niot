@@ -538,12 +538,14 @@ class NiotSolver:
             self.sigma_smoothing = sigma_smoothing
             test = TestFunction(self.fems.tdens_space)  
             trial = TrialFunction(self.fems.tdens_space)
-            if (self.mesh_type == 'cartesian'):
-                form = inner(test, trial)*dx + self.sigma_smoothing * inner(grad(test), grad(trial))*dx
-                self.LaplacianMatrix = assemble(form).M.handle
-            elif (self.mesh_type == 'simplicial'):
-                form = inner(test, trial)*dx + self.sigma_smoothing * inner(jump(test), jump(trial))  / self.fems.delta_h * dS 
-                self.LaplacianMatrix = assemble(form).M.handle
+            if  self.mesh.ufl_cell().is_simplex():
+                form = ( inner(test, trial)*dx 
+                        + self.sigma_smoothing * inner(jump(test), jump(trial))  / self.fems.delta_h * dS )
+            else:
+                form = ( inner(test, trial)*dx 
+                        + self.sigma_smoothing * inner(grad(test), grad(trial))*dx)
+            
+            self.LaplacianMatrix = assemble(form).M.handle
             self.LaplacianSmoother = linalg.LinSolMatrix(self.LaplacianMatrix,
                                                         self.fems.tdens_space, 
                                                         solver_parameters={
@@ -570,7 +572,7 @@ class NiotSolver:
         # we flip vertically because images are read from left, right, top to bottom
         
 
-        if (self.mesh_type == 'simplicial'):
+        if self.mesh.ufl_cell().is_simplex():
             # Each pixel is splitted in two triangles.
             if self.mesh.geometric_dimension() == 2:
                 value = np.flip(value,0)
@@ -606,8 +608,9 @@ class NiotSolver:
                 img_function = Function(DG0, val=cells_values, name=name)
                 
             return img_function
-
-        if (self.mesh_type == 'cartesian'):
+        else:
+            if (self.mesh.ufl_cell().cellname() != 'quadrilateral'):
+                raise ValueError('Only simplicial and quadrilateral meshes are supported')
             DG0 = FunctionSpace(self.mesh,'DG',0)
             img_function = Function(DG0)
             value_flipped = np.flip(value,0)
@@ -623,7 +626,7 @@ class NiotSolver:
         If the mesh is simplicial, the function is averaged neighbouring cells.
         If the mesh is cartesian, the results is reshaped to the original image shape.
         """
-        if (self.mesh_type == 'simplicial'):
+        if self.mesh.ufl_cell().is_simplex():
             # Each pixel is splitted in two triangles.
             if self.mesh.geometric_dimension() == 2:
                 # get the values of the function
@@ -642,9 +645,9 @@ class NiotSolver:
                 
             elif self.mesh.geometric_dimension() == 3:
                 raise NotImplementedError('3D mesh not implemented yet')
-
-                
-        if (self.mesh_type == 'cartesian'):
+        else:
+            if (self.mesh.ufl_cell().cellname() != 'quadrilateral'):
+                raise ValueError('Only simplicial and quadrilateral meshes are supported')
             # get the values of the function
             with function.dat.vec_ro as f:
                 value = f.array
@@ -835,20 +838,29 @@ class NiotSolver:
 
     def regularization(self, pot, tdens):
         ''' 
-        Definition of the regularization term
+        Definition of the regularization Form.
+        Args:
+            pot: potential function
+            tdens: transport density function
+        returns:
+            reg: regularization functional
         '''
-        #return 0.5 * tdens ** 2 * dx
-        if abs(self.weights[2])<1e-16:
-            return 0*dx(domain=self.mesh)
         
-        if self.spaces == 'DG0DG0':
-            return jump(tdens)**2 / self.fems.delta_h * dS
-        elif self.spaces == 'CR1DG0':
-            # DG0 laplacian taken from 
-            # https://www.firedrakeproject.org/demos/saddle_point_systems.py.html
-            reg = 0.5 * self.DG0_scaling * inner(jump(tdens, self.normal), jump(tdens, self.normal)) * dS
-            return reg
+        # If tdens is piecewise constant,
+        # we use finite difference or DG0 laplacian
+        if self.fems.tdens_space.ufl_element().degree() == 0:
+            if self.mesh.ufl_cell().is_simplex():
+                # DG0 laplacian taken from 
+                # https://www.firedrakeproject.org/demos/saddle_point_systems.py.html
+                reg = 0.5 * self.DG0_scaling * inner(jump(tdens, self.normal), jump(tdens, self.normal)) * dS
+            else:
+                reg = 0.5 * jump(tdens)**2 / self.fems.delta_h * dS
+        else:
+            raise NotImplementedError('Only piecewise constant tdens is implemented')
             
+        return reg
+            
+
         
     
     def Lagrangian(self, pot, tdens):
@@ -860,10 +872,11 @@ class NiotSolver:
         returns:
             Lag: Lagrangian functional = w_0*discrepancy + w_1*penalization + w_2*regularization
         '''
-        Lag = ( self.weights[0] * self.discrepancy(pot,tdens)
-               + self.weights[1] * self.penalization(pot,tdens)
-               + self.weights[2] * self.regularization(pot,tdens)
-               )
+        Lag = self.weights[1] * self.penalization(pot,tdens)
+        if abs(self.weights[0]) > 1e-16:
+            Lag += self.weights[0] * self.discrepancy(pot,tdens)
+        if abs(self.weights[2]) > 1e-16:
+            Lag += self.weights[2] * self.regularization(pot,tdens)
         return Lag
     
     def solve_pot_PDE(self, ctrl, sol):
@@ -1071,7 +1084,6 @@ class NiotSolver:
         print(ierr)
         return ierr
     
-    @profile
     def mirror_descent(self, ctrl, sol):
         # Tdens is udpdate along the direction of the gradient
         # of the energy w.r.t. tdens multiply by tdens**(2-gamma)
@@ -1082,24 +1094,27 @@ class NiotSolver:
        
         new = True
         if new:
-            lagrangian = assemble( 
-                self.weights[0]*self.discrepancy(pot,self.tdens_h)
-                + self.weights[1]*self.penalization(pot,self.tdens_h)
-                )
+            lagrangian = assemble(self.Lagrangian(pot,self.tdens_h))
+                #self.weights[0]*self.discrepancy(pot,self.tdens_h)
+                #+ self.weights[1]*self.penalization(pot,self.tdens_h)
+                #)
             lagrangian_reduced = ReducedFunctional(lagrangian, Control(self.tdens_h))
             self.rhs_ode = lagrangian_reduced.derivative()
 
             # need a special treatment for the regularization term
             # when using triangle mesh for tdens
-            if abs(self.weights[2]) > 1e-10: # we can skip this computation otherwise 
-                if self.mesh_type == 'cartesian':
-                    reg = assemble(self.weights[2] * self.regularization(pot,self.tdens_h))
-                    reg = ReducedFunctional(reg, Control(self.tdens_h))
-                    rhs_ode_reg = reg.derivative()
-                elif self.mesh_type == 'simplicial':
-                    test = self.fems.tdens_test
-                    PDE_tdens_reg = self.weights[2] * self.DG0_scaling * inner(jump(self.tdens_h, self.normal), jump(test, self.normal)) * dS
-                    rhs_ode_reg = reg.derivative()
+            if False:#abs(self.weights[2]) > 1e-10: # we can skip this computation otherwise
+                reg_fun = assemble(self.weights[2]*self.regularization(pot,self.tdens_h))
+                reg = ReducedFunctional(reg_fun, Control(self.tdens_h))
+                rhs_ode_reg = reg.derivative()
+                # if self.mesh_type == 'cartesian':
+                #     reg = assemble(self.weights[2] * self.regularization(pot,self.tdens_h))
+                #     reg = ReducedFunctional(reg, Control(self.tdens_h))
+                #     rhs_ode_reg = reg.derivative()
+                # elif self.mesh_type == 'simplicial':
+                #     test = self.fems.tdens_test
+                #     PDE_tdens_reg = self.weights[2] * self.DG0_scaling * inner(jump(self.tdens_h, self.normal), jump(test, self.normal)) * dS
+                #     rhs_ode_reg = reg.derivative()
                 with self.rhs_ode.dat.vec as rhs, rhs_ode_reg.dat.vec_ro as rhs_reg:
                     rhs.axpy(1., rhs_reg)
         else:
@@ -1116,7 +1131,7 @@ class NiotSolver:
         
             # compute update vectors using mass matrix
             time_start = time.time()
-            rhs_ode = assemble(self.PDE_tdens, bcs=bcs_tdens)
+            self.rhs_ode = assemble(self.PDE_tdens, bcs=bcs_tdens)
             time_stop = time.time()
 
 
@@ -1127,6 +1142,8 @@ class NiotSolver:
         with self.rhs_ode.dat.vec as rhs, scaling.dat.vec_ro as scaling_vec, update.dat.vec as d, self.tdens_h.dat.vec_ro as tdens_vec:
             # scale the gradient w.r.t. tdens by tdens itself
             rhs *= scaling_vec
+            print(utilities.msg_bounds(rhs,'rhs'))
+            
 
             #if abs(self.weights[2])>1e-16:
             #    print('regularization')
@@ -1136,6 +1153,7 @@ class NiotSolver:
             self.fems.tdens_inv_mass_matrix.solve(rhs, d)
             # set step size
             step = ctrl.set_step(d)
+            print(utilities.msg_bounds(d,'tdens step')+f' dt={step:.2e}')
             ctrl.deltat = step
             print('step',step)
             # update
