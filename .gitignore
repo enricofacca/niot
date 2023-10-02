@@ -1,11 +1,21 @@
+# firedrake
 *.pvd
 *.vtu
-*~
-**/__pycache__/
-test/*/runs/
-*vscode*
-*.svg
-*.png
 *.npy
 *.h5
+# python
+**/__pycache__/
+# niot only 
+test/*/runs/
+*.svg
+*.png
 *.dat
+*.sh
+# visit 
+*.session
+*.session.gui
+# editors
+*vscode*
+*~ 
+# docs
+*.pdf
