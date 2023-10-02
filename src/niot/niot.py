@@ -1,7 +1,7 @@
 # import Solver 
 #from rcis import Solver
 from copy import deepcopy as cp
-
+import gc
 import sys
 
 import numpy as np
@@ -26,10 +26,8 @@ from firedrake import *
 #import firedrake.adjoint as fireadj # does not work ...
 #from firedrake.adjoint import * # does give error when interpoalte is called
 #import firedrake.adjoint.ReducedFunctional as ReducedFunctional # does not work ...
-from firedrake_adjoint import *
-#continue_annotation()
-
-#from linear_algebra_firedrake import transpose
+import firedrake.adjoint as fire_adj
+fire_adj.continue_annotation()
 
 from petsc4py import PETSc as p4pyPETSc
 
@@ -710,6 +708,7 @@ class NiotSolver:
     def create_solution(self):
         return self.fems.create_solution()
     
+    @profile
     def solve(self, ctrl, sol):
         '''
         Args:
@@ -719,6 +718,12 @@ class NiotSolver:
         Returns:
          ierr : control flag. It is 0 if everthing worked.
         '''
+        # Clear tape is required to avoid memory accumalation
+        # It works but I don't know why
+        # see also https://github.com/firedrakeproject/firedrake/issues/3133
+        tape = fire_adj.get_working_tape()
+        tape.clear_tape()
+
         print('solving pot_0')
         self.setup_pot_solver(ctrl)
         ierr = self.solve_pot_PDE(ctrl, sol)
@@ -729,15 +734,21 @@ class NiotSolver:
 
         iter = 0
         ierr_dmk = 0
-        sol_old = cp(sol)
+        sol_old = cp(sol)           
+        tape.clear_tape()
         while ierr_dmk == 0:
-            # get input
-
             # update with restarts
             sol_old.assign(sol)
             nrestart = 0 
             while nrestart < ctrl.max_restart:
                 ierr = self.iterate(ctrl, sol)
+                # clean memory every 10 iterations
+                if iter%10 == 0:
+                    # Clear tape is required to avoid memory accumalation
+                    # It works but I don't know why
+                    # see also https://github.com/firedrakeproject/firedrake/issues/3133
+                    tape.clear_tape()
+
                 if ierr == 0:
                     break
                 else:
@@ -760,7 +771,7 @@ class NiotSolver:
             var_tdens = self.residual(sol)
             avg_outer = self.outer_iterations / max(self.nonlinear_iterations,1)
             print(utilities.color('green',
-                              f'It: {iter} '+
+                            f'It: {iter} '+
                     f' dt: {ctrl.deltat:.1e}'+
                     f' var:{var_tdens:.1e}'
                     f' nsym:{self.nonlinear_iterations:1d}'+
@@ -781,6 +792,8 @@ class NiotSolver:
             if (iter == ctrl.max_iter):
                 ierr_dmk = 1
         
+        #fire_adj.get_working_tape().clear_tape()
+
         return ierr_dmk
               
     def discrepancy(self, pot, tdens ):
@@ -1084,39 +1097,24 @@ class NiotSolver:
         print(ierr)
         return ierr
     
+    #@profile
     def mirror_descent(self, ctrl, sol):
         # Tdens is udpdate along the direction of the gradient
         # of the energy w.r.t. tdens multiply by tdens**(2-gamma)
         # 
         #
         pot, tdens = sol.subfunctions
+        self.pot_h.assign(pot) 
         self.tdens_h.assign(tdens)
        
         new = True
         if new:
-            lagrangian = assemble(self.Lagrangian(pot,self.tdens_h))
-                #self.weights[0]*self.discrepancy(pot,self.tdens_h)
-                #+ self.weights[1]*self.penalization(pot,self.tdens_h)
-                #)
-            lagrangian_reduced = ReducedFunctional(lagrangian, Control(self.tdens_h))
-            self.rhs_ode = lagrangian_reduced.derivative()
-
-            # need a special treatment for the regularization term
-            # when using triangle mesh for tdens
-            if False:#abs(self.weights[2]) > 1e-10: # we can skip this computation otherwise
-                reg_fun = assemble(self.weights[2]*self.regularization(pot,self.tdens_h))
-                reg = ReducedFunctional(reg_fun, Control(self.tdens_h))
-                rhs_ode_reg = reg.derivative()
-                # if self.mesh_type == 'cartesian':
-                #     reg = assemble(self.weights[2] * self.regularization(pot,self.tdens_h))
-                #     reg = ReducedFunctional(reg, Control(self.tdens_h))
-                #     rhs_ode_reg = reg.derivative()
-                # elif self.mesh_type == 'simplicial':
-                #     test = self.fems.tdens_test
-                #     PDE_tdens_reg = self.weights[2] * self.DG0_scaling * inner(jump(self.tdens_h, self.normal), jump(test, self.normal)) * dS
-                #     rhs_ode_reg = reg.derivative()
-                with self.rhs_ode.dat.vec as rhs, rhs_ode_reg.dat.vec_ro as rhs_reg:
-                    rhs.axpy(1., rhs_reg)
+            self.lagrangian_fun = assemble(self.Lagrangian(self.pot_h,self.tdens_h))
+            with fire_adj.stop_annotating():
+                self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
+                self.rhs_ode = self.lagrangian_fun_reduced.derivative()
+            #self.rhs_ode = fire_adj.compute_gradient(self.lagrangian_fun, fire_adj.Control(self.tdens_h)) #self.lagrangian_fun_reduced.derivative()
+            gc.collect()
         else:
             PDE_tdens_discr = derivative(self.weights[0]*self.discrepancy(pot,self.tdens_h),self.tdens_h)
             PDE_tdens_opt = derivative(self.weights[1]*self.penalization(pot,self.tdens_h),self.tdens_h)
