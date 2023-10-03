@@ -918,51 +918,6 @@ class NiotSolver:
         # TODO: is there a better way to do define the PDE 
         # obtain taking the partial derivative of the Lagrangian?   
         
-        if False:
-            pot, tdens = sol.subfunctions
-            pot_unknown = self.pot_h
-            pot_unknown.assign(pot)
-
-            # we scale by the norm of the forcing term
-            # to ensure that we get the relative residual
-            pot_PDE = 1/self.f_norm * derivative(self.Lagrangian(pot_unknown,tdens),pot_unknown)
-            pot_bcs = self.Dirichlet
-            #test = TestFunction(self.fems.pot_space)
-            #pot_PDE = self.forcing * test * dx + tdens * inner(grad(pot_unknown), grad(test)) * dx 
-            # Define the Nonlinear variational problem (it is linear in this case)
-            self.u_prob = NonlinearVariationalProblem(pot_PDE, pot_unknown)#, bcs=pot_bcs)
-
-            # set the solver parameters
-            snes_ctrl={
-                'snes_rtol': 1e-16,
-                'snes_atol': ctrl.nonlinear_tol,
-                'snes_stol': 1e-16,
-                'snes_type': 'ksponly',
-                'snes_max_it': ctrl.nonlinear_max_iter,
-                # krylov solver controls
-                'ksp_type': 'cg',
-                'ksp_atol': 1e-30,
-                'ksp_rtol': ctrl.nonlinear_tol,
-                'ksp_divtol': 1e4,
-                'ksp_max_it' : 100,
-                # preconditioner controls
-                'pc_type': 'hypre',
-            }
-            if ctrl.verbose >= 1:
-                snes_ctrl['snes_monitor'] = None
-            if  ctrl.verbose >= 2:
-                snes_ctrl['ksp_monitor'] = None
-            
-            context ={} # left to pass information to the solver
-            if self.Dirichlet is None:
-                nullspace = VectorSpaceBasis(constant=True,comm=COMM_WORLD)
-            
-            self.snes_solver = NonlinearVariationalSolver(self.u_prob,
-                                                    solver_parameters=snes_ctrl,
-                                                    nullspace=nullspace,
-                                                    appctx=context)
-            self.snes_solver.snes.setConvergenceHistory()        
-        
         pot, tdens = sol.subfunctions
         self.pot_h.assign(pot)
         self.tdens_h.assign(tdens)
@@ -985,8 +940,6 @@ class NiotSolver:
         self.nonlinear_iterations = self.snes_solver.snes.getIterationNumber()
         self.outer_iterations = self.snes_solver.snes.getLinearSolveIterations()
         
-        
-
         # move the pot solution in sol
         sol.sub(0).assign(self.pot_h)
 
@@ -1250,120 +1203,5 @@ class NiotSolver:
              self.confidence],
              file_name)
 
-def heat_spread(density, tau=0.1):
-    '''
-    Spread a density using the porous medium equation,
-    :math:`\partial_t \rho - \nabla \cdot ( \nabla \rho)=0`.
-    '''
-    # create the function space
-    mesh = density.function_space().mesh()
-    space = FunctionSpace(mesh, 'CG', 1)
-    new_density = Function(space)
-    new_density.interpolate(density)
- 
-    test = TestFunction(space)
-    PDE = ( 
-        1/tau * (new_density - density) * test  * dx 
-        + inner(grad(new_density), grad(test)) * dx
-        )
-    problem = NonlinearVariationalProblem(PDE, new_density)
 
-    # set solver. One Newton step is required for m=1
-    ctrl={
-            'snes_rtol': 1e-16,
-            'snes_atol': 1e-4,
-            'snes_stol': 1e-16,
-            'snes_type': 'newtonls',
-            'snes_max_it': 20,
-            'snes_monitor': None,
-            # krylov solver controls
-            'ksp_type': 'cg',
-            'ksp_atol': 1e-30,
-            'ksp_rtol': 1e-8,
-            'ksp_divtol': 1e4,
-            'ksp_max_it' : 100,
-            # preconditioner controls
-            'pc_type': 'hypre',
-        }
-    snes_solver = NonlinearVariationalSolver(problem, solver_parameters=ctrl)
-    
-    # solve the problem
-    try:
-        snes_solver.solve()
-        ierr = 0
-    except:
-        ierr = snes_solver.snes.getConvergedReason()
-    
-    if (ierr != 0):
-        print('ierr',ierr)
-        print(f' Failure in due to {SNESReasons[ierr]}')
-        
-    # return the solution in the same function space of the input
-    smooth_density = Function(density.function_space())
-    smooth_density.interpolate(new_density)
 
-    return smooth_density
-
-def spread(density, tau=0.1, m_exponent=1, nsteps=1):
-    '''
-    Spread a density using the porous medium equation,
-    :math:`\partial_t \rho - \nabla \cdot (\rho^m-1 \nabla \rho)=0`.
-    '''
-    # create the function space
-    mesh = density.function_space().mesh()
-    space = FunctionSpace(mesh, 'CG', 1)
-    log_density_initial = Function(space)
-    log_density_initial.interpolate(ln(density))
-    log_density = cp(log_density_initial)
-
-    nstep = 1
-    while nstep <= nsteps:
-        # define the PDE
-        # m=1 is the heat equation 
-        test = TestFunction(space)
-        PDE = ( 
-            1/tau * (exp(log_density) - exp(log_density_initial)) * test  * dx 
-            + m_exponent * exp(m_exponent * log_density_initial) * inner(grad(log_density), grad(test)) * dx
-            )
-        problem = NonlinearVariationalProblem(PDE, log_density)
-
-        # set solver. One Newton step is required for m=1
-        ctrl={
-                'snes_rtol': 1e-16,
-                'snes_atol': 1e-4,
-                'snes_stol': 1e-16,
-                'snes_type': 'newtonls',
-                'snes_linesearch_type':'bt',
-                'snes_max_it': 20,
-                'snes_monitor': None,
-                # krylov solver controls
-                'ksp_type': 'gmres',
-                'ksp_atol': 1e-30,
-                'ksp_rtol': 1e-8,
-                'ksp_divtol': 1e4,
-                'ksp_max_it' : 100,
-                # preconditioner controls
-                'pc_type': 'hypre',
-            }
-        snes_solver = NonlinearVariationalSolver(problem, solver_parameters=ctrl)
-        
-        # solve the problem
-        try:
-            snes_solver.solve()
-            ierr = 0
-        except:
-            ierr = snes_solver.snes.getConvergedReason()
-
-        if (ierr != 0):
-            print('ierr',ierr)
-            print(f' Failure in due to {SNESReasons[ierr]}')
-            raise ValueError('Newton solver failed')
-        
-        nstep += 1
-        log_density_initial.assign(log_density)
-
-    # return the solution in the same function space of the input
-    smooth_density = Function(density.function_space())
-    smooth_density.interpolate(exp(log_density))
-
-    return smooth_density

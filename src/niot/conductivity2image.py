@@ -72,3 +72,71 @@ class SmootherBlock(Block):
         return backend_smooth(inputs[0], self.LaplacianSmoother)
 
 LaplacianSmoothing = overload_function(smooth, SmootherBlock)
+
+
+######################################################################
+# Nonlinear smoothing via "porous medium equation" (porrous media for the mathematician)
+######################################################################
+def spread(density, tau=0.1, m_exponent=1, nsteps=1):
+    '''
+    Spread a density using the porous medium equation,
+    :math:`\partial_t \rho - \nabla \cdot (\rho^m-1 \nabla \rho)=0`.
+    '''
+    # create the function space
+    mesh = density.function_space().mesh()
+    space = FunctionSpace(mesh, 'CG', 1)
+    log_density_initial = Function(space)
+    log_density_initial.interpolate(ln(density))
+    log_density = cp(log_density_initial)
+
+    nstep = 1
+    while nstep <= nsteps:
+        # define the PDE
+        # m=1 is the heat equation 
+        test = TestFunction(space)
+        PDE = ( 
+            1/tau * (exp(log_density) - exp(log_density_initial)) * test  * dx 
+            + m_exponent * exp(m_exponent * log_density_initial) * inner(grad(log_density), grad(test)) * dx
+            )
+        problem = NonlinearVariationalProblem(PDE, log_density)
+
+        # set solver. One Newton step is required for m=1
+        ctrl={
+                'snes_rtol': 1e-16,
+                'snes_atol': 1e-4,
+                'snes_stol': 1e-16,
+                'snes_type': 'newtonls',
+                'snes_linesearch_type':'bt',
+                'snes_max_it': 20,
+                'snes_monitor': None,
+                # krylov solver controls
+                'ksp_type': 'gmres',
+                'ksp_atol': 1e-30,
+                'ksp_rtol': 1e-8,
+                'ksp_divtol': 1e4,
+                'ksp_max_it' : 100,
+                # preconditioner controls
+                'pc_type': 'hypre',
+            }
+        snes_solver = NonlinearVariationalSolver(problem, solver_parameters=ctrl)
+        
+        # solve the problem
+        try:
+            snes_solver.solve()
+            ierr = 0
+        except:
+            ierr = snes_solver.snes.getConvergedReason()
+
+        if (ierr != 0):
+            print('ierr',ierr)
+            print(f' Failure in due to {SNESReasons[ierr]}')
+            raise ValueError('Newton solver failed')
+        
+        nstep += 1
+        log_density_initial.assign(log_density)
+
+    # return the solution in the same function space of the input
+    smooth_density = Function(density.function_space())
+    smooth_density.interpolate(exp(log_density))
+
+    return smooth_density
