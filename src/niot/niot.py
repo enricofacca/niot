@@ -11,6 +11,8 @@ from scipy.linalg import norm
 import time as cputiming
 import os
 import utilities
+
+import conductivity2image as conductivity2image
 import linear_algebra_utilities as linalg
 from petsc4py import PETSc
 import time 
@@ -503,7 +505,7 @@ class NiotSolver:
                  weights=np.array([1.0,1.0,0.0]),
                  confidence=1.0,
                  tdens2image='identity',
-                 scaling=1.0, # used only if tdens2image is 'scaling'
+                 scaling=1.0, # scaling factor
                  sigma_smoothing=0.1 # used only if tdens2image is 'laplacian_smoothing'
                  ):
         '''
@@ -526,32 +528,39 @@ class NiotSolver:
             #self.confidence.rename('confidence','confidence')
         
 
-        print(f'{tdens2image=}')
+        print(f'{tdens2image=}',f'{scaling=}',f'{sigma_smoothing=}')
+        self.scaling = scaling
         if tdens2image == 'identity':
-            self.tdens2image = lambda x: x
-        elif tdens2image == 'scaling':
-            self.scaling = scaling
             self.tdens2image = lambda x: scaling*x
         elif tdens2image == 'laplacian_smoothing':
             self.sigma_smoothing = sigma_smoothing
             test = TestFunction(self.fems.tdens_space)  
             trial = TrialFunction(self.fems.tdens_space)
-            if  self.mesh.ufl_cell().is_simplex():
-                form = ( inner(test, trial)*dx 
-                        + self.sigma_smoothing * inner(jump(test), jump(trial))  / self.fems.delta_h * dS )
+            form = inner(test, trial)*dx
+            if self.fems.tdens_space.ufl_element().degree() == 0:
+                if self.mesh.ufl_cell().is_simplex():
+                    # if the mesh is simplicial, we use the DG0 laplacian taken from
+                    # https://www.firedrakeproject.org/demos/saddle_point_systems.py.html
+                    # Without scaling the scheme is not consistent.
+                    form += self.sigma_smoothing * self.DG0_scaling * inner(jump(test, self.normal), jump(trial, self.normal)) * dS
+                else:
+                    form += self.sigma_smoothing * jump(test) * jump(trial) / self.fems.delta_h * dS
+            elif self.fems.tdens_space.ufl_element().degree() == 1:
+                form += inner(grad(test), grad(trial)) * dx
             else:
-                form = ( inner(test, trial)*dx 
-                        + self.sigma_smoothing * inner(grad(test), grad(trial))*dx)
+                raise NotImplementedError('piecewise constant, or linear tdens is implemented')
             
             self.LaplacianMatrix = assemble(form).M.handle
             self.LaplacianSmoother = linalg.LinSolMatrix(self.LaplacianMatrix,
-                                                        self.fems.tdens_space, 
-                                                        solver_parameters={
-                                            'ksp_type': 'cg',
-                                            'ksp_rtol': 1e-10,
-                                            'pc_type': 'hypre'})
+                                                    self.fems.tdens_space, 
+                                                    solver_parameters={
+                                        'ksp_type': 'cg',
+                                        'ksp_rtol': 1e-10,
+                                        'pc_type': 'hypre'})
             
-            self.tdens2image = lambda x: utils.LaplacianSmoothing(x,self.LaplacianSmoother)
+            print('defining tdens2image')
+            self.tdens2image = lambda fun: self.scaling*conductivity2image.LaplacianSmoothing(fun,self.LaplacianSmoother)
+            
         else:
             raise ValueError(f'Map tdens2iamge not supported {tdens2image}\n'
                              +'Only identity, scaling and laplacian_smoothing are implemented')
