@@ -18,11 +18,14 @@ from pyadjoint.overloaded_function import overload_function
 
 import firedrake.adjoint as fire_adj
 
+# We defined the smoothing operator addapting from the example in:
+# https://www.dolfin-adjoint.org/en/latest/documentation/custom_functions.html
+
 
 def smooth(func, LaplacianSmoother):
     """
     Return a smoothed version of the function `func` 
-    by solving, for one time step, the heat equation 
+    by solving, for one time step dt, the heat equation 
     dt u - Laplace(u) = 0 
     u(0) = func
     This is applying the inverse of the matrix
@@ -72,10 +75,6 @@ class SmootherBlock(Block):
 
         test = TestFunction(self.V)
         v = assemble(out*test*dx)
-
-        print('utils',type(v))
-        #with v.dat.vec as v_vec:
-        #return v_vec
         return v
 
     def recompute_component(self, inputs, block_variable, idx, prepared):

@@ -20,8 +20,6 @@ import cProfile
 sys.path.append('../src/niot')
 from niot import NiotSolver
 from niot import Controls
-from niot import spread
-from niot import heat_spread
 import image2dat as i2d
 
 
@@ -137,8 +135,8 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
                                                   min_tdens=1e-8)
     niot_solver.set_inpainting_parameters(weights=weights,
                                          confidence=fire_confidence,
-                                         tdens2image='identity')#,#'laplacian_smoothing',
-                                         #sigma_smoothing=0.01)
+                                         tdens2image='laplacian_smoothing',
+                                         sigma_smoothing=1e-6)
     
     niot_solver.save_inputs(os.path.join(directory,"parameters_recostruction.pvd"))
     
@@ -153,7 +151,7 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
         linear_max_iter=1000)
 
     ctrl.deltat_control = 'expansive'#'adaptive'
-    ctrl.deltat_expansion = 1.01
+    ctrl.deltat_expansion = 1.05
     ctrl.deltat_min = 1e-7
     ctrl.deltat_max = 1e-1
     ctrl.verbose = 1
@@ -173,6 +171,9 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
     sol = niot_solver.create_solution() # [pot, tdens] functions
     if corrupted_as_initial_guess == 1:
         sol.sub(1).assign(fire_corrupted+1e-6)
+
+    pot, tdens = sol.subfunctions
+    reconstruction = niot_solver.tdens2image(tdens)
 
     #print('solving pot_0')
     #ierr = niot_solver.solve_pot_PDE(ctrl, sol)
@@ -205,6 +206,8 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
     #initial_pot.interpolate(initial_sol.subfunctions[0])
     #initial_pot.rename('initial_pot','Initial guess')
 
+    reconstruction = niot_solver.tdens2image(tdens) 
+
     filename = os.path.join(runs_directory, f'{label}.pvd')
     print("Saving solution to "+filename)
     niot_solver.save_solution(sol,filename)
@@ -212,6 +215,7 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
                         niot_solver.source,
                         niot_solver.sink,
     #                    initial_pot,initial_tdens,
+                        reconstruction,
                         fire_networks,
                         fire_networks_for_contour,
                         fire_masks,

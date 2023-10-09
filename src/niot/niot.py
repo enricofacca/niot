@@ -175,6 +175,7 @@ class Controls:
                 linear_tol=1e-6,
                 nonlinear_max_iter=30,
                 linear_max_iter=1000,
+                gradient_scaling='dmk'
                 ):
         '''
         Set the controls of the Dmk algorithm
@@ -204,7 +205,11 @@ class Controls:
 
         #: real : lower bound for tdens
         self.tdens_min = 1e-8
-        
+
+        #: str: gradient scaling
+        # 'dmk': scale by tdens**(2-gamma)
+        # 'mirror_descent': scale by tdens
+        self.gradient_scaling = gradient_scaling
 
         #: int: max number of Krylov solver iterations
         self.linear_max_iter = linear_max_iter
@@ -1066,53 +1071,55 @@ class NiotSolver:
         self.pot_h.assign(pot) 
         self.tdens_h.assign(tdens)
        
-        new = True
-        if new:
-            self.lagrangian_fun = assemble(self.Lagrangian(self.pot_h,self.tdens_h))
-            with fire_adj.stop_annotating():
-                self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
-                self.rhs_ode = self.lagrangian_fun_reduced.derivative()
-            #self.rhs_ode = fire_adj.compute_gradient(self.lagrangian_fun, fire_adj.Control(self.tdens_h)) #self.lagrangian_fun_reduced.derivative()
-            gc.collect()
-        else:
-            PDE_tdens_discr = derivative(self.weights[0]*self.discrepancy(pot,self.tdens_h),self.tdens_h)
-            PDE_tdens_opt = derivative(self.weights[1]*self.penalization(pot,self.tdens_h),self.tdens_h)
-            
-            PDE_tdens_reg = derivative(self.weights[2]*self.regularization(pot,self.tdens_h),self.tdens_h)
-            if (self.spaces=='CR1DG0' and self.weights[2]>1e-16):
-                test = self.fems.tdens_test
-                PDE_tdens_reg = self.weights[2] * self.DG0_scaling * inner(jump(self.tdens_h, self.normal), jump(test, self.normal)) * dS
-            bcs_tdens = None
+        time_start = time.time()
+        # We compute the gradient w.r.t to tdens of the Lagrangian
+        # Since the Lagrangian contains the map tdens2image, 
+        # we need to use the adjoint method, where the Jacobian-vector product
+        # of tdens2image is computed automatically.
+        #     
+        # We follow the example in 
+        # see also https://www.dolfin-adjoint.org/en/latest/documentation/custom_functions.html
+        # Note how we need to write 
+        #   L=assemble(functional)
+        #   reduced_functional = ReducedFunctional(functional, Control(tdens))
+        #   compute gradient
+        # instead of
+        #   L=functional
+        #   PDE = derivative(L,tdens)
+        #   gradient = assemble(PDE)
+        self.lagrangian_fun = assemble(self.Lagrangian(self.pot_h,self.tdens_h))
+        # The stop_annotating is required to avoid memory accumalation
+        # It works but I don't know why.   
+        with fire_adj.stop_annotating():
+            self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
+            self.rhs_ode = self.lagrangian_fun_reduced.derivative()
+        gc.collect()
+        time_stop = time.time()
 
-            self.PDE_tdens = (PDE_tdens_discr + PDE_tdens_opt + PDE_tdens_reg)
-        
-            # compute update vectors using mass matrix
-            time_start = time.time()
-            self.rhs_ode = assemble(self.PDE_tdens, bcs=bcs_tdens)
-            time_stop = time.time()
 
-
-        #rhs_reg = assemble(PDE_tdens_reg, bcs=bcs_tdens)
+        # compute a scaling vector for the gradient
         update = Function(self.fems.tdens_space)
         scaling = Function(self.fems.tdens_space)
-        scaling.interpolate(self.tdens_h**(2-self.gamma))
+        
+        if ctrl.gradient_scaling == 'dmk':            
+            tdens_power = 2-self.gamma
+        elif ctrl.scaling == 'mirror_descent':
+            tdens_power = 1.0
+        else:
+            raise ValueError(f'Wrong scaling method {ctrl.scaling}')
+        scaling.interpolate(self.tdens_h**tdens_power)
+
         with self.rhs_ode.dat.vec as rhs, scaling.dat.vec_ro as scaling_vec, update.dat.vec as d, self.tdens_h.dat.vec_ro as tdens_vec:
             # scale the gradient w.r.t. tdens by tdens itself
             rhs *= scaling_vec
             print(utilities.msg_bounds(rhs,'rhs'))
-            
-
-            #if abs(self.weights[2])>1e-16:
-            #    print('regularization')
-            #    with rhs_reg.dat.vec_ro as rhs_reg_vec: 
-            #        rhs.axpy(1., rhs_reg_vec)
-            # scale by the inverse mass matrix
+        
             self.fems.tdens_inv_mass_matrix.solve(rhs, d)
             # set step size
             step = ctrl.set_step(d)
             print(utilities.msg_bounds(d,'tdens step')+f' dt={step:.2e}')
             ctrl.deltat = step
-            print('step',step)
+            
             # update
             tdens_vec.axpy(-step, d)
 
