@@ -39,7 +39,9 @@ def msg_bounds(vec,label):
 
 def save2pvd(functions,filename):
     """
-    Save a list of functions to a pvd file
+    Save a list of functions to a pvd file.
+    The associated vtu file is renamed to filename.vtu
+    While standard Firedrake pvd files have the extension _0.vtu
     """
     # check exension
     if (filename[-4:] != '.pvd'):

@@ -1,3 +1,13 @@
+# Author: Enrico Facca
+# Date: 2023-09-15T15:45:04+02:00
+# -----
+#
+# Description:
+#   This file contains the implementation of the smoothing operator
+#   to transform a conductivity field into an image. 
+#   Both are implemented as pyadjoint blocks.
+# """
+
 from firedrake import FunctionSpace
 from firedrake import Function, TestFunction, TrialFunction
 from firedrake import assemble

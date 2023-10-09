@@ -881,10 +881,7 @@ class NiotSolver:
             raise NotImplementedError('Only piecewise constant tdens is implemented')
             
         return reg
-            
-
-        
-    
+                
     def Lagrangian(self, pot, tdens):
         ''' 
         Definition of energy minimizated by the niot solver
