@@ -2,9 +2,10 @@ from petsc4py import PETSc
 from firedrake import MixedVectorSpaceBasis
 from time import process_time
 import sys
-from slepc4py import SLEPc
+
 
 def study_eigenvalues(test_matrix):
+    from slepc4py import SLEPc
     E = SLEPc.EPS(); E.create()
     E.setOperators(test_matrix)
     E.setProblemType(SLEPc.EPS.ProblemType.NHEP)
@@ -17,6 +18,7 @@ def study_eigenvalues(test_matrix):
     return E
 
 def print_eigenvalues(test_matrix,E):
+    
     Print = PETSc.Sys.Print
 
     Print()
