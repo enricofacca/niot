@@ -43,8 +43,10 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
                             fem,
                             gamma, weights, corrupted_as_initial_guess,
                             confidence,
+                            tdens2image,
                             directory,
-                            runs_directory):
+                            runs_directory,
+                            sigma_smoothing=1e-6):
     print('Corrupting and reconstructing')
     print('Sources: '+img_sources)
     print('Sinks: '+img_sinks)
@@ -64,6 +66,10 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
              f'wr{weights[2]:.1e}',
              f'ini{corrupted_as_initial_guess:d}',
              f'conf{confidence}']
+    if tdens2image == 'laplacian_smoothing':
+        label.append(f'mu2i{tdens2image}sigma{sigma_smoothing:.1e}')
+    elif tdens2image == 'identity':
+        label.append(f'mu2i{tdens2image}')
     label = '_'.join(label)
     print('Problem label: '+label)
 
@@ -112,18 +118,18 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
     fire_confidence_for_contour.interpolate(fire_confidence).rename("confidence_countour","confidence")
 
     filename = os.path.join(directory,"inputs_reconstruction.pvd")
-    utilities.save2pvd([fire_sources,
-                     fire_sinks,
-                     fire_networks,
-                     fire_networks_for_contour,
-                     fire_masks,
-                     fire_masks_for_contour,
-                     fire_corrupted,
-                     fire_corrupted_for_contour,
-                     fire_confidence,
-                     fire_confidence_for_contour
-                     ],
-                    filename)
+    # utilities.save2pvd([fire_sources,
+    #                  fire_sinks,
+    #                  fire_networks,
+    #                  fire_networks_for_contour,
+    #                  fire_masks,
+    #                  fire_masks_for_contour,
+    #                  fire_corrupted,
+    #                  fire_corrupted_for_contour,
+    #                  fire_confidence,
+    #                  fire_confidence_for_contour
+    #                  ],
+    #                 filename)
 
     #kappa = 1.0/(1.0 + fire_confidence + 1e-4)
     kappa = 1.0
@@ -135,16 +141,16 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
                                                   min_tdens=1e-8)
     niot_solver.set_inpainting_parameters(weights=weights,
                                          confidence=fire_confidence,
-                                         tdens2image='laplacian_smoothing',
-                                         sigma_smoothing=1e-6)
+                                         tdens2image=tdens2image,
+                                         sigma_smoothing=sigma_smoothing)
     
-    niot_solver.save_inputs(os.path.join(directory,"parameters_recostruction.pvd"))
+    #niot_solver.save_inputs(os.path.join(directory,"parameters_recostruction.pvd"))
     
     ctrl = Controls(
         tol=1e-2,
-        time_discretization_method='mirror_descent',
+        time_discretization_method='tdens_mirror_descent',
         deltat=1e-3,
-        max_iter=500,
+        max_iter=400,
         nonlinear_tol=1e-5,
         linear_tol=1e-6,
         nonlinear_max_iter=30,
@@ -207,6 +213,7 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
     #initial_pot.rename('initial_pot','Initial guess')
 
     reconstruction = niot_solver.tdens2image(tdens) 
+    reconstruction.rename('reconstruction','Reconstruction')
 
     filename = os.path.join(runs_directory, f'{label}.pvd')
     print("Saving solution to "+filename)
@@ -288,6 +295,7 @@ if (__name__ == '__main__'):
     parser.add_argument('--gamma', type=float, default=0.5, help="branch exponent")
     parser.add_argument('--ini', type=int, default=0, help="0/1 use corrupted image as initial guess")
     parser.add_argument('--conf', type=str, default='MASK', help="MASK(=opposite to mask),CORRUPTED(=gaussian filter of corrupted)")
+    parser.add_argument('--t2i', type=str, default='identity', help="identity,laplacian_smoothing")
     parser.add_argument('--dir', type=str, default='niot_recostruction', help="directory storing results")
 
     args = parser.parse_args()
@@ -326,6 +334,7 @@ if (__name__ == '__main__'):
                             weights,
                             args.ini,
                             args.conf,
+                            args.t2i,
                             args.dir,
                             out_dir)
     print ("network = ",args.network)

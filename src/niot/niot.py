@@ -71,6 +71,9 @@ def get_step_lenght(x,increment,x_lower_bound=0.0,step_lower_bound=1e-16):
         return 1
 
 
+
+
+
 class SpaceDiscretization:
     '''
     Class containg fem discretization variables
@@ -265,7 +268,9 @@ class Controls:
         if (self.verbose > priority):
             if color != 'black':
                 msg = utilities.color_msg(color, msg)
-            print(msg)   
+            print(msg) 
+
+      
 
 
 
@@ -284,6 +289,8 @@ class NiotSolver:
     # register citations using Citations class in firedrake
     Citations().register('FCP2021')
 
+    #def __init__(self, corrupted, transport_inputs, ctrl=Controls, confidence=1.0)
+    #def __init__(self, corrupted, confidence, source, sinkotp_inputs, ctrl)
     def __init__(self, spaces, numpy_corrupted, DG0_cell2face='harmonic_mean'):
         '''
         Initialize solver (spatial discretization) from numpy_image (2d or 3d data)
@@ -292,13 +299,11 @@ class NiotSolver:
         if spaces == 'CR1DG0':
             print('building mesh')
             self.mesh = self.build_mesh_from_numpy(numpy_corrupted, mesh_type='simplicial')
-            self.mesh_type = 'simplicial'
             # create FEM spaces
             print('building fems')
             self.fems = SpaceDiscretization(self.mesh,'CR',1, 'DG',0)
         elif spaces == 'DG0DG0':
             self.mesh = self.build_mesh_from_numpy(numpy_corrupted, mesh_type='cartesian')
-            self.mesh_type = 'cartesian'
             # create FEM spaces
             self.fems = SpaceDiscretization(self.mesh,'DG',0,'DG',0)
         else:
@@ -341,7 +346,13 @@ class NiotSolver:
         else:   
             raise ValueError('Wrong DG0_cell2face method. Passed '+DG0_cell2face+
                             '\n Only arithmetic_mean and harmonic_mean are implemented')
-        
+
+    def print(self, ctrl, msg):
+        if ctrl.print_stdout:
+            print(msg)
+        if ctrl.print_log:
+            print(msg,file=self.log_file)
+
         
     def setup_pot_solver(self,ctrl):
         self.pot_PDE = derivative(self.Lagrangian(self.pot_h,self.tdens_h),self.pot_h)
@@ -722,7 +733,8 @@ class NiotSolver:
     def create_solution(self):
         return self.fems.create_solution()
     
-    @profile
+    #@profile
+    
     def solve(self, ctrl, sol):
         '''
         Args:
@@ -750,7 +762,7 @@ class NiotSolver:
         ierr_dmk = 0
         sol_old = cp(sol)           
         tape.clear_tape()
-        while ierr_dmk == 0:
+        while ierr_dmk == 0 and iter < ctrl.max_iter:
             # update with restarts
             sol_old.assign(sol)
             nrestart = 0 
@@ -947,122 +959,8 @@ class NiotSolver:
 
         return ierr
     
+     #@profile
     def tdens_mirror_descent(self, ctrl, sol):
-        '''
-        Procedure for the update of tdens using mirror descent.
-        args:
-            ctrl : Class with controls  (tol, max_iter, deltat, etc.)
-            sol : Class with mixed function [pot,tdens]. It is changed in place.
-        returns:
-            ierr : control flag. It is 0 if everthing worked.
-        '''
-
-        # compute gradient of energy w.r.t. tdens
-        pot, tdens = sol.subfunctions
-        tdens_h = Function(self.fems.tdens_space)
-        tdens_h.assign(tdens)
-        PDE_tdens = derivative(self.Lagrangian(pot,tdens_h),tdens_h)
-        bcs_tdens = None
-        
-        
-        # compute update vectors using mass matrix
-        rhs_ode = assemble(PDE_tdens, bcs=bcs_tdens)
-        update = Function(self.fems.tdens_space)
-        scaling = Function(self.fems.tdens_space)
-        scaling.interpolate(tdens_h)#**(2-self.gamma))
-        with rhs_ode.dat.vec as rhs, scaling.dat.vec_ro as scaling_vec, update.dat.vec as d, tdens_h.dat.vec_ro as tdens_vec:
-            # scale the gradient w.r.t. tdens by tdens itself
-            rhs *= scaling_vec
-            # scale by the inverse mass matrix
-            self.fems.tdens_inv_mass_matrix.solve(rhs, d)
-            # update
-            # update
-            step = ctrl.set_step(d)
-            ctrl.deltat = step
-            tdens_vec.axpy(-ctrl.deltat, d)
-
-        utilities.threshold_from_below(tdens_h, 0)
-
-        sol.sub(1).assign(tdens_h)
-        
-        
-        # compute pot associated to new tdens
-        ierr = self.solve_pot_PDE(ctrl, sol)
-        
-        return ierr
-    
-    def gfvar2tdens(self,gfvar):
-        return gfvar**(2/self.gamma)
-        #return 2*atan(gfvar)
-    def tdens2gfvar(self,tdens):
-        return tdens**(self.gamma/2)
-        #return tan(tdens/2)
-    
-    def gfvar_gradient_descent(self, ctrl, sol):
-        '''
-        Update of using transformation tdens=gfvar**2 and gradient descent
-        args:
-            ctrl : Class with controls  (tol, max_iter, deltat, etc.)
-            sol : Class with unkowns (pot,tdens, in this case)
-        returns:
-            ierr : control flag. It is 0 if everthing worked.
-        Update of gfvar using gradient descent direction
-        '''
-        
-        # convert tdens to gfvar
-        pot, tdens = sol.subfunctions
-        gfvar = Function(self.fems.tdens_space)
-        gfvar.interpolate(self.tdens2gfvar(tdens))
-
-        # compute gradient of energy w.r.t. gfvar
-        PDE_discr = derivative(self.discrepancy(pot,self.gfvar2tdens(gfvar)),gfvar)
-        PDE_otp = derivative(self.penalization(pot,self.gfvar2tdens(gfvar)),gfvar)
-        PDE_reg = derivative(self.regularization(pot,gfvar),gfvar)
-
-        PDE = (self.weights[0] * PDE_discr 
-               + self.weights[1] * PDE_otp 
-               + self.weights[2] * PDE_reg)
-        bcs_gfvar = None
-        
-        # matrix for the mass matrix
-        # test = self.fems.tdens_test
-        # trial = self.fems.tdens_trial
-        # form = test*trial*dx + derivative(self.weights[2]*PDE_reg, gfvar)
-        # matrix = assemble(form).M.handle
-        # inv_matrix = linalg.LinSolMatrix(matrix, self.fems.tdens_space,
-        #                 solver_parameters={
-        #                     'ksp_type':'cg',
-        #                     'ksp_rtol': 1e-6,
-        #                     'pc_type':'hypre'})
-
-
-
-
-
-
-        # compute update vectors using mass matrix
-        rhs_ode = assemble(PDE, bcs=bcs_gfvar)
-        update = Function(self.fems.tdens_space)
-        with rhs_ode.dat.vec as rhs, gfvar.dat.vec_ro as gfvar_vec, update.dat.vec as d:
-            # scale by the inverse mass matrix
-            self.fems.tdens_inv_mass_matrix.solve(rhs, d)
-            # update
-            step = ctrl.set_step(d)
-            ctrl.deltat = step
-            print(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}')
-            gfvar_vec.axpy(-step, d)
-
-        # convert gfvar to tdens
-        utilities.threshold_from_below(gfvar, 0)
-        sol.sub(1).assign(self.gfvar2tdens(gfvar))
-
-        # compute pot associated to new tdens
-        ierr = self.solve_pot_PDE(ctrl, sol)
-        print(ierr)
-        return ierr
-    
-    #@profile
-    def mirror_descent(self, ctrl, sol):
         # Tdens is udpdate along the direction of the gradient
         # of the energy w.r.t. tdens multiply by tdens**(2-gamma)
         # 
@@ -1136,6 +1034,60 @@ class NiotSolver:
         ctrl.print_info(f'solve_pot_PDE time = {time_stop-time_start}', priority=2)
         
         return ierr            
+       
+    def gfvar2tdens(self,gfvar):
+        return gfvar**(2/self.gamma)
+        #return 2*atan(gfvar)
+    def tdens2gfvar(self,tdens):
+        return tdens**(self.gamma/2)
+        #return tan(tdens/2)
+    
+    def gfvar_gradient_descent(self, ctrl, sol):
+        '''
+        Update of using transformation tdens=gfvar**2 and gradient descent
+        args:
+            ctrl : Class with controls  (tol, max_iter, deltat, etc.)
+            sol : Class with unkowns (pot,tdens, in this case)
+        returns:
+            ierr : control flag. It is 0 if everthing worked.
+        Update of gfvar using gradient descent direction
+        '''
+        
+        # convert tdens to gfvar
+        pot, tdens = sol.subfunctions
+        gfvar = Function(self.fems.tdens_space)
+        gfvar.interpolate(self.tdens2gfvar(tdens))
+
+        # compute gradient of energy w.r.t. gfvar
+        # see tdens_mirror_descent for more details on the implementation
+        tdens_h = self.gfvar2tdens(gfvar)
+        L = assemble(self.Lagrangian(pot,tdens_h))
+        with fire_adj.stop_annotating():
+            reduced_functional = fire_adj.ReducedFunctional(L, fire_adj.Control(gfvar))
+            self.rhs_ode = reduced_functional.derivative()
+        
+        # compute update vectors using mass matrix
+        update = Function(self.fems.tdens_space)
+        with self.rhs_ode.dat.vec as rhs, gfvar.dat.vec_ro as gfvar_vec, update.dat.vec as d:
+            # scale by the inverse mass matrix
+            self.fems.tdens_inv_mass_matrix.solve(rhs, d)
+            
+            # update
+            step = ctrl.set_step(d)
+            ctrl.deltat = step
+            print(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}')
+            gfvar_vec.axpy(-step, d)
+
+        # convert gfvar to tdens
+        utilities.threshold_from_below(gfvar, 0)
+        sol.sub(1).assign(self.gfvar2tdens(gfvar))
+
+        # compute pot associated to new tdens
+        ierr = self.solve_pot_PDE(ctrl, sol)
+        print(ierr)
+        return ierr
+    
+   
         
     def iterate(self, ctrl, sol):
         '''
