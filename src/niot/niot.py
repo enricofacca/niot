@@ -11,12 +11,13 @@ from scipy.linalg import norm
 import time as cputiming
 import os
 import utilities
+import optimal_transport as ot
 
 import conductivity2image as conductivity2image
 import linear_algebra_utilities as linalg
 from petsc4py import PETSc
 import time 
-from memory_profiler import profile
+#from memory_profiler import profile
 SNESReasons = utilities._make_reasons(PETSc.SNES.ConvergedReason())
 
 # function operations
@@ -137,8 +138,7 @@ class SpaceDiscretization:
 
         self.pot_is, self.tdens_is = self.pot_tdens_space.dof_dset.field_ises
 
-        
-
+    
     def create_solution(self):
         '''
         Create a mixed function sol=(pot,tdens) 
@@ -169,22 +169,98 @@ class Controls:
     '''
     Class with Dmk Solver 
     '''
+    global_ctrl={'tol':1e-2,
+                 'max_iter':100,
+                 'max_restart':2,
+                 'optimization_method':'dmk',
+                 }
+    
+    discretization_ctrl={'spaces':'CR1DG0',
+                         'cell2face':'harmonic_mean',
+                         }
+    
+    tdens2image_ctrl={'tdens2image':'identity',
+                        'scaling':1.0,
+                        'sigma_smooth':1.0}
+    
+    inpainting_ctrl={'weight_discrepancy':1.0,
+                    'weight_regularization':0.0,
+                    'gamma':0.5}
+
+    dmk_ctrl={'time_discretization_method':'mirror_descent',
+            'gradient_scaling':'dmk',
+            'deltat':0.5,
+            'nonlinear_tol':1e-6,
+            'linear_tol':1e-6,
+            'nonlinear_max_iter':30,
+            'linear_max_iter':1000,
+            }   
+
     def __init__(self,
                 tol=1e-2,
-                time_discretization_method='mirror_descent',
-                deltat=0.5,
                 max_iter=100,
+                max_restart=2,
+                # conductivity to image parameters
+                tdens2image='identity',
+                scaling=1.0,
+                sigma_smooth=1.0,
+                # inpainting parameters
+                weight_discrepancy=1.0,
+                weight_regularization=0.0,
+                gamma=0.5,
+                # discretization parameters
+                spaces='CR1DG0',
+                cell2face='harmonic_mean',
+                # optimization parameters
+                time_discretization_method='mirror_descent',
+                gradient_scaling='dmk',
+                deltat=0.5,
                 nonlinear_tol=1e-6,
                 linear_tol=1e-6,
                 nonlinear_max_iter=30,
                 linear_max_iter=1000,
-                gradient_scaling='dmk'
                 ):
         '''
         Set the controls of the Dmk algorithm
         '''
         #: float: stop tolerance
         self.tol = tol
+
+        #: float: branched transport exponent
+        self.gamma = gamma
+
+        #############################
+        # tdens to image parameters 
+        #############################
+
+        #: str: conductivity to image approach
+        # 'identity': identity map
+        # 'laplacian': guassian filter-like based on heat equation
+        self.tdens2image = tdens2image
+
+        # real: multiplicative scaling factor in image = scaling*tdens2image(tdens)
+        self.scaling = scaling
+
+        #: real: smoothing parameter for conductivity to image map
+        self.sigma_smooth = sigma_smooth
+
+        #############################
+        # inpainting parameters
+        #############################
+        self.weight_discrepancy = weight_discrepancy
+        self.weight_regularization = weight_regularization
+
+
+        #############################
+        # discretization parameters
+        #############################
+        self.spaces = spaces
+        self.cell2face = cell2face
+
+        #############################
+        # optimization parameters
+        #############################
+
 
         #: character: time discretization approach
         self.time_discretization_method = time_discretization_method
@@ -193,10 +269,8 @@ class Controls:
         self.max_iter = max_iter
 
         #: int: max number of update restarts
-        self.max_restart = 2
-        #: real : time step size for contraction in case of failure 
-        self.deltat_contraction = 0.5
-
+        self.max_restart = max_restart
+        
         #: real: time step size
         self.deltat = deltat
 
@@ -205,9 +279,11 @@ class Controls:
         self.deltat_min = 1e-2
         self.deltat_max = 0.5
         self.deltat_expansion = 2
+        #: real : time step size for contraction in case of failure 
+        self.deltat_contraction = 0.5
 
         #: real : lower bound for tdens
-        self.tdens_min = 1e-8
+        self.min_tdens = 1e-8
 
         #: str: gradient scaling
         # 'dmk': scale by tdens**(2-gamma)
@@ -227,7 +303,6 @@ class Controls:
         #: int: Max number of nonlinear solver iterations 
         self.nonlinear_max_iter = nonlinear_max_iter
         
-       
         #: info on standard output
         self.verbose = 0
         
@@ -291,19 +366,77 @@ class NiotSolver:
 
     #def __init__(self, corrupted, transport_inputs, ctrl=Controls, confidence=1.0)
     #def __init__(self, corrupted, confidence, source, sinkotp_inputs, ctrl)
-    def __init__(self, spaces, numpy_corrupted, DG0_cell2face='harmonic_mean'):
+    # def __init__(self, spaces, numpy_corrupted, DG0_cell2face='harmonic_mean'):
+    #     '''
+    #     Initialize solver (spatial discretization) from numpy_image (2d or 3d data)
+    #     '''
+    #     self.spaces = spaces
+    #     if spaces == 'CR1DG0':
+    #         print('building mesh')
+    #         self.mesh = self.build_mesh_from_numpy(numpy_corrupted, mesh_type='simplicial')
+    #         # create FEM spaces
+    #         print('building fems')
+    #         self.fems = SpaceDiscretization(self.mesh,'CR',1, 'DG',0)
+    #     elif spaces == 'DG0DG0':
+    #         self.mesh = self.build_mesh_from_numpy(numpy_corrupted, mesh_type='cartesian')
+    #         # create FEM spaces
+    #         self.fems = SpaceDiscretization(self.mesh,'DG',0,'DG',0)
+    #     else:
+    #         raise ValueError('Wrong spaces only (pot,tdens) in (CR1,DG0) or (DG0,DG0) implemented')
+    #     self.mesh.name = 'mesh'
+    #     print(f'Number of cells: {self.mesh.num_cells()}')
+
+    #     self.DG0 = FunctionSpace(self.mesh, 'DG', 0)
+
+    #     # set function 
+    #     self.img_observed = self.numpy2function(numpy_corrupted,name='obs')
+    
+    #     # set niot parameter to default
+    #     self.set_inpainting_parameters(
+    #         weights=[1.0,1.0,0.0],
+    #         confidence=1.0,
+    #         tdens2image='identity')
+        
+        
+    #     # init infos
+    #     self.outer_iterations = 0
+    #     self.nonlinear_iterations = 0
+    #     self.nonlinear_res = 0.0
+
+    #     # cached functions
+    #     self.rhs_ode = Function(self.fems.tdens_space)
+    #     self.tdens_h = Function(self.fems.tdens_space)
+    #     self.tdens_h.rename('tdens_h')
+    #     self.pot_h = Function(self.fems.pot_space)
+
+    #     alpha = Constant(4.0)
+    #     h = CellSize(self.mesh)
+    #     h_avg = (h('+') + h('-'))/2.0
+    #     self.DG0_scaling = alpha/h_avg
+    #     self.normal = FacetNormal(self.mesh)
+        
+    #     if ((DG0_cell2face == 'arithmetic_mean') or
+    #         (DG0_cell2face == 'harmonic_mean')):
+    #         self.DG0_cell2face = DG0_cell2face
+    #     else:   
+    #         raise ValueError('Wrong DG0_cell2face method. Passed '+DG0_cell2face+
+    #                         '\n Only arithmetic_mean and harmonic_mean are implemented')
+        
+
+    def __init__(self, btp, observed, confidence, ctrl=Controls()):
         '''
         Initialize solver (spatial discretization) from numpy_image (2d or 3d data)
         '''
-        self.spaces = spaces
-        if spaces == 'CR1DG0':
+        self.spaces = ctrl.spaces
+        self.mesh = btp.mesh
+        if self.spaces == 'CR1DG0':
             print('building mesh')
-            self.mesh = self.build_mesh_from_numpy(numpy_corrupted, mesh_type='simplicial')
+            #self.mesh = self.build_mesh_from_numpy(numpy_corrupted, mesh_type='simplicial')
             # create FEM spaces
-            print('building fems')
+            #print('building fems')
             self.fems = SpaceDiscretization(self.mesh,'CR',1, 'DG',0)
-        elif spaces == 'DG0DG0':
-            self.mesh = self.build_mesh_from_numpy(numpy_corrupted, mesh_type='cartesian')
+        elif self.spaces == 'DG0DG0':
+            #self.mesh = self.build_mesh_from_numpy(numpy_corrupted, mesh_type='cartesian')
             # create FEM spaces
             self.fems = SpaceDiscretization(self.mesh,'DG',0,'DG',0)
         else:
@@ -313,14 +446,45 @@ class NiotSolver:
 
         self.DG0 = FunctionSpace(self.mesh, 'DG', 0)
 
-        # set function 
-        self.img_observed = self.numpy2function(numpy_corrupted,name='obs')
+        # The class BranchedTransportProblem
+        # that contains the physical information of the problem
+        # and the branched transport exponent gamma 
+        self.btp = btp
+        self.min_tdens = ctrl.min_tdens
+        self.kappa = Function(self.fems.tdens_space)
+        if isinstance(self.btp.kappa, float):
+            self.kappa.assign(self.btp.kappa)
+        elif isinstance(self.btp.kappa, Function):
+            self.kappa.project(self.btp.kappa)
+        else:
+            raise ValueError('kappa must be a float or a function')
+        self.source = self.btp.source
+        self.sink = self.btp.sink
+        self.Dirichlet = self.btp.Dirichlet
+
+        # set img to be inpainted
+        self.img_observed = observed
     
-        # set niot parameter to default
+        alpha = Constant(4.0)
+        h = CellSize(self.mesh)
+        h_avg = (h('+') + h('-'))/2.0
+        self.DG0_scaling = alpha/h_avg
+        self.normal = FacetNormal(self.mesh)
+        
+        if ((ctrl.cell2face == 'arithmetic_mean') or
+            (ctrl.cell2face == 'harmonic_mean')):
+            self.DG0_cell2face = ctrl.cell2face
+        else:   
+            raise ValueError('Wrong DG0_cell2face method. Passed '+DG0_cell2face+
+                            '\n Only arithmetic_mean and harmonic_mean are implemented')
+        
+
+
+        # set niot parameter 
         self.set_inpainting_parameters(
-            weights=[1.0,1.0,0.0],
-            confidence=1.0,
-            tdens2image='identity')
+            weights=[ctrl.weight_discrepancy,1.0,ctrl.weight_regularization],
+            confidence=confidence,
+            tdens2image=ctrl.tdens2image)
         
         
         # init infos
@@ -334,18 +498,8 @@ class NiotSolver:
         self.tdens_h.rename('tdens_h')
         self.pot_h = Function(self.fems.pot_space)
 
-        alpha = Constant(4.0)
-        h = CellSize(self.mesh)
-        h_avg = (h('+') + h('-'))/2.0
-        self.DG0_scaling = alpha/h_avg
-        self.normal = FacetNormal(self.mesh)
         
-        if ((DG0_cell2face == 'arithmetic_mean') or
-            (DG0_cell2face == 'harmonic_mean')):
-            self.DG0_cell2face = DG0_cell2face
-        else:   
-            raise ValueError('Wrong DG0_cell2face method. Passed '+DG0_cell2face+
-                            '\n Only arithmetic_mean and harmonic_mean are implemented')
+        self.ctrl = ctrl
 
     def print(self, ctrl, msg):
         if ctrl.print_stdout:
@@ -357,7 +511,7 @@ class NiotSolver:
     def setup_pot_solver(self,ctrl):
         self.pot_PDE = derivative(self.Lagrangian(self.pot_h,self.tdens_h),self.pot_h)
         self.weighted_Laplacian = derivative(-self.pot_PDE,self.pot_h)
-        self.rhs = self.forcing * self.fems.pot_test * dx
+        self.rhs = ( self.source - self.sink) * self.fems.pot_test * dx
 
         #test = TestFunction(self.fems.pot_space)
         #pot_PDE = self.forcing * test * dx + tdens * inner(grad(pot_unknown), grad(test)) * dx 
@@ -558,9 +712,9 @@ class NiotSolver:
                     # if the mesh is simplicial, we use the DG0 laplacian taken from
                     # https://www.firedrakeproject.org/demos/saddle_point_systems.py.html
                     # Without scaling the scheme is not consistent.
-                    form += self.sigma_smoothing * self.DG0_scaling * inner(jump(test, self.normal), jump(trial, self.normal)) * dS
+                    form += sigma_smoothing * self.DG0_scaling * inner(jump(test, self.normal), jump(trial, self.normal)) * dS
                 else:
-                    form += self.sigma_smoothing * jump(test) * jump(trial) / self.fems.delta_h * dS
+                    form += sigma_smoothing * jump(test) * jump(trial) / self.fems.delta_h * dS
             elif self.fems.tdens_space.ufl_element().degree() == 1:
                 form += inner(grad(test), grad(trial)) * dx
             else:
@@ -643,44 +797,7 @@ class NiotSolver:
                 img_function.rename(name,name)
             return img_function
         
-    def function2numpy(self, function):
-        """
-        Convert function to numpy array (2d or 3d).
-        If the mesh is simplicial, the function is averaged neighbouring cells.
-        If the mesh is cartesian, the results is reshaped to the original image shape.
-        """
-        if self.mesh.ufl_cell().is_simplex():
-            # Each pixel is splitted in two triangles.
-            if self.mesh.geometric_dimension() == 2:
-                # get the values of the function
-                with function.dat.vec_ro as f:
-                    value = f.array
-                    print(f'{value.shape=}')
-                    # reshape the values in a matrix of size (2,nx*ny)
-                    value = value.reshape([-1,2])
-                    # average the values along the first dimension
-                    value = np.mean(value,1)
-                    print(f'{value.shape=}')
-                    # reshape the values in a matrix of size (nx,ny)
-                    value = value.reshape([self.nx,self.ny],order='F')
-
-                    return np.flip(value,0)
-                
-            elif self.mesh.geometric_dimension() == 3:
-                raise NotImplementedError('3D mesh not implemented yet')
-        else:
-            if (self.mesh.ufl_cell().cellname() != 'quadrilateral'):
-                raise ValueError('Only simplicial and quadrilateral meshes are supported')
-            # get the values of the function
-            with function.dat.vec_ro as f:
-                value = f.array
-                # reshape the values in a matrix of size (nx,ny)
-                new_shape = [self.nx,self.ny]
-                if self.mesh.geometric_dimension() == 3:
-                    new_shape.append(self.nz)
-                value = value.reshape(new_shape,order='F')
-                return np.flip(value,0)
-
+    
 
     def convert_data(self, data):
         print(type(data))
@@ -861,7 +978,7 @@ class NiotSolver:
         Weighted tdens mass
         :math:`\int_{\Omega}\frac{1}{2\gamma} \mu^{\gamma} dx`
         '''
-        return  0.5 * (tdens ** self.gamma) /  self.gamma  * dx
+        return  0.5 * (tdens ** self.btp.gamma) /  self.btp.gamma  * dx
 
     def penalization(self, pot, tdens): 
         ''' 
@@ -1000,7 +1117,7 @@ class NiotSolver:
         scaling = Function(self.fems.tdens_space)
         
         if ctrl.gradient_scaling == 'dmk':            
-            tdens_power = 2-self.gamma
+            tdens_power = 2 - self.btp.gamma
         elif ctrl.scaling == 'mirror_descent':
             tdens_power = 1.0
         else:
