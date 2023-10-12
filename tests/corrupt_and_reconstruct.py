@@ -20,6 +20,7 @@ import cProfile
 sys.path.append('../src/niot')
 from niot import NiotSolver
 from niot import Controls
+import optimal_transport as ot 
 import image2dat as i2d
 
 
@@ -31,14 +32,15 @@ from firedrake import interpolate
 # for writing to file
 from firedrake import File
 import firedrake as fire
-from memory_profiler import profile
+#from memory_profiler import profile
 
 import utilities as utilities
+import image2dat as i2d
 
 from scipy.ndimage import gaussian_filter
 
 #@profile
-def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks, 
+def corrupt_and_reconstruct(img_source,img_sink,img_network,img_mask, 
                             scaling_size,
                             fem,
                             gamma, weights, corrupted_as_initial_guess,
@@ -48,10 +50,10 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
                             runs_directory,
                             sigma_smoothing=1e-6):
     print('Corrupting and reconstructing')
-    print('Sources: '+img_sources)
-    print('Sinks: '+img_sinks)
-    print('Networks: '+img_networks)
-    print('Masks: '+img_masks)
+    print('Sources: '+img_source)
+    print('Sinks: '+img_sink)
+    print('Networks: '+img_network)
+    print('Masks: '+img_mask)
 
 
     # create problem label
@@ -77,16 +79,19 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
     # convert images to numpy matrices
     # 1 is the white background
     scaling_forcing = 1e1
-    np_sources = i2d.image2matrix(img_sources,normalize=True,invert=True,factor=scaling_size) * scaling_forcing
-    np_sinks = i2d.image2matrix(img_sinks,normalize=True,invert=True,factor=scaling_size) * scaling_forcing
-    np_networks = i2d.image2matrix(img_networks,normalize=True,invert=True,factor=scaling_size)
-    np_masks = i2d.image2matrix(img_masks,normalize=True,invert=True,factor=scaling_size)
-    
+    np_source = i2d.image2numpy(img_source,normalize=True,invert=True,factor=scaling_size) * scaling_forcing
+    np_sink = i2d.image2numpy(img_sink,normalize=True,invert=True,factor=scaling_size) * scaling_forcing
+    np_network = i2d.image2numpy(img_network,normalize=True,invert=True,factor=scaling_size)
+    np_mask = i2d.image2numpy(img_mask,normalize=True,invert=True,factor=scaling_size)
+    nx = np_source.shape[0]
+    ny = np_source.shape[1]
+
+
     # the corrupted image is created adding a mask
     # to the known network
-    np_corrupted = np_networks * (1-np_masks)
+    np_corrupted = np_network * (1-np_mask)
     if confidence == 'MASK':
-        np_confidence = (1.0 - np_masks)
+        np_confidence = (1.0 - np_mask)
     elif confidence == 'CORRUPTED':
         np_confidence = gaussian_filter(np_corrupted, sigma=2)
         #normalize to [0,1]
@@ -98,24 +103,26 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
 
 
     # Init. solver for a given reconstruction problem
-    niot_solver = NiotSolver(fem, np_corrupted, DG0_cell2face = 'harmonic_mean')
-    
-    # save inputs     
-    fire_sources = niot_solver.numpy2function(np_sources, name="sources")
-    fire_sinks = niot_solver.numpy2function(np_sinks, name="sinks")
-    fire_networks = niot_solver.numpy2function(np_networks, name="networks")
-    fire_corrupted = niot_solver.numpy2function(np_corrupted, name="corrupted")
-    fire_masks = niot_solver.numpy2function(np_masks, name="masks")
-    fire_confidence = niot_solver.numpy2function(np_confidence, name="confidence")
-    CG1 = fire.FunctionSpace(niot_solver.mesh ,'CG',1)
-    fire_masks_for_contour = Function(CG1)
-    fire_masks_for_contour.interpolate(fire_masks).rename("mask_countour","masks")
-    fire_networks_for_contour = Function(CG1)
-    fire_networks_for_contour.interpolate(fire_networks).rename("networks_countour","networks")
-    fire_corrupted_for_contour = Function(CG1)
-    fire_corrupted_for_contour.interpolate(fire_corrupted).rename("corrupted_countour","corrupted")
-    fire_confidence_for_contour = Function(CG1)
-    fire_confidence_for_contour.interpolate(fire_confidence).rename("confidence_countour","confidence")
+    #niot_solver = NiotSolver(fem, np_corrupted, DG0_cell2face = 'harmonic_mean')
+    mesh = i2d.build_mesh_from_numpy(np_corrupted)
+
+
+    # save inputs    
+    source = i2d.numpy2firedrake(mesh, np_source, name="source")
+    sink = i2d.numpy2firedrake(mesh, np_sink, name="sink")
+    network = i2d.numpy2firedrake(mesh, np_network, name="network")
+    corrupted = i2d.numpy2firedrake(mesh, np_corrupted, name="corrupted")
+    masks = i2d.numpy2firedrake(mesh, np_mask, name="mask")
+    confidence = i2d.numpy2firedrake(mesh, np_confidence, name="confidence")
+    CG1 = fire.FunctionSpace(mesh ,'CG',1)
+    masks_for_contour = Function(CG1)
+    masks_for_contour.interpolate(masks).rename("mask_countour","masks")
+    networks_for_contour = Function(CG1)
+    networks_for_contour.interpolate(network).rename("networks_countour","networks")
+    corrupted_for_contour = Function(CG1)
+    corrupted_for_contour.interpolate(corrupted).rename("corrupted_countour","corrupted")
+    confidence_for_contour = Function(CG1)
+    confidence_for_contour.interpolate(confidence).rename("confidence_countour","confidence")
 
     filename = os.path.join(directory,"inputs_reconstruction.pvd")
     # utilities.save2pvd([fire_sources,
@@ -132,37 +139,45 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
     #                 filename)
 
     #kappa = 1.0/(1.0 + fire_confidence + 1e-4)
-    kappa = 1.0
-
-    niot_solver.set_optimal_transport_parameters(fire_sources, fire_sinks,
-                                                  gamma=gamma, 
-                                                  kappa=kappa, 
-                                                  force_balance=True,
-                                                  min_tdens=1e-8)
-    niot_solver.set_inpainting_parameters(weights=weights,
-                                         confidence=fire_confidence,
-                                         tdens2image=tdens2image,
-                                         sigma_smoothing=sigma_smoothing)
+    
+    # kappa = 1.0
+    # niot_solver.set_optimal_transport_parameters(fire_sources, fire_sinks,
+    #                                               gamma=gamma, 
+    #                                               kappa=kappa, 
+    #                                               force_balance=True,
+    #                                               min_tdens=1e-8)
+    # niot_solver.set_inpainting_parameters(weights=weights,
+    #                                      confidence=fire_confidence,
+    #                                      tdens2image=tdens2image,
+    #                                      sigma_smoothing=sigma_smoothing)
     
     #niot_solver.save_inputs(os.path.join(directory,"parameters_recostruction.pvd"))
-    
     ctrl = Controls(
+        # globals controls
         tol=1e-2,
+        max_iter=10,
+        spaces=fem,
+        # niot controls
+        gamma=gamma,
+        weight_discrepancy=weights[0],
+        #weight_penalty=weights[1],
+        weight_regularization=weights[2],
+        tdens2image=tdens2image,
+        # optimization controls
         time_discretization_method='tdens_mirror_descent',
         deltat=1e-3,
-        max_iter=400,
         nonlinear_tol=1e-5,
         linear_tol=1e-6,
         nonlinear_max_iter=30,
         linear_max_iter=1000)
 
+    # set "manually" the controls
     ctrl.deltat_control = 'expansive'#'adaptive'
     ctrl.deltat_expansion = 1.05
     ctrl.deltat_min = 1e-7
     ctrl.deltat_max = 1e-1
     ctrl.verbose = 1
-    ctrl.max_restarts = 5
-    
+    ctrl.max_restarts = 7
     ctrl.save_solution = 'no'
     ctrl.save_solution_every = 25
     ctrl.save_directory = os.path.join(directory,'evolution')
@@ -173,10 +188,14 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
     #
     # solve the problem
     #
-        
-    sol = niot_solver.create_solution() # [pot, tdens] functions
+    ot.balance(source, sink)
+    opt_inputs = ot.OTPInputs(source, sink)
+    btp = ot.BranchedTransportProblem(source, sink, gamma=ctrl.gamma)
+
+    niot_solver = NiotSolver(btp, corrupted,  confidence, ctrl)      
+    sol = niot_solver.create_solution()
     if corrupted_as_initial_guess == 1:
-        sol.sub(1).assign(fire_corrupted+1e-6)
+        sol.sub(1).assign(corrupted+1e-6)
 
     pot, tdens = sol.subfunctions
     reconstruction = niot_solver.tdens2image(tdens)
@@ -223,28 +242,27 @@ def corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks,
                         niot_solver.sink,
     #                    initial_pot,initial_tdens,
                         reconstruction,
-                        fire_networks,
-                        fire_networks_for_contour,
-                        fire_masks,
-                        fire_masks_for_contour,
-                        fire_corrupted,
-                        fire_corrupted_for_contour,
-                        fire_confidence,
-                        fire_confidence_for_contour],filename)
+                        network,
+                        networks_for_contour,
+                        masks,
+                        masks_for_contour,
+                        corrupted,
+                        corrupted_for_contour,
+                        confidence,
+                        confidence_for_contour],filename)
 
-    #tdens = utilities.get_subfunction(sol,1)
-    tdens = sol.subfunctions[1]
-    np_img_converted = niot_solver.function2numpy(tdens)
+    # save numpy arrays
+    np_reconstruction = i2d.firedrake2numpy(reconstruction,[nx,ny])
     filename = os.path.join(runs_directory, f'{label}.npy')
-    np.save(filename, np_img_converted)
+    np.save(filename, np_reconstruction)
     
-    
+    # save images
     img_name = os.path.join(runs_directory, f'{label}_tdens.png')
-    i2d.matrix2image(np_img_converted, img_name, normalized=True, inverted=True)
+    i2d.numpy2image(np_reconstruction, img_name, normalized=True, inverted=True)
 
     img_name = os.path.join(runs_directory, f'{label}_support.png')
-    np_img_converted = np_img_converted/np.max(np_img_converted)
-    i2d.matrix2image(np_img_converted, img_name, normalized=True, inverted=True)
+    np_reconstruction = np_reconstruction/np.max(np_reconstruction)
+    i2d.numpy2image(np_reconstruction, img_name, normalized=True, inverted=True)
 
     
 

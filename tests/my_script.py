@@ -19,7 +19,7 @@ from firedrake import interpolate
 # for writing to file
 from firedrake import File
 import firedrake as fire
-from memory_profiler import profile
+#from memory_profiler import profile
 
 import utilities as utilities
 
