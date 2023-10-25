@@ -27,15 +27,18 @@ from scipy.ndimage import gaussian_filter
 from corrupt_and_reconstruct import corrupt_and_reconstruct as c_and_r
 
 if __name__ == '__main__':
-    c_and_r('frog_tongue/source.png',
-            'frog_tongue/sink.png',
-            'frog_tongue/network.png',
-            'frog_tongue/mask01.png',
-            0.5,
-            'DG0DG0',
-            0.5,
-            [1,1,0],
-            0,
-            'MASK',
-            'laplacian_smoothing',
-            'frog_tongue/mask01/','frog_tongue/mask01/')
+    #dir = 'asymmetric/nref0'
+    dir = 'frog_tongue/'
+    c_and_r(img_source=f'{dir}/source.png',
+            img_sink=f'{dir}/sink.png',
+            img_network=f'{dir}/network.png',
+            img_mask=f'{dir}/mask02.png',
+            scaling_size=1,
+            fem='DG0DG0',
+            gamma=0.5,
+            weights=[1,1,1e-4],
+            corrupted_as_initial_guess=1,
+            confidence='ONE',
+            tdens2image='identity',
+            directory=f'{dir}/mask02/',
+            sigma_smoothing=1e0)

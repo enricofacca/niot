@@ -1,18 +1,21 @@
 import multiprocessing as mp
 import itertools
+import os
 from corrupt_and_reconstruct import corrupt_and_reconstruct
 
-examples = [f'y_net_hand_drawing/nref{i}' for i in [0]]#'frog_tongue'] 
-#examples.append('frog_tongue/')
+examples = []#[f'y_net_hand_drawing/nref{i}' for i in [0]]#'frog_tongue'] 
+examples.append('frog_tongue/')
+#examples.append('y_net_hand_drawing/nref0')
+#examples.append('asymmetric/nref0')
 fems = ['DG0DG0']
-mask = ['mask_large']#,'mask_medium','mask_large']
-gamma = [0.2]#,0.5,0.2]
-wd = [1e-1]#,1e-2,1e0]
-wr = [0.0,1e-4]
+mask = ['mask02.png']#,'mask_medium','mask_large']
+gamma = [0.2,0.5,0.8]
+wd = [1e-2,1e-1,1e0]
+wr = [1e-4]
 ini = [0]
 conf = ['ONE']#,'CORRUPTED','MASK']#,'MASK','CORRUPTED']
-maps = ['laplacian_smoothing']
-sigma = [1e-8,1e-6,1e-4]
+maps = ['identity']#'heat','pm']
+sigma = [0.0]#1e-8,1e-6,1e-4]
 
 parameters=[examples,fems,mask,gamma,wd,wr,ini,conf,maps,sigma]
 combinations = list(itertools.product(*parameters))#fems,mask,gamma,wd,wr,ini,conf))
@@ -24,7 +27,8 @@ def fun(example,fem,mask,gamma,wd,wr,ini,conf,tdens2image,sigma):
     img_sources = f'{example}/source.png'
     img_sinks = f'{example}/sink.png'
     img_networks = f'{example}/network.png'
-    img_masks = f'{example}/{mask}.png'   
+    img_masks = f'{example}/{mask}'
+    mask_name = os.path.splitext(mask)[0]
     weights = [wd,1,wr]
     run = True
     if run:
@@ -36,8 +40,7 @@ def fun(example,fem,mask,gamma,wd,wr,ini,conf,tdens2image,sigma):
                             corrupted_as_initial_guess=ini,
                             confidence=conf,
                             tdens2image=tdens2image,
-                            directory=f'{example}/multi_{mask}/',
-                            runs_directory=f'{example}/multi_{mask}/runs/',
+                            directory=f'{example}/{mask_name}/',
                             sigma_smoothing=sigma)
     print(example,fem,mask,gamma,wd,wr,ini,conf)
     
