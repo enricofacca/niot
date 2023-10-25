@@ -364,12 +364,22 @@ class LinSol(OptionsManager):
         return self._tmp.norm()/rhs.norm()
 
     def info(self):
-        return str(self.options_prefix)+f' - {solving_utils.KSPReasons[self.reason]}: {self.last_iterations} {self.initial_res:.2e} {self.final_res:.2e} | pres {self.last_pres:.2e}' 
+        return info_ksp(self.ksp)
 
     def apply(self,pc,x,y):
         self.solve(x,y)
 
 
+def info_ksp(ksp):
+    """
+    Return a one-line string with main info about last linear system solved
+    """
+    reason = ksp.getConvergedReason()
+    last_iterations = ksp.getIterationNumber()
+    last_pres = ksp.getResidualNorm() 
+    h=ksp.getConvergenceHistory()
+    residuals = h[-(last_iterations+1):]  
+    return str(ksp.getOptionsPrefix())+f' {solving_utils.KSPReasons[reason]} {last_iterations} {residuals[0]:.1e} {residuals[-1]:.1e} pres {last_pres:.1e}' 
 
 def attach_nullspace(A, nullspace = None, transpose_nullspace = None, near_nullspace = None):
     """

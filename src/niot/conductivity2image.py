@@ -21,7 +21,6 @@ import firedrake.adjoint as fire_adj
 # We defined the smoothing operator addapting from the example in:
 # https://www.dolfin-adjoint.org/en/latest/documentation/custom_functions.html
 
-
 def smooth(func, LaplacianSmoother):
     """
     Return a smoothed version of the function `func` 
@@ -41,7 +40,6 @@ def smooth(func, LaplacianSmoother):
     rhs = assemble(func * test * dx)
     with rhs.dat.vec as y_vec, smoothed.dat.vec as out:
         LaplacianSmoother.solve(y_vec, out)
-    print('SMOOTHING INFO',LaplacianSmoother.info())
     return smoothed
     
 backend_smooth = smooth
@@ -58,7 +56,6 @@ class SmootherBlock(Block):
         self.add_dependency(func)
         self.V = func.function_space()
         self.LaplacianSmoother = LaplacianSmoother
-        print('init SmootherBlock')
     def __str__(self):
         return "SmootherBlock"
 
@@ -71,7 +68,6 @@ class SmootherBlock(Block):
         out = Function(self.V)
         with adj_inputs[0].dat.vec as rhs, out.dat.vec as out_vec:
             self.LaplacianSmoother.solve(rhs, out_vec)
-            print('ADJ application',self.LaplacianSmoother.info())
 
         test = TestFunction(self.V)
         v = assemble(out*test*dx)
@@ -137,8 +133,7 @@ def spread(density, tau=0.1, m_exponent=1, nsteps=1):
             ierr = snes_solver.snes.getConvergedReason()
 
         if (ierr != 0):
-            print('ierr',ierr)
-            print(f' Failure in due to {SNESReasons[ierr]}')
+            print(f'{ierr=}. Failure in due to {SNESReasons[ierr]}')
             raise ValueError('Newton solver failed')
         
         nstep += 1
