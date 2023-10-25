@@ -40,14 +40,18 @@ import image2dat as i2d
 from scipy.ndimage import gaussian_filter
 
 #@profile
-def corrupt_and_reconstruct(img_source,img_sink,img_network,img_mask, 
+def corrupt_and_reconstruct(img_source,
+                            img_sink,
+                            img_network,
+                            img_mask, 
                             scaling_size,
                             fem,
-                            gamma, weights, corrupted_as_initial_guess,
+                            gamma, 
+                            weights, 
+                            corrupted_as_initial_guess,
                             confidence,
                             tdens2image,
                             directory,
-                            runs_directory,
                             sigma_smoothing=1e-6):
     print('Corrupting and reconstructing')
     print('Sources: '+img_source)
@@ -68,10 +72,14 @@ def corrupt_and_reconstruct(img_source,img_sink,img_network,img_mask,
              f'wr{weights[2]:.1e}',
              f'ini{corrupted_as_initial_guess:d}',
              f'conf{confidence}']
-    if tdens2image == 'laplacian_smoothing':
-        label.append(f'mu2i{tdens2image}sigma{sigma_smoothing:.1e}')
-    elif tdens2image == 'identity':
+    if tdens2image == 'identity':
         label.append(f'mu2i{tdens2image}')
+    elif tdens2image == 'heat':
+        label.append(f'mu2i{tdens2image}{sigma_smoothing:.1e}')
+    elif tdens2image == 'pm':
+        label.append(f'mu2i{tdens2image}{sigma_smoothing:.1e}')
+    else:
+        raise ValueError(f'Unknown tdens2image {tdens2image}')  
     label = '_'.join(label)
     print('Problem label: '+label)
 
@@ -97,7 +105,7 @@ def corrupt_and_reconstruct(img_source,img_sink,img_network,img_mask,
         #normalize to [0,1]
         np_confidence = np_confidence/np.max(np_confidence)
     elif confidence == 'ONE':
-        np_confidence = np.ones(np_masks.shape)
+        np_confidence = np.ones(np_mask.shape)
     else:
         raise ValueError(f'Unknown confidence {confidence}')
 
@@ -112,50 +120,24 @@ def corrupt_and_reconstruct(img_source,img_sink,img_network,img_mask,
     sink = i2d.numpy2firedrake(mesh, np_sink, name="sink")
     network = i2d.numpy2firedrake(mesh, np_network, name="network")
     corrupted = i2d.numpy2firedrake(mesh, np_corrupted, name="corrupted")
-    masks = i2d.numpy2firedrake(mesh, np_mask, name="mask")
+    mask = i2d.numpy2firedrake(mesh, np_mask, name="mask")
     confidence = i2d.numpy2firedrake(mesh, np_confidence, name="confidence")
     CG1 = fire.FunctionSpace(mesh ,'CG',1)
-    masks_for_contour = Function(CG1)
-    masks_for_contour.interpolate(masks).rename("mask_countour","masks")
-    networks_for_contour = Function(CG1)
-    networks_for_contour.interpolate(network).rename("networks_countour","networks")
+    mask_for_contour = Function(CG1)
+    mask_for_contour.interpolate(mask).rename("mask_countour","mask")
+    network_for_contour = Function(CG1)
+    network_for_contour.interpolate(network).rename("network_countour","network")
     corrupted_for_contour = Function(CG1)
     corrupted_for_contour.interpolate(corrupted).rename("corrupted_countour","corrupted")
     confidence_for_contour = Function(CG1)
     confidence_for_contour.interpolate(confidence).rename("confidence_countour","confidence")
 
-    filename = os.path.join(directory,"inputs_reconstruction.pvd")
-    # utilities.save2pvd([fire_sources,
-    #                  fire_sinks,
-    #                  fire_networks,
-    #                  fire_networks_for_contour,
-    #                  fire_masks,
-    #                  fire_masks_for_contour,
-    #                  fire_corrupted,
-    #                  fire_corrupted_for_contour,
-    #                  fire_confidence,
-    #                  fire_confidence_for_contour
-    #                  ],
-    #                 filename)
-
     #kappa = 1.0/(1.0 + fire_confidence + 1e-4)
     
-    # kappa = 1.0
-    # niot_solver.set_optimal_transport_parameters(fire_sources, fire_sinks,
-    #                                               gamma=gamma, 
-    #                                               kappa=kappa, 
-    #                                               force_balance=True,
-    #                                               min_tdens=1e-8)
-    # niot_solver.set_inpainting_parameters(weights=weights,
-    #                                      confidence=fire_confidence,
-    #                                      tdens2image=tdens2image,
-    #                                      sigma_smoothing=sigma_smoothing)
-    
-    #niot_solver.save_inputs(os.path.join(directory,"parameters_recostruction.pvd"))
     ctrl = Controls(
         # globals controls
-        tol=1e-2,
-        max_iter=10,
+        tol=1e-1,
+        max_iter=1000,
         spaces=fem,
         # niot controls
         gamma=gamma,
@@ -163,6 +145,7 @@ def corrupt_and_reconstruct(img_source,img_sink,img_network,img_mask,
         #weight_penalty=weights[1],
         weight_regularization=weights[2],
         tdens2image=tdens2image,
+        sigma_smoothing=sigma_smoothing,
         # optimization controls
         time_discretization_method='tdens_mirror_descent',
         deltat=1e-3,
@@ -172,15 +155,16 @@ def corrupt_and_reconstruct(img_source,img_sink,img_network,img_mask,
         linear_max_iter=1000)
 
     # set "manually" the controls
-    ctrl.deltat_control = 'expansive'#'adaptive'
-    ctrl.deltat_expansion = 1.05
+    ctrl.gradient_scaling = 'dmk'
+    ctrl.deltat_control = 'adaptive2'
+    ctrl.deltat_expansion = 1.02
     ctrl.deltat_min = 1e-7
     ctrl.deltat_max = 1e-1
-    ctrl.verbose = 1
+    ctrl.verbose = 2
     ctrl.max_restarts = 7
-    ctrl.save_solution = 'no'
-    ctrl.save_solution_every = 25
-    ctrl.save_directory = os.path.join(directory,'evolution')
+    ctrl.save_solution = 'none'
+    ctrl.save_solution_every = 10
+    ctrl.save_directory = os.path.join(directory,'evolution'+label+'/')
     
     if (not os.path.exists(ctrl.save_directory)):
         os.makedirs(ctrl.save_directory)
@@ -192,28 +176,19 @@ def corrupt_and_reconstruct(img_source,img_sink,img_network,img_mask,
     opt_inputs = ot.OTPInputs(source, sink)
     btp = ot.BranchedTransportProblem(source, sink, gamma=ctrl.gamma)
 
-    niot_solver = NiotSolver(btp, corrupted,  confidence, ctrl)      
+    niot_solver = NiotSolver(btp, corrupted,  confidence, ctrl)
+    utilities.save2pvd([niot_solver.img_observed,niot_solver.confidence], os.path.join(directory,'corrupted.pvd'))      
     sol = niot_solver.create_solution()
     if corrupted_as_initial_guess == 1:
         sol.sub(1).assign(corrupted+1e-6)
 
-    pot, tdens = sol.subfunctions
-    reconstruction = niot_solver.tdens2image(tdens)
-
-    #print('solving pot_0')
-    #ierr = niot_solver.solve_pot_PDE(ctrl, sol)
-    #avg_outer = niot_solver.outer_iterations
-    #print(utilities.color('green',f'It: {0} '+f' avgouter: {avg_outer:.1f}'))
-    #initial_sol = cp(sol)
-
+    
     # solve the problem
     ierr = niot_solver.solve(ctrl, sol)
     print("Error code: ",ierr)
 
     # save solution
-    
-    
-    filename = os.path.join(runs_directory, f'{label}.h5')
+    filename = os.path.join(directory, f'{label}.h5')
     pot, tdens = sol.subfunctions
     pot.rename('pot','Potential')
     tdens.rename('tdens','Optimal Transport Tdens')
@@ -231,36 +206,45 @@ def corrupt_and_reconstruct(img_source,img_sink,img_network,img_mask,
     #initial_pot.interpolate(initial_sol.subfunctions[0])
     #initial_pot.rename('initial_pot','Initial guess')
 
-    reconstruction = niot_solver.tdens2image(tdens) 
+    reconstruction = Function(niot_solver.fems.tdens_space)
+    reconstruction.interpolate(niot_solver.tdens2image(tdens) )
     reconstruction.rename('reconstruction','Reconstruction')
 
-    filename = os.path.join(runs_directory, f'{label}.pvd')
+    
+    utilities.save2pvd([corrupted,confidence],
+                        os.path.join(directory,'corrupted_3.pvd')),      
+    
+
+
+
+    filename = os.path.join(directory, f'{label}.pvd')
     print("Saving solution to "+filename)
     niot_solver.save_solution(sol,filename)
-    utilities.save2pvd([pot, tdens, vel, 
+    utilities.save2pvd([
+        corrupted,
+        corrupted_for_contour,
+        confidence,
+        confidence_for_contour,
+        pot, tdens, vel, 
                         niot_solver.source,
                         niot_solver.sink,
-    #                    initial_pot,initial_tdens,
                         reconstruction,
                         network,
-                        networks_for_contour,
-                        masks,
-                        masks_for_contour,
-                        corrupted,
-                        corrupted_for_contour,
-                        confidence,
-                        confidence_for_contour],filename)
+                        network_for_contour,
+                        mask,
+                        mask_for_contour,
+                        ],filename)
 
     # save numpy arrays
     np_reconstruction = i2d.firedrake2numpy(reconstruction,[nx,ny])
-    filename = os.path.join(runs_directory, f'{label}.npy')
+    filename = os.path.join(directory, f'{label}.npy')
     np.save(filename, np_reconstruction)
     
     # save images
-    img_name = os.path.join(runs_directory, f'{label}_tdens.png')
+    img_name = os.path.join(directory, f'{label}_tdens.png')
     i2d.numpy2image(np_reconstruction, img_name, normalized=True, inverted=True)
 
-    img_name = os.path.join(runs_directory, f'{label}_support.png')
+    img_name = os.path.join(directory, f'{label}_support.png')
     np_reconstruction = np_reconstruction/np.max(np_reconstruction)
     i2d.numpy2image(np_reconstruction, img_name, normalized=True, inverted=True)
 
@@ -313,7 +297,7 @@ if (__name__ == '__main__'):
     parser.add_argument('--gamma', type=float, default=0.5, help="branch exponent")
     parser.add_argument('--ini', type=int, default=0, help="0/1 use corrupted image as initial guess")
     parser.add_argument('--conf', type=str, default='MASK', help="MASK(=opposite to mask),CORRUPTED(=gaussian filter of corrupted)")
-    parser.add_argument('--t2i', type=str, default='identity', help="identity,laplacian_smoothing")
+    parser.add_argument('--t2i', type=str, default='identity', help="identity,heat")
     parser.add_argument('--dir', type=str, default='niot_recostruction', help="directory storing results")
 
     args = parser.parse_args()
