@@ -1,9 +1,9 @@
-name: BuildTest
+name: BuildgTest
 
 on:
   push:
-  branches:
-    - main
+    branches:
+      - main
 
 
 jobs:
