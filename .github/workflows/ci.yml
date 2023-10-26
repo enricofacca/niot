@@ -49,4 +49,4 @@ jobs:
         run: |
           source /home/firedrake/firedrake/bin/activate
           python -c "import sys; print('\n'.join(sys.path))"
-          python -m pytest 
+          pytest tests/test_load_image.py
