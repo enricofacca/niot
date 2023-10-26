@@ -19,3 +19,5 @@ test/*/runs/
 *~ 
 # docs
 *.pdf
+**/runs/
+**/evolution/
