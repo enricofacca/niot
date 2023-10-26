@@ -38,7 +38,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install pytest
 
-      - name: Install firedrake-ts
+      - name: Install Niot
         shell: bash
         run: |
           source /home/firedrake/firedrake/bin/activate
