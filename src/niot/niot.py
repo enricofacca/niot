@@ -10,14 +10,17 @@ import scipy.sparse.linalg as splinalg
 from scipy.linalg import norm 
 import time as cputiming
 import os
-import utilities
-import optimal_transport as ot
 
-import conductivity2image as conductivity2image
-import linear_algebra_utilities as linalg
 from petsc4py import PETSc
 import time 
 #from memory_profiler import profile
+
+
+from . import utilities
+from . import optimal_transport as ot
+
+from . import conductivity2image as conductivity2image
+from . import linear_algebra_utilities as linalg
 SNESReasons = utilities._make_reasons(PETSc.SNES.ConvergedReason())
 
 # function operations
@@ -35,7 +38,11 @@ fire_adj.continue_annotation()
 from petsc4py import PETSc as p4pyPETSc
 
 # include all citations
-utilities.include_citations('../citations/citations.bib')
+utilities.include_citations(
+    os.path.abspath(
+        os.path.join(os.path.dirname(__file__), 
+                     '../../citations/citations.bib')
+    ))
 
 
 
@@ -774,6 +781,27 @@ class NiotSolver:
         sol.sub(1).vector()[:] = 1.0
 
         return sol
+    
+    def get_otp_solution(self, sol):
+        """
+        Return the solution in the BranchedTransportProblem class
+        """
+        pot, tdens = sol.subfunctions
+        
+        pot_h = Function(self.fems.pot_space)
+        pot_h.assign(pot)
+        pot_h.rename('pot')
+        
+        tdens_h = Function(self.fems.tdens_space)
+        tdens_h.assign(tdens)
+        tdens_h.rename('tdens')
+
+        DG0_vec = VectorFunctionSpace(self.mesh,'DG',0)
+        vel = Function(DG0_vec)
+        vel.interpolate(- tdens * grad(pot))
+        vel.rename('vel','Velocity')
+        
+        return pot, tdens, vel
     
     #@profile  
     def solve(self, ctrl, sol):

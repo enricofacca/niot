@@ -1,10 +1,10 @@
+import os
 import pytest
-import sys
-sys.path.append('../src/niot')
-import image2dat as i2d
+from niot import image2dat as i2d
 import numpy as np
 
-@pytest.mark.parametrize('img_path', ['7.png'])
+img_dir = os.path.dirname(__file__)
+@pytest.mark.parametrize('img_path', [os.path.join(img_dir,'7.png')])
 @pytest.mark.parametrize('mesh_type', ['simplicial','cartesian'])
 @pytest.mark.parametrize('normalizeRGB', [True, False])
 @pytest.mark.parametrize('inverteBW', [True, False])

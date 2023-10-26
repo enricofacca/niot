@@ -36,7 +36,7 @@ if __name__ == '__main__':
             scaling_size=1,
             fem='DG0DG0',
             gamma=0.5,
-            weights=[1,1,1e-4],
+            weights=[1e-3,1,1e-4],
             corrupted_as_initial_guess=1,
             confidence='ONE',
             tdens2image='identity',

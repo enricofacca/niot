@@ -9,8 +9,8 @@ examples.append('frog_tongue/')
 #examples.append('asymmetric/nref0')
 fems = ['DG0DG0']
 mask = ['mask02.png']#,'mask_medium','mask_large']
-gamma = [0.2,0.5,0.8]
-wd = [1e-2,1e-1,1e0]
+gamma = [0.5]
+wd = [1e-3,1e-2,1e-1,1e0,1e1]
 wr = [1e-4]
 ini = [0]
 conf = ['ONE']#,'CORRUPTED','MASK']#,'MASK','CORRUPTED']

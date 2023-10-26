@@ -166,8 +166,9 @@ def corrupt_and_reconstruct(img_source,
     ctrl.save_solution_every = 10
     ctrl.save_directory = os.path.join(directory,'evolution'+label+'/')
     
-    if (not os.path.exists(ctrl.save_directory)):
-        os.makedirs(ctrl.save_directory)
+    if ctrl.save_solution != 'none':
+        if (not os.path.exists(ctrl.save_directory)):
+            os.makedirs(ctrl.save_directory)
     
     #
     # solve the problem
@@ -177,44 +178,31 @@ def corrupt_and_reconstruct(img_source,
     btp = ot.BranchedTransportProblem(source, sink, gamma=ctrl.gamma)
 
     niot_solver = NiotSolver(btp, corrupted,  confidence, ctrl)
-    utilities.save2pvd([niot_solver.img_observed,niot_solver.confidence], os.path.join(directory,'corrupted.pvd'))      
     sol = niot_solver.create_solution()
     if corrupted_as_initial_guess == 1:
         sol.sub(1).assign(corrupted+1e-6)
-
     
+    
+    
+    # solve the potential PDE
+    niot_solver.setup_pot_solver(ctrl)
+    ierr = niot_solver.solve_pot_PDE(ctrl, sol)
+    sol0 = cp(sol)
+
     # solve the problem
     ierr = niot_solver.solve(ctrl, sol)
     print("Error code: ",ierr)
 
     # save solution
-    filename = os.path.join(directory, f'{label}.h5')
-    pot, tdens = sol.subfunctions
-    pot.rename('pot','Potential')
-    tdens.rename('tdens','Optimal Transport Tdens')
-
-    DG0_vec = VectorFunctionSpace(niot_solver.mesh,'DG',0)
-    vel = Function(DG0_vec)
-    vel.interpolate(-tdens * grad(pot))
-    vel.rename('vel','Velocity')
-
-    #initial_tdens = Function(niot_solver.fems.tdens_space)
-    #initial_tdens.interpolate(initial_sol.subfunctions[1])
-    #initial_tdens.rename('initial_tdens','Initial guess')
-
-    #initial_pot = Function(niot_solver.fems.pot_space)
-    #initial_pot.interpolate(initial_sol.subfunctions[0])
-    #initial_pot.rename('initial_pot','Initial guess')
+    pot, tdens, vel = niot_solver.get_otp_solution(sol)
+    pot0, tdens0, vel0 = niot_solver.get_otp_solution(sol0)
+    pot0.rename('pot_0','pot_0')
+    tdens0.rename('tdens_0','tdens_0')
+    vel0.rename('vel_0','vel_0')
 
     reconstruction = Function(niot_solver.fems.tdens_space)
     reconstruction.interpolate(niot_solver.tdens2image(tdens) )
     reconstruction.rename('reconstruction','Reconstruction')
-
-    
-    utilities.save2pvd([corrupted,confidence],
-                        os.path.join(directory,'corrupted_3.pvd')),      
-    
-
 
 
     filename = os.path.join(directory, f'{label}.pvd')
@@ -225,7 +213,8 @@ def corrupt_and_reconstruct(img_source,
         corrupted_for_contour,
         confidence,
         confidence_for_contour,
-        pot, tdens, vel, 
+        pot, tdens, vel,
+        pot0, tdens0, vel0, 
                         niot_solver.source,
                         niot_solver.sink,
                         reconstruction,
@@ -236,7 +225,7 @@ def corrupt_and_reconstruct(img_source,
                         ],filename)
 
     # save numpy arrays
-    np_reconstruction = i2d.firedrake2numpy(reconstruction,[nx,ny])
+    np_reconstruction = i2d.firedrake2numpy(reconstruction)
     filename = os.path.join(directory, f'{label}.npy')
     np.save(filename, np_reconstruction)
     
