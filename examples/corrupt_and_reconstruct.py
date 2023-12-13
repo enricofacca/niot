@@ -52,7 +52,8 @@ def corrupt_and_reconstruct(img_source,
                             confidence,
                             tdens2image,
                             directory,
-                            sigma_smoothing=1e-6):
+                            sigma_smoothing=1e-6,
+                            tdens2image_scaling= 1e0):
     print('Corrupting and reconstructing')
     print('Sources: '+img_source)
     print('Sinks: '+img_sink)
@@ -79,20 +80,24 @@ def corrupt_and_reconstruct(img_source,
     elif tdens2image == 'pm':
         label.append(f'mu2i{tdens2image}{sigma_smoothing:.1e}')
     else:
-        raise ValueError(f'Unknown tdens2image {tdens2image}')  
+        raise ValueError(f'Unknown tdens2image {tdens2image}')
+    label.append(f'scaling{tdens2image_scaling:.1e}')  
     label = '_'.join(label)
     print('Problem label: '+label)
+    
 
 
     # convert images to numpy matrices
     # 1 is the white background
-    scaling_forcing = 1e1
-    np_source = i2d.image2numpy(img_source,normalize=True,invert=True,factor=scaling_size) * scaling_forcing
-    np_sink = i2d.image2numpy(img_sink,normalize=True,invert=True,factor=scaling_size) * scaling_forcing
+    
+    np_source = i2d.image2numpy(img_source,normalize=True,invert=True,factor=scaling_size)
+    np_sink = i2d.image2numpy(img_sink,normalize=True,invert=True,factor=scaling_size) 
     np_network = i2d.image2numpy(img_network,normalize=True,invert=True,factor=scaling_size)
     np_mask = i2d.image2numpy(img_mask,normalize=True,invert=True,factor=scaling_size)
-    nx = np_source.shape[0]
-    ny = np_source.shape[1]
+   
+    # taking just the support of the sources and sinks
+    np_source[np.where(np_source>0.0)] = 1.0
+    np_sink[np.where(np_sink>0.0)] = 1.0
 
 
     # the corrupted image is created adding a mask
@@ -112,7 +117,12 @@ def corrupt_and_reconstruct(img_source,
 
     # Init. solver for a given reconstruction problem
     #niot_solver = NiotSolver(fem, np_corrupted, DG0_cell2face = 'harmonic_mean')
-    mesh = i2d.build_mesh_from_numpy(np_corrupted)
+    if fem == 'CR1DG0':
+        mesh_type = 'simplical'
+    elif fem == 'DG0DG0':
+        mesh_type = 'cartesian'
+
+    mesh = i2d.build_mesh_from_numpy(np_corrupted, mesh_type=mesh_type)
 
 
     # save inputs    
@@ -136,7 +146,7 @@ def corrupt_and_reconstruct(img_source,
     
     ctrl = Controls(
         # globals controls
-        tol=1e-1,
+        tol=5e-2,
         max_iter=1000,
         spaces=fem,
         # niot controls
@@ -166,6 +176,8 @@ def corrupt_and_reconstruct(img_source,
     ctrl.save_solution_every = 10
     ctrl.save_directory = os.path.join(directory,'evolution'+label+'/')
     
+    ctrl.scaling = tdens2image_scaling
+
     if ctrl.save_solution != 'none':
         if (not os.path.exists(ctrl.save_directory)):
             os.makedirs(ctrl.save_directory)
@@ -177,6 +189,8 @@ def corrupt_and_reconstruct(img_source,
     opt_inputs = ot.OTPInputs(source, sink)
     btp = ot.BranchedTransportProblem(source, sink, gamma=ctrl.gamma)
 
+    print(f'{ctrl.spaces=}')
+    
     niot_solver = NiotSolver(btp, corrupted,  confidence, ctrl)
     sol = niot_solver.create_solution()
     if corrupted_as_initial_guess == 1:
@@ -204,6 +218,12 @@ def corrupt_and_reconstruct(img_source,
     reconstruction.interpolate(niot_solver.tdens2image(tdens) )
     reconstruction.rename('reconstruction','Reconstruction')
 
+    reconstruction_for_contour = Function(CG1)
+    reconstruction_for_contour.interpolate(reconstruction).rename("reconstruction_countour","reconstruction_countour")
+
+    tdens_for_contour = Function(CG1)
+    tdens_for_contour.interpolate(tdens).rename("tdens_countour","tdens_countour")
+
 
     filename = os.path.join(directory, f'{label}.pvd')
     print("Saving solution to "+filename)
@@ -218,6 +238,8 @@ def corrupt_and_reconstruct(img_source,
                         niot_solver.source,
                         niot_solver.sink,
                         reconstruction,
+                        reconstruction_for_contour,
+                        tdens_for_contour,
                         network,
                         network_for_contour,
                         mask,
@@ -239,7 +261,7 @@ def corrupt_and_reconstruct(img_source,
 
     
 
-
+    print(f'{ctrl.sigma_smoothing=}')
 
 
     
