@@ -4,7 +4,10 @@ import numpy as np
 from copy import deepcopy as cp
 import firedrake as fd
 import matplotlib.pyplot as plt
+from firedrake import COMM_WORLD
+from firedrake import mesh as meshtools
 
+from firedrake.petsc import PETSc
 
 def build_mesh_from_numpy(np_image, mesh_type='simplicial'): 
    '''
@@ -12,9 +15,9 @@ def build_mesh_from_numpy(np_image, mesh_type='simplicial'):
    '''
    if (np_image.ndim == 2):
       if (mesh_type == 'simplicial'):
-            quadrilateral = False
+         quadrilateral = False
       elif (mesh_type == 'cartesian'):
-            quadrilateral = True
+         quadrilateral = True
       
       # here we swap the axes because the image is 
       # read from left, right, top to bottom
@@ -38,15 +41,38 @@ def build_mesh_from_numpy(np_image, mesh_type='simplicial'):
             hexahedral = False
       elif (mesh_type == 'cartesian'):
             hexahedral = True
-      mesh = fd.BoxMesh(nx=height,
-                  ny=width, 
-                  nz=depth,  
-                  Lx=1, 
-                  Ly=height/width,
-                  Lz=height/depth,
-                  hexahedral=hexahedral,
-                  reorder=False,
-                  #diagonal="default"
+      simplex = not hexahedral
+      
+      use_firedrake = True
+      if not use_firedrake:
+         plex = PETSc.DMPlex().createBoxMesh(
+            #(depth, width, height), 
+            (height, width, depth), 
+            lower=(0., 0., 0.), 
+            upper=(1, height/width, height/depth),
+            simplex=simplex, 
+            periodic=False, 
+            interpolate=True, 
+            comm=COMM_WORLD)
+         mesh = meshtools.Mesh(
+               plex,
+               reorder=False,
+               distribution_parameters=None,
+               name='box',
+               distribution_name=None,
+               permutation_name=None,
+               comm=COMM_WORLD,
+         )
+      else:   
+         mesh = fd.BoxMesh(nx=height,
+                   ny=width, 
+                   nz=depth,  
+                   Lx=1, 
+                   Ly=height/width,
+                   Lz=height/depth,
+                   hexahedral=hexahedral,
+                   reorder=False,
+                   #diagonal="default"
                   )
    else:
       raise ValueError('Only 2D and 3D images are supported')
@@ -82,10 +108,12 @@ def get_box_division(mesh):
       xy = mesh.exterior_facets.subset(5).size
       yz = mesh.exterior_facets.subset(1).size
       xz = mesh.exterior_facets.subset(3).size
-      nx = np.rint(np.sqrt(xy*xz/yz))
-      ny = np.rint(xy/nx)
-      nz = np.rint(xz/nx)
-      return [nx, ny, nz]
+
+      print(f'xy {xy} yz {yz} xz {xz}')
+      nx = int(np.rint(np.sqrt(xy*xz/yz)))
+      ny = int(np.rint(xy/nx))
+      nz = int(np.rint(xz/nx))
+      return nx, ny, nz
    
 def compatible(mesh, value):
    """
@@ -93,12 +121,15 @@ def compatible(mesh, value):
    """
    np_shape = value.shape
    mesh_shape = get_box_division(mesh)
+   print(mesh_shape)
    check = True
    if (len(np_shape) == 2):
       if (mesh_shape[0] != np_shape[1]) or (mesh_shape[1] != np_shape[0]):
+         print(f'shape data {np_shape} mesh_shape {mesh_shape}')
          check = False
    elif (len(np_shape) == 3):
-      if (mesh_shape[0] != np_shape[1]) or (mesh_shape[1] != np_shape[0]) or (mesh_shape[2] != np_shape[2]):
+      if (mesh_shape[0] != np_shape[0]) or (mesh_shape[1] != np_shape[1]) or (mesh_shape[2] != np_shape[2]):
+         print(f'shape data {np_shape} mesh_shape {mesh_shape}')
          check = False
    else:
       raise ValueError('Only 2D and 3D images are supported')
@@ -113,8 +144,8 @@ def numpy2firedrake(mesh, value, name=None):
 
    returns: piecewise constant firedake function 
    '''
-   if (not compatible(mesh, value) ):
-      raise ValueError('Mesh and image are not compatible')
+   #if (not compatible(mesh, value) ):
+   #   raise ValueError('Mesh and image are not compatible')
    
    # we flip vertically because images are read from left, right, top to bottom
    if mesh.ufl_cell().is_simplex():
@@ -148,7 +179,9 @@ def numpy2firedrake(mesh, value, name=None):
             DG0 = fd.FunctionSpace(mesh,'DG',0)
             img_function = fd.Function(DG0, val=cells_values, name=name)
 
-   elif (mesh.ufl_cell().cellname() == 'quadrilateral'):
+   elif (
+      (mesh.ufl_cell().cellname() == 'quadrilateral')
+      or (mesh.ufl_cell().cellname() == 'hexahedron')):
       DG0 = fd.FunctionSpace(mesh,'DG',0)
       img_function = fd.Function(DG0)
       value_flipped = np.flip(value,0)

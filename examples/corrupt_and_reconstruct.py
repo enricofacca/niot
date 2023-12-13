@@ -118,7 +118,7 @@ def corrupt_and_reconstruct(img_source,
     # Init. solver for a given reconstruction problem
     #niot_solver = NiotSolver(fem, np_corrupted, DG0_cell2face = 'harmonic_mean')
     if fem == 'CR1DG0':
-        mesh_type = 'simplical'
+        mesh_type = 'simplicial'
     elif fem == 'DG0DG0':
         mesh_type = 'cartesian'
 
