@@ -16,11 +16,19 @@ import time
 #from memory_profiler import profile
 
 
+#from . import utilities
+#from . import optimal_transport as ot
+
+#from . import conductivity2image as conductivity2image
+#from . import linear_algebra_utilities as linalg
+
 from . import utilities
 from . import optimal_transport as ot
 
 from . import conductivity2image as conductivity2image
 from . import linear_algebra_utilities as linalg
+
+
 SNESReasons = utilities._make_reasons(PETSc.SNES.ConvergedReason())
 
 # function operations
@@ -35,7 +43,8 @@ from firedrake import *
 import firedrake.adjoint as fire_adj
 fire_adj.continue_annotation()
 
-from petsc4py import PETSc as p4pyPETSc
+
+from firedrake.petsc import PETSc
 
 # include all citations
 utilities.include_citations(
@@ -57,10 +66,7 @@ def get_step_lenght(x,increment,x_lower_bound=0.0,step_lower_bound=1e-16):
     '''
     np_x = x.array
     np_increment = increment.array
-    #print(utilities.msg_bounds(x,'x'))
-    #print(utilities.msg_bounds(increment,'increment'))
     negative = (np_increment<0).any()
-    #print('negative',negative)
     if negative:
         negative_indeces  = np.where(np_increment<0)[0]
         #print('negative',len(negative_indeces),'size',len(np_increment))
@@ -237,32 +243,38 @@ class Controls:
     '''
     Class with Dmk Solver 
     '''
-    global_ctrl={'tol':1e-2,
-                 'max_iter':100,
-                 'max_restart':2,
-                 'optimization_method':'dmk',
-                 }
-    
-    discretization_ctrl={'spaces':'CR1DG0',
-                         'cell2face':'harmonic_mean',
-                         }
-    
-    tdens2image_ctrl={'tdens2image':'identity',
-                        'scaling':1.0,
-                        'sigma_smooth':1.0}
-    
-    inpainting_ctrl={'weight_discrepancy':1.0,
-                    'weight_regularization':0.0,
-                    'gamma':0.5}
-
-    dmk_ctrl={'time_discretization_method':'mirror_descent',
-            'gradient_scaling':'dmk',
-            'deltat':0.5,
-            'nonlinear_tol':1e-6,
-            'linear_tol':1e-6,
-            'nonlinear_max_iter':30,
-            'linear_max_iter':1000,
+    global_ctrl = {
+        'optimization_tol': 1e-2,
+        'constraint_tol': 1e-6,
+        'max_iter': 100,
+        'spaces' : 'DG0DG0',
+        'cell2face' : 'harmonic_mean',
+        'inpainting' : {
+            'weight_discrepancy': 1.0,
+            'weight_regularization': 0.0,
+            'weight_penalization': 1.0,
+            'mu2image' : {
+                'type' : 'identity', # idendity, heat, pm
+                'scaling': 1.0,
+                'pm': {'sigma' : 1e-2},
+                'heat': {'sigma' : 1e-2},
+            },
+        },
+        'optimization_type' : 'dmk',
+        'dmk': {
+            'type' : 'mirror_descent',
+            'mirror_descent' : {
+                'gradient_scaling' : 'dmk',
+                'deltat' : 0.5,
+                'nonlinear_tol' : 1e-6,
+                'linear_tol' : 1e-6,
+                'nonlinear_max_iter' : 30,
+                'linear_max_iter' : 1000,
             }   
+        }
+    }   
+
+
 
     def __init__(self,
                 tol=1e-2,
@@ -405,13 +417,13 @@ class Controls:
             r_np = r.array
             if np.min(r_np) < 0:
                 negative = np.where(r_np<0)
-                hdown = (10**order_down-1) / r[negative]
+                hdown = (10**order_down-1) / r_np[negative]
                 deltat_down = np.min(hdown)
             else:
                 deltat_down = self.deltat_max
             if np.max(r_np) > 0:
                 positive = np.where(r_np>0)
-                hup = (10**order_up-1) / r[positive]
+                hup = (10**order_up-1) / r_np[positive]
                 deltat_up = np.min(hup)
             else:
                 deltat_up = self.deltat_max
@@ -427,21 +439,21 @@ class Controls:
             raise ValueError(f'{self.deltat_control=} not supported')
         return step
 
-    def print_info(self, msg, priority=0, color='black', modes=['main']):
+    def print_info(self, msg, priority=0, where=['stdout'], color='black'):
         '''
         Print messagge to stdout and to log 
         file according to priority passed
         '''
-        for mode in modes:
-            if mode=='main':
+        for mode in where:
+            if mode=='stdout':
                 if (self.verbose >= priority): 
                     if color != 'black':
                         msg = utilities.color(color, msg)
-                    print('   '*(priority-1)+msg)
+                    PETSc.Sys.Print('   '*(priority-1)+msg)
 
             elif mode == 'log':
                 if (self.save_log > 0 and self.verbose_log >= priority):
-                    print(msg, file=self.log_file)           
+                    PETSc.Sys.Print(msg, file=self.log_file)           
             
  
 class NiotSolver:
@@ -519,18 +531,22 @@ class NiotSolver:
 
     def __init__(self, btp, observed, confidence, ctrl=Controls()):
         '''
-        Initialize solver (spatial discretization) from numpy_image (2d or 3d data)
+        Initialize solver (spatial discretization)
         '''
         self.spaces = ctrl.spaces
         self.mesh = btp.mesh
         if self.spaces == 'CR1DG0':
             self.fems = SpaceDiscretization(self.mesh,'CR',1, 'DG',0)
         elif self.spaces == 'DG0DG0':
+            if self.mesh.ufl_cell().is_simplex():
+                raise ValueError('DG0DG0 only implemented for cartesian grids')
             self.fems = SpaceDiscretization(self.mesh,'DG',0,'DG',0)
         else:
             raise ValueError('Wrong spaces only (pot,tdens) in (CR1,DG0) or (DG0,DG0) implemented')
         self.mesh.name = 'mesh'
-        print(f'Number of cells: {self.mesh.num_cells()}')
+        PETSc.Sys.Print(f'Number of cells: {self.mesh.num_cells()}')
+
+
         self.DG0 = FunctionSpace(self.mesh, 'DG', 0)
 
         # cached functions
@@ -584,7 +600,7 @@ class NiotSolver:
         self.weights = np.array([ctrl.weight_discrepancy,1.0,ctrl.weight_regularization])
 
         # map from tdens to image
-        print(f'{ctrl.tdens2image=}',f'{ctrl.scaling=}',f'{ctrl.sigma_smoothing=}')
+        PETSc.Sys.Print(f'{ctrl.tdens2image=}',f'{ctrl.scaling=}',f'{ctrl.sigma_smoothing=}')
         self.scaling = ctrl.scaling
         if ctrl.tdens2image == 'identity':
             self.tdens2image = lambda x: self.scaling*x
@@ -617,7 +633,7 @@ class NiotSolver:
             #                                     'pc_type': 'hypre',},
             #                                     options_prefix='heat_solver_')
                                             
-            print('defining tdens2image')
+            
             self.tdens2image = lambda fun: self.scaling*conductivity2image.LaplacianSmoothing(fun,self.HeatSmoother)
             #self.tdens2image = lambda fun: self.scaling * self.heat_solver.solve(fun,)
         elif ctrl.tdens2image == 'pm':
@@ -646,16 +662,8 @@ class NiotSolver:
 
             def tdens2image_map(fun):
                 self.tdens_h.interpolate(fun)
-                with self.tdens_h.dat.vec as tdens_vec:
-                    print(utilities.msg_bounds(tdens_vec,'tdens_vec'))
-                with self.image_h.dat.vec as image_vec:
-                    print(utilities.msg_bounds(image_vec,'image_vec'))
-                    
                 self.pm_solver.solve()
                 self.image_h *= self.scaling
-                with self.image_h.dat.vec as image_vec:
-                    print(utilities.msg_bounds(image_vec,'image_vec'))
-                
                 return self.image_h
             
             self.tdens2image = tdens2image_map
@@ -676,12 +684,9 @@ class NiotSolver:
         
         
         self.ctrl = ctrl
-
-    def print(self, ctrl, msg):
-        if ctrl.print_stdout:
-            print(msg)
-        if ctrl.print_log:
-            print(msg,file=self.log_file)
+        print('simpelx',self.mesh.ufl_cell().is_simplex())
+        exit
+        
 
         
     def setup_pot_solver(self,ctrl):
@@ -714,7 +719,7 @@ class NiotSolver:
             'pc_type': 'hypre',
             #'ksp_monitor_true_residual': None,
         }
-        print(ctrl.nonlinear_tol)
+        
         if ctrl.verbose >= 1:
             pass#snes_ctrl['snes_monitor'] = None
         if  ctrl.verbose >= 1:
@@ -748,6 +753,9 @@ class NiotSolver:
             filename = os.path.join(ctrl.save_directory,f'sol{current_iteration:06d}.pvd')
             utilities.save2pvd([pot, tdens, self.image_h],filename)
                
+    def print_info(self, msg, priority=0, where=['stdout'], color='black'):
+        self.ctrl.print_info(msg, priority=priority, where=where, color=color)
+
 
     def residual(self, sol):
         """
@@ -822,8 +830,11 @@ class NiotSolver:
         self.setup_pot_solver(ctrl)
         ierr = self.solve_pot_PDE(ctrl, sol)
         avg_outer = self.outer_iterations / max(self.nonlinear_iterations,1)
-        ctrl.print_info(f'It: {0} avgouter: {avg_outer:.1f}', 
-                priority=1, color='green', modes=['main','log'])
+        self.print_info(
+            msg=f'It: {0} avgouter: {avg_outer:.1f}', 
+            priority=1, 
+            where=['stdout','log'], 
+            color='green')
 
         iter = 0
         ierr_dmk = 0
@@ -838,7 +849,7 @@ class NiotSolver:
                 msg = f'\nIt: {iter} method {ctrl.time_discretization_method}'
                 if nrestart > 0:
                     msg += f'! restart {nrestart} '
-                ctrl.print_info(msg, priority=2, color='green', modes=['main','log'])
+                self.print_info(msg, priority=2, where=['stdout','log'], color='green')
     
                 ierr = self.iterate(ctrl, sol)
                 # clean memory every 10 iterations
@@ -855,13 +866,17 @@ class NiotSolver:
                     # reset controls after failure
                     ctrl.deltat = max(ctrl.deltat_min,ctrl.deltat_contraction * ctrl.deltat)
                     msg =(f'{ierr=}. Failure in due to {SNESReasons[ierr]}')
-                    ctrl.print_info(msg, priority=1, color='red', modes=['main','log'])
+                    ctrl.print_info(
+                        msg, 
+                        priority=1,
+                        where=['stdout','log'],
+                        color='red')
 
                     # restore old solution
                     sol.assign(sol_old)
 
             if (ierr != 0):
-                print('ierr',ierr)
+                self.print_info(f'{ierr=}')
                 break
 
             # study state of convergence
@@ -875,11 +890,20 @@ class NiotSolver:
                 +f' var:{var_tdens:.1e}'
                 +f' nsym:{self.nonlinear_iterations:1d}'
                 +f' avgouter: {avg_outer:.1f}')
-            ctrl.print_info(msg, priority=1, color='green', modes=['main','log'])
+            self.print_info(
+                msg, 
+                priority=1,
+                where=['stdout','log'],
+                color='green'
+            )
             with sol.dat.vec_ro as sol_vec:
                 tdens_vec = sol_vec.getSubVector(self.fems.tdens_is)
-                ctrl.print_info(msg_bounds(tdens_vec,'tdens'),
-                                 priority=1, color='black', modes=['main','log'])
+                self.print_info(
+                    msg=msg_bounds(tdens_vec,'tdens'),
+                    priority=1, 
+                    where=['main','log'],
+                    color='black')
+                    
                 
 
             # save data    
@@ -1019,11 +1043,15 @@ class NiotSolver:
         ierr = self.snes_solver.snes.getConvergedReason()
         
         msg =  linalg.info_ksp(self.snes_solver.snes.ksp)
-        ctrl.print_info(msg, priority=2, color='black', modes=['main','log'])
+        self.print_info(
+            msg, 
+            priority=2, 
+            where=['stdout','log'], 
+            color='black')
            
             
         if (ierr < 0):
-            print(f' Failure in due to {SNESReasons[ierr]}')
+            self.print_info(f' Failure in due to {SNESReasons[ierr]}')
         else:
             ierr = 0
 
@@ -1093,15 +1121,21 @@ class NiotSolver:
             # scale the gradient w.r.t. tdens by tdens**tdens_power itself
             d *= scaling_vec
             step = ctrl.set_step(d,tdens_vec)
-            ctrl.print_info(utilities.msg_bounds(d,'increment tdens')+f' dt={step:.2e}',
-                            priority=2, color='black',modes=['main','log'])
+            self.print_info(
+                msg=utilities.msg_bounds(d,'increment tdens')+f' dt={step:.2e}',
+                priority=2, 
+                where=['stdout','log'],
+                color='black')
             
             ctrl.deltat = step
             
             # update
             tdens_vec.axpy(step, d)
-            ctrl.print_info(utilities.msg_bounds(tdens_vec,'tdens')+f' dt={step:.2e}',
-                            priority=2, color='blue',modes=['main','log'])
+            self.print_info(
+                msg=utilities.msg_bounds(tdens_vec,'tdens')+f' dt={step:.2e}',
+                priority=2,
+                where=['stdout','log'],
+                color='blue')
             
 
         # threshold from below tdens
@@ -1169,7 +1203,7 @@ class NiotSolver:
             # update
             step = ctrl.set_step(d)
             ctrl.deltat = step
-            print(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}')
+            self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}')
             gfvar_vec.axpy(-step, d)
 
         # convert gfvar to tdens
@@ -1178,7 +1212,7 @@ class NiotSolver:
 
         # compute pot associated to new tdens
         ierr = self.solve_pot_PDE(ctrl, sol)
-        print(ierr)
+        
         return ierr
     
    

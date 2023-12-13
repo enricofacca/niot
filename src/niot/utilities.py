@@ -314,3 +314,63 @@ def sizeof_fmt(num, suffix='B'):
             return "%3.1f %s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f %s%s" % (num, 'Yi', suffix)
+
+
+def nested_get(dic, keys, default=None):
+    """
+    Get the value from a nested dictionary
+    Args:
+        dic (dict): dictionary
+        keys (list): list of keys
+        default (any): default value if the key is not found
+    Returns:
+        value (any): value of the nested dictionary (it can be a dictionary)
+    
+    Example:
+        dic = {'a':{'b':{'c':1}}}
+        keys = ['a','b','c']
+        value = nested_get(dic,keys)
+        print(value)
+        >>> 1
+    """
+    d = dic
+    for key in keys[:-1]:
+        if key in d:
+            d = d[key]
+    try:        
+        value = d[keys[-1]]
+    except:
+        if default is None:
+            raise KeyError
+        value = default
+    return value
+
+
+def nested_set(dic, keys, value, create_missing=False):
+    """
+    Get the value from a nested dictionary
+    Args:
+        dic (dict): dictionary
+        keys (list): list of keys
+        value (any): value to be set
+        create_missing (bool): if True, create the missing keys
+    Returns:
+        None (it modifies the dictionary in place)
+    Example:
+        dic = {'a':{'b':{'c':1}}}
+        keys = ['a','b','c']
+        nested_set(dic,keys,2)
+        print(dic)
+        >>> {'a': {'b': {'c': 2}}}
+    """
+    d = dic
+    for key in keys[:-1]:
+        if key in d:
+            d = d[key]
+        elif create_missing:
+            d = d.setdefault(key, {})
+        else:
+            return dic
+    if keys[-1] in d or create_missing:
+        d[keys[-1]] = value
+    return dic
