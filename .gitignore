@@ -1,20 +1,31 @@
-# firedrake
+#############
+# firedrake #
+#############
 *.pvd
 *.vtu
 *.npy
 *.h5
-# python
+##########
+# python #
+##########
 **/__pycache__/
-# niot only 
+**/niot.egg-info/
+########
+# niot #
+########
 test/*/runs/
 *.svg
 *.png
 *.dat
 *.sh
-# visit 
+#########
+# visit #
+#########
 *.session
 *.session.gui
-# editors
+###########
+# editors #
+###########
 *vscode*
 *~ 
 # docs

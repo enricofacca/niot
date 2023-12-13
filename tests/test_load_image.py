@@ -1,6 +1,7 @@
 import os
 import pytest
-from niot import image2dat as i2d
+from data2firedrake import image2dat as i2d
+print(dir(i2d))
 import numpy as np
 
 img_dir = os.path.dirname(__file__)
