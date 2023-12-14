@@ -246,21 +246,6 @@ def corrupt_and_reconstruct(img_source,
                         mask_for_contour,
                         ],filename)
 
-    # save numpy arrays
-    np_reconstruction = i2d.firedrake2numpy(reconstruction)
-    filename = os.path.join(directory, f'{label}.npy')
-    np.save(filename, np_reconstruction)
-    
-    # save images
-    img_name = os.path.join(directory, f'{label}_tdens.png')
-    i2d.numpy2image(np_reconstruction, img_name, normalized=True, inverted=True)
-
-    img_name = os.path.join(directory, f'{label}_support.png')
-    np_reconstruction = np_reconstruction/np.max(np_reconstruction)
-    i2d.numpy2image(np_reconstruction, img_name, normalized=True, inverted=True)
-
-    
-
     print(f'{ctrl.sigma_smoothing=}')
 
 
