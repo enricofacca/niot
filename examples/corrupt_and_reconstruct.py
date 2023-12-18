@@ -44,7 +44,7 @@ def corrupt_and_reconstruct(img_source,
                             img_sink,
                             img_network,
                             img_mask, 
-                            scaling_size,
+                            nref,
                             fem,
                             gamma, 
                             weights, 
@@ -61,13 +61,9 @@ def corrupt_and_reconstruct(img_source,
     print('Masks: '+img_mask)
 
 
-    # create problem label
-    if abs(scaling_size-1)>1e-16:
-        scaling_size = 1.0
-        label = [f'scale{scaling_size:.2f}']
-    else:
-        label = []
-    label+= [f'fem{fem}',
+    label= [
+        f'nref{nref}',
+        f'fem{fem}',
              f'gamma{gamma:.1e}',
              f'wd{weights[0]:.1e}',
              f'wr{weights[2]:.1e}',
@@ -89,12 +85,24 @@ def corrupt_and_reconstruct(img_source,
 
     # convert images to numpy matrices
     # 1 is the white background
-    
-    np_source = i2d.image2numpy(img_source,normalize=True,invert=True,factor=scaling_size)
-    np_sink = i2d.image2numpy(img_sink,normalize=True,invert=True,factor=scaling_size) 
-    np_network = i2d.image2numpy(img_network,normalize=True,invert=True,factor=scaling_size)
-    np_mask = i2d.image2numpy(img_mask,normalize=True,invert=True,factor=scaling_size)
+    np_source = i2d.image2numpy(img_source,normalize=True,invert=True,factor=2**nref)
+    np_sink = i2d.image2numpy(img_sink,normalize=True,invert=True,factor=2**nref)
+    np_network = i2d.image2numpy(img_network,normalize=True,invert=True,factor=2**nref)
+    np_mask = i2d.image2numpy(img_mask,normalize=True,invert=True,factor=2**nref)
+
+    # save image to file
+    # get the filename with no directory
+    image_name = img_source.split('/')[-1]
+    i2d.numpy2image(np_source,f'{directory}/nref{nref}_{image_name}')
+    image_name = img_sink.split('/')[-1]
+    i2d.numpy2image(np_sink,f'{directory}/nref{nref}_{image_name}')
+    image_name = img_mask.split('/')[-1]
+    i2d.numpy2image(np_mask,f'{directory}/nref{nref}_{image_name}')
+    image_name = img_network.split('/')[-1]
+    i2d.numpy2image(np_network,f'{directory}/nref{nref}_{image_name}')
    
+
+
     # taking just the support of the sources and sinks
     np_source[np.where(np_source>0.0)] = 1.0
     np_sink[np.where(np_sink>0.0)] = 1.0
@@ -146,11 +154,10 @@ def corrupt_and_reconstruct(img_source,
     
     ctrl = Controls(
         # globals controls
-        tol=5e-2,
+        optimization_tol=5e-2,
         max_iter=1000,
         spaces=fem,
         # niot controls
-        gamma=gamma,
         weight_discrepancy=weights[0],
         #weight_penalty=weights[1],
         weight_regularization=weights[2],
@@ -187,28 +194,26 @@ def corrupt_and_reconstruct(img_source,
     #
     ot.balance(source, sink)
     opt_inputs = ot.OTPInputs(source, sink)
-    btp = ot.BranchedTransportProblem(source, sink, gamma=ctrl.gamma)
+    btp = ot.BranchedTransportProblem(source, sink, gamma=gamma)
 
     print(f'{ctrl.spaces=}')
     
     niot_solver = NiotSolver(btp, corrupted,  confidence, ctrl)
-    sol = niot_solver.create_solution()
     if corrupted_as_initial_guess == 1:
-        sol.sub(1).assign(corrupted+1e-6)
+        niot_solver.sol.sub(1).assign(corrupted+1e-6)
     
     
     
     # solve the potential PDE
-    niot_solver.setup_pot_solver(ctrl)
-    ierr = niot_solver.solve_pot_PDE(ctrl, sol)
-    sol0 = cp(sol)
+    ierr = niot_solver.solve_pot_PDE(niot_solver.sol)
+    sol0 = cp(niot_solver.sol)
 
     # solve the problem
-    ierr = niot_solver.solve(ctrl, sol)
+    ierr = niot_solver.solve()
     print("Error code: ",ierr)
 
     # save solution
-    pot, tdens, vel = niot_solver.get_otp_solution(sol)
+    pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
     pot0, tdens0, vel0 = niot_solver.get_otp_solution(sol0)
     pot0.rename('pot_0','pot_0')
     tdens0.rename('tdens_0','tdens_0')
@@ -227,7 +232,6 @@ def corrupt_and_reconstruct(img_source,
 
     filename = os.path.join(directory, f'{label}.pvd')
     print("Saving solution to "+filename)
-    niot_solver.save_solution(sol,filename)
     utilities.save2pvd([
         corrupted,
         corrupted_for_contour,
@@ -235,8 +239,8 @@ def corrupt_and_reconstruct(img_source,
         confidence_for_contour,
         pot, tdens, vel,
         pot0, tdens0, vel0, 
-                        niot_solver.source,
-                        niot_solver.sink,
+                        niot_solver.btp.source,
+                        niot_solver.btp.sink,
                         reconstruction,
                         reconstruction_for_contour,
                         tdens_for_contour,
@@ -245,8 +249,13 @@ def corrupt_and_reconstruct(img_source,
                         mask,
                         mask_for_contour,
                         ],filename)
-
-    print(f'{ctrl.sigma_smoothing=}')
+    
+    #mask_for_contour.rename('mask_for_contour')
+    #filename = os.path.join(directory, f'simple_{label}.pvd')
+    #print("Saving solution to "+filename)
+    #utilities.save2pvd([
+    #    tdens, network, mask_for_contour,
+    #                    ],filename)
 
 
     
