@@ -245,20 +245,19 @@ class Controls:
         'optimization_tol': 1e-2,
         'constraint_tol': 1e-6,
         'max_iter': 100,
-        'discretization':{
-            'type' : 'DG0DG0',
-            'cell2face' : 'harmonic_mean',
-        },
-        'inpainting' : {
-            'weight_discrepancy': 1.0,
-            'weight_regularization': 0.0,
-            'weight_penalization': 1.0,
-            'mu2image' : {
-                'type' : 'identity', # idendity, heat, pm
-                'scaling': 1.0,
-                'pm': {'sigma' : 1e-2},
-                'heat': {'sigma' : 1e-2},
-            },
+        'max_restart': 5,
+        'spaces': 'DG0DG0',
+        'cell2face' : 'harmonic_mean',
+        'min_tdens': 1e-8,
+        #'inpainting' : {
+        'weight_discrepancy': 1.0,
+        'weight_regularization': 1.e-4,
+        'weight_penalization': 1.0,        
+        'tdens2image' : {
+            'type': 'identity',
+            'scaling': 1.0,
+            'pm': {'sigma' : 1e-2},
+            'heat': {'sigma' : 1e-2},
         },
         'pot_solver':{
             'ksp': {
@@ -269,13 +268,14 @@ class Controls:
                 'type' : 'hypre',
                 },
         },
-        'optimization_type' : 'dmk',
+        #'optimization_type' : 'dmk',
         'dmk': {
-            'type' : 'mirror_descent',
-            'mirror_descent' : {
+            'type' : 'tdens_mirror_descent',
+            'tdens_mirror_descent' : {
                 'gradient_scaling' : 'dmk',
                 'deltat' : {
                     'type' : 'adaptive2',
+                    'initial' : 1e-6,
                     'min' : 1e-2,
                     'max' : 0.5,
                     'expansion' : 2,
@@ -303,7 +303,7 @@ class Controls:
                 spaces='CR1DG0',
                 cell2face='harmonic_mean',
                 # optimization parameters
-                time_discretization_method='mirror_descent',
+                time_discretization_method='tdens_mirror_descent',
                 gradient_scaling='dmk',
                 deltat=0.5,
                 nonlinear_tol=1e-6,
@@ -411,13 +411,13 @@ class Controls:
         '''
         Get the value of the key in the global_ctrl dictionary
         '''
-        return getattr(self,key,default)
+        return utilities.nested_get(self.global_ctrl,key,default)# getattr(self,key,default)
     
     def set(self, key, value):
         '''
         Set the value of the key in the global_ctrl dictionary
         '''
-        return setattr(self,key,value)
+        return utilities.nested_set(self.global_ctrl,key,value)#setattr(self,key,value)
 
 
     def set_step(self, increment, state=None):
@@ -477,7 +477,56 @@ class Controls:
             elif mode == 'log':
                 if (self.save_log > 0 and self.verbose_log >= priority):
                     PETSc.Sys.Print(msg, file=self.log_file)           
-            
+
+
+def set_step(increment, state, deltat, ctrl):
+    """
+    Set the step lenght according to the control strategy
+    and the increment
+    """
+    control = ctrl.get('type')
+    print(f'{control=}')
+    deltat_min = ctrl.get('min')
+    deltat_max = ctrl.get('max')
+    deltat_expansion = ctrl.get('expansion')
+
+    if control == 'adaptive':
+        abs_inc = abs(increment)
+        _,d_max = abs_inc.max()
+        if (d_max < 0):
+            step = deltat_max
+        else:
+            print(f'{d_max=:.2e}')
+            step = max(min(1.0 / d_max, deltat_max),deltat_min)
+    elif control == 'adaptive2':
+        order_down = -1
+        order_up = 1
+        r = increment / state
+        r_np = r.array
+        if np.min(r_np) < 0:
+            negative = np.where(r_np<0)
+            hdown = (10**order_down-1) / r_np[negative]
+            deltat_down = np.min(hdown)
+        else:
+            deltat_down = deltat_max
+        if np.max(r_np) > 0:
+            positive = np.where(r_np>0)
+            hup = (10**order_up-1) / r_np[positive]
+            deltat_up = np.min(hup)
+        else:
+            deltat_up = deltat_max
+        step = min(deltat_up, deltat_down)
+        step = max(step, deltat_min)
+        step = min(step, deltat_max)
+
+    elif control == 'expansive':
+        step = max(min(deltat * deltat_expansion, deltat_max),deltat_min)
+    elif control == 'fixed':
+        step = deltat
+    else:
+        raise ValueError(f'{control=} not supported')
+    return step
+
  
 class NiotSolver:
     '''
@@ -536,106 +585,106 @@ class NiotSolver:
         #######################
         # confidence metrix, appaers in the discrepancy term
         self.confidence = confidence
-        #self.confidence.rename('confidence','confidence')
         
-        # weights of the discrepancy, penalization and transport energy
-        self.weights = np.array(
-            [ctrl.get('weight_discrepancy'),
-             1.0,
-             ctrl.get('weight_regularization')])
 
         # map from tdens to image
-        PETSc.Sys.Print(f"{ctrl.get('tdens2image')=}",f"{ctrl.get('scaling')=}",f"{ctrl.get('sigma_smoothing')=}")
-        
         self.tdens_h = Function(self.fems.tdens_space) # used by tdens2image map
         self.tdens_h.rename('tdens_h')
+        self.setup_tdens2image(self.tdens_h, self.ctrl.get('tdens2image'))
+    
+        #PETSc.Sys.Print(f"{ctrl.get('tdens2image')=}",f"{ctrl.get('scaling')=}",f"{ctrl.get('sigma_smoothing')=}")
         
-        self.image_h = Function(self.fems.tdens_space)
-        self.image_h.rename('image_h') # used by tdens2image map
+        # self.tdens_h = Function(self.fems.tdens_space) # used by tdens2image map
+        # self.tdens_h.rename('tdens_h')
         
-        self.scaling = ctrl.scaling
-        tdens2image = ctrl.get('tdens2image')
-        if tdens2image == 'identity':
-            self.tdens2image = lambda x: self.scaling*x
-        elif tdens2image == 'heat':
-            test = TestFunction(self.fems.tdens_space)  
-            trial = TrialFunction(self.fems.tdens_space)
-            form =  inner(test, trial)*dx
-            form += ctrl.get('sigma_smoothing') * self.fems.Laplacian_form('tdens')
+        # self.image_h = Function(self.fems.tdens_space)
+        # self.image_h.rename('image_h') # used by tdens2image map
+        
+        # scaling = self.ctrl.scaling
+        # tdens2image = self.ctrl.get(['tdens2image','type'])
+        # if tdens2image == 'identity':
+        #     self.tdens2image = lambda x: x
+        # elif tdens2image == 'heat':
+        #     test = TestFunction(self.fems.tdens_space)  
+        #     trial = TrialFunction(self.fems.tdens_space)
+        #     form =  inner(test, trial)*dx
+        #     form += self.ctrl.get('sigma_smoothing') * self.fems.Laplacian_form('tdens')
                         
-            self.HeatMatrix = assemble(form).M.handle
-            self.HeatSmoother = linalg.LinSolMatrix(self.HeatMatrix,
-                                                    self.fems.tdens_space, 
-                                                    solver_parameters={
-                                        'ksp_monitor': None,                
-                                        'ksp_type': 'cg',
-                                        'ksp_rtol': 1e-10,
-                                        'pc_type': 'hypre'},
-                                        options_prefix='heat_smoother_')
+        #     self.HeatMatrix = assemble(form).M.handle
+        #     self.HeatSmoother = linalg.LinSolMatrix(self.HeatMatrix,
+        #                                             self.fems.tdens_space, 
+        #                                             solver_parameters={
+        #                                 'ksp_monitor': None,                
+        #                                 'ksp_type': 'cg',
+        #                                 'ksp_rtol': 1e-10,
+        #                                 'pc_type': 'hypre'},
+        #                                 options_prefix='heat_smoother_')
             
-            test = TestFunction(self.fems.tdens_space)
-            self.rhs_heat = self.tdens_h * test * dx
-            self.heat_problem = LinearVariationalProblem(form,
-                                                         self.rhs_heat,
-                                                         self.tdens_h,
-                                                         constant_jacobian=True)
-            # self.heat_solver = LinearSolver(self.HeatMatrix,
-            #                                  solver_parameters={
-            #                                     'ksp_type': 'cg',
-            #                                     'ksp_rtol': 1e-10,
-            #                                     'pc_type': 'hypre',},
-            #                                     options_prefix='heat_solver_')
+        #     test = TestFunction(self.fems.tdens_space)
+        #     self.rhs_heat = self.tdens_h * test * dx
+        #     self.heat_problem = LinearVariationalProblem(form,
+        #                                                  self.rhs_heat,
+        #                                                  self.tdens_h,
+        #                                                  constant_jacobian=True)
+        #     # self.heat_solver = LinearSolver(self.HeatMatrix,
+        #     #                                  solver_parameters={
+        #     #                                     'ksp_type': 'cg',
+        #     #                                     'ksp_rtol': 1e-10,
+        #     #                                     'pc_type': 'hypre',},
+        #     #                                     options_prefix='heat_solver_')
                                             
             
-            self.tdens2image = lambda fun: self.scaling*conductivity2image.LaplacianSmoothing(fun,self.HeatSmoother)
-            #self.tdens2image = lambda fun: self.scaling * self.heat_solver.solve(fun,)
-        elif tdens2image == 'pm':
-            test = TestFunction(self.fems.tdens_space)
-            self.image_h.assign(self.img_observed)
-            facet_image = self.fems.cell2face(ctrl.get('min_tdens') + self.image_h, self.DG0_cell2face)
-            pm_PDE = (
-                (self.image_h - self.tdens_h) * test * dx 
-                + ctrl.get('sigma_smoothing') * facet_image * jump(self.image_h) * jump(test) / self.fems.delta_h * dS
-            )
-            self.pm_problem = NonlinearVariationalProblem(
-                pm_PDE, self.image_h)
+        #     self.tdens2image = lambda fun: scaling*conductivity2image.LaplacianSmoothing(fun,self.HeatSmoother)
+        #     #self.tdens2image = lambda fun: self.scaling * self.heat_solver.solve(fun,)
+        # elif tdens2image == 'pm':
+        #     test = TestFunction(self.fems.tdens_space)
+        #     self.image_h.assign(self.img_observed)
+        #     facet_image = self.fems.cell2face(ctrl.get('min_tdens') + self.image_h, self.DG0_cell2face)
+        #     pm_PDE = (
+        #         (self.image_h - self.tdens_h) * test * dx 
+        #         + ctrl.get('sigma_smoothing') * facet_image * jump(self.image_h) * jump(test) / self.fems.delta_h * dS
+        #     )
+        #     self.pm_problem = NonlinearVariationalProblem(
+        #         pm_PDE, self.image_h)
 
-            self.pm_solver = NonlinearVariationalSolver(
-                self.pm_problem,
-                solver_parameters={
-                    'snes_type': 'newtonls',
-                    'snes_rtol': 1e-12,
-                    'snes_atol': 1e-16,
-                    'snes_linesearch_type':'bt',
-                    'snes_monitor': None,
-                    'ksp_type': 'gmres',
-                    'ksp_rtol': 1e-8,
-                    'pc_type': 'hypre'},
-                options_prefix='porous_solver_')
+        #     self.pm_solver = NonlinearVariationalSolver(
+        #         self.pm_problem,
+        #         solver_parameters={
+        #             'snes_type': 'newtonls',
+        #             'snes_rtol': 1e-12,
+        #             'snes_atol': 1e-16,
+        #             'snes_linesearch_type':'bt',
+        #             'snes_monitor': None,
+        #             'ksp_type': 'gmres',
+        #             'ksp_rtol': 1e-8,
+        #             'pc_type': 'hypre'},
+        #         options_prefix='porous_solver_')
 
-            def tdens2image_map(fun):
-                self.tdens_h.interpolate(fun)
-                self.pm_solver.solve()
-                self.image_h *= self.scaling
-                return self.image_h
+        #     def tdens2image_map(fun):
+        #         self.tdens_h.interpolate(fun)
+        #         self.pm_solver.solve()
+        #         self.image_h *= scaling
+        #         return self.image_h
             
-            self.tdens2image = tdens2image_map
+        #     self.tdens2image = tdens2image_map
 
         
             
 
-        else:
-            raise ValueError(f"Map tdens2iamge not supported {ctrl.get('tdens2image')=}\n"
-                             +"Only identity, heat are implemented")
+        # else:
+        #     raise ValueError(f"Map tdens2iamge not supported {ctrl.get('tdens2image')=}\n"
+        #                      +"Only identity, heat are implemented")
 
         
         # init infos
+        self.iter = 0
         self.outer_iterations = 0
         self.nonlinear_iterations = 0
         self.nonlinear_res = 0.0
 
+
         #############################################################
-        # Cached funcitons and solvers that are used in the algorithm
+        # Cached functions and solvers that are used in the algorithm
         #############################################################
         petsc_controls ={
             # krylov solver controls
@@ -656,6 +705,7 @@ class NiotSolver:
         self.rhs_ode = Function(self.fems.tdens_space) # used in mirror descent
         self.rhs_ode.rename('rhs_ode')
         
+        self.deltat = 0.0
         
         
 
@@ -687,6 +737,87 @@ class NiotSolver:
                                                 appctx=context,
                                                 options_prefix='pot_solver_')
         self.snes_solver.snes.ksp.setConvergenceHistory()
+
+    def setup_tdens2image(self, tdens_h, tdens2image_ctrl):
+        """
+        Procedure defining the map from tdens to image
+        self.tdens2image that will be a callable function
+        mapping tdens (firedrake function) to image (firedrake function
+        """
+        
+        self.image_h = Function(self.fems.tdens_space)
+        self.image_h.rename('image_h') # used by tdens2image map
+        
+        scaling = tdens2image_ctrl.get('scaling')
+        tdens2image = tdens2image_ctrl.get('type')
+        if tdens2image == 'identity':
+            self.tdens2image = lambda x: scaling * x
+
+        elif tdens2image == 'heat':
+            test = TestFunction(self.fems.tdens_space)  
+            trial = TrialFunction(self.fems.tdens_space)
+            form =  inner(test, trial)*dx
+            sigma = utilities.nested_get(tdens2image_ctrl,['heat','sigma'])
+            form += sigma * self.fems.Laplacian_form('tdens')
+                        
+            self.HeatMatrix = assemble(form).M.handle
+            self.HeatSmoother = linalg.LinSolMatrix(self.HeatMatrix,
+                                                    self.fems.tdens_space, 
+                                                    solver_parameters={
+                                        'ksp_monitor': None,                
+                                        'ksp_type': 'cg',
+                                        'ksp_rtol': 1e-10,
+                                        'pc_type': 'hypre'},
+                                        options_prefix='heat_smoother_')
+            
+            test = TestFunction(self.fems.tdens_space)
+            self.rhs_heat = tdens_h * test * dx
+            self.heat_problem = LinearVariationalProblem(form,
+                                                         self.rhs_heat,
+                                                         self.tdens_h,
+                                                         constant_jacobian=True)
+            # self.heat_solver = LinearSolver(self.HeatMatrix,
+            #                                  solver_parameters={
+            #                                     'ksp_type': 'cg',
+            #                                     'ksp_rtol': 1e-10,
+            #                                     'pc_type': 'hypre',},
+            #                                     options_prefix='heat_solver_')
+                                            
+            
+            self.tdens2image = lambda fun: scaling * conductivity2image.LaplacianSmoothing(fun,self.HeatSmoother)
+            
+
+        elif tdens2image == 'pm':
+            test = TestFunction(self.fems.tdens_space)
+            self.image_h.assign(self.img_observed)
+            facet_image = self.fems.cell2face(ctrl.get('min_tdens') + self.image_h, self.DG0_cell2face)
+            pm_PDE = (
+                (self.image_h - tdens_h) * test * dx 
+                + ctrl.get('sigma_smoothing') * facet_image * jump(self.image_h) * jump(test) / self.fems.delta_h * dS
+            )
+            self.pm_problem = NonlinearVariationalProblem(
+                pm_PDE, self.image_h)
+
+            self.pm_solver = NonlinearVariationalSolver(
+                self.pm_problem,
+                solver_parameters={
+                    'snes_type': 'newtonls',
+                    'snes_rtol': 1e-12,
+                    'snes_atol': 1e-16,
+                    'snes_linesearch_type':'bt',
+                    'snes_monitor': None,
+                    'ksp_type': 'gmres',
+                    'ksp_rtol': 1e-8,
+                    'pc_type': 'hypre'},
+                options_prefix='porous_solver_')
+
+            def tdens2image_map(fun):
+                self.tdens_h.interpolate(fun)
+                self.pm_solver.solve()
+                self.image_h *= scaling
+                return self.image_h
+            
+            self.tdens2image = tdens2image_map
 
     
                
@@ -782,23 +913,23 @@ class NiotSolver:
         max_iter = self.ctrl.get('max_iter')
         max_restart = self.ctrl.get('max_restart')
         
-        iter = 0
+        self.iteration = 0
         ierr_dmk = 0
         tape.clear_tape()
-        while ierr_dmk == 0 and iter < max_iter:
+        while ierr_dmk == 0 and self.iteration < max_iter:
             # update with restarts
             sol_old.assign(self.sol)
             nrestart = 0 
             
             while nrestart < max_restart:
-                msg = f"\nIt: {iter} method {self.ctrl.get('time_discretization_method')}"
+                msg = f"\nIt: {self.iteration} method {self.ctrl.get(['dmk','type'])}"
                 if nrestart > 0:
                     msg += f'! restart {nrestart} '
                 self.print_info(msg, priority=2, where=['stdout','log'], color='green')
     
                 ierr = self.iterate(self.sol)
                 # clean memory every 10 iterations
-                if iter%10 == 0:
+                if self.iteration%10 == 0:
                     # Clear tape is required to avoid memory accumalation
                     # It works but I don't know why
                     # see also https://github.com/firedrakeproject/firedrake/issues/3133
@@ -826,7 +957,7 @@ class NiotSolver:
                 break
 
             # study state of convergence
-            iter += 1
+            self.iteration += 1
             
             residual_opt = self.residual(self.sol)
             avg_outer = self.outer_iterations / max(self.nonlinear_iterations,1)
@@ -860,7 +991,7 @@ class NiotSolver:
                 break
 
             # break if max iter is reached
-            if (iter == max_iter):
+            if (self.iter == max_iter):
                 ierr_dmk = 1
         
         return ierr_dmk
@@ -958,11 +1089,15 @@ class NiotSolver:
         returns:
             Lag: Lagrangian functional = w_0*discrepancy + w_1*penalization + w_2*regularization
         '''
-        Lag = self.weights[1] * self.penalization(pot,tdens)
-        if abs(self.weights[0]) > 1e-16:
-            Lag += self.weights[0] * self.discrepancy(pot,tdens)
-        if abs(self.weights[2]) > 1e-16:
-            Lag += self.weights[2] * self.regularization(pot,tdens)
+        wr = self.ctrl.get('weight_regularization')
+        wd = self.ctrl.get('weight_discrepancy')
+        wp = self.ctrl.get('weight_penalization')
+
+        Lag = wp * self.penalization(pot,tdens)
+        if abs(wd) > 1e-16:
+            Lag += wd * self.discrepancy(pot,tdens)
+        if abs(wr) > 1e-16:
+            Lag += wr * self.regularization(pot,tdens)
         return Lag
     
     def solve_pot_PDE(self, sol, tol = None):
@@ -1024,7 +1159,7 @@ class NiotSolver:
         # of the energy w.r.t. tdens multiply by tdens**(2-gamma)
         # 
         #
-        ctrl = self.ctrl
+        method_ctrl = self.ctrl.get(['dmk','tdens_mirror_descent'])
 
 
         pot, tdens = sol.subfunctions
@@ -1060,7 +1195,7 @@ class NiotSolver:
         update = Function(self.fems.tdens_space)
         scaling = Function(self.fems.tdens_space)
         
-        gradient_scaling = ctrl.get('gradient_scaling')
+        gradient_scaling = utilities.nested_get(method_ctrl, 'gradient_scaling')
         if gradient_scaling == 'dmk':            
             tdens_power = 2 - self.btp.gamma
         elif gradient_scaling == 'mirror_descent':
@@ -1078,7 +1213,12 @@ class NiotSolver:
 
             # scale the gradient w.r.t. tdens by tdens**tdens_power itself
             d *= scaling_vec
-            step = ctrl.set_step(d,tdens_vec)
+            
+            # define step length
+            if self.iter == 0:
+                self.deltat = utilities.nested_get(method_ctrl,['deltat','initial'])
+            step = set_step(d, tdens_vec, self.deltat, 
+                            utilities.nested_get(method_ctrl,'deltat'))
             self.print_info(
                 msg=utilities.msg_bounds(d,'increment tdens')+f' dt={step:.2e}',
                 priority=2, 
@@ -1189,17 +1329,17 @@ class NiotSolver:
          ierr : control flag. It is 0 if everthing worked.
 
         '''
-        time_discretization_method = self.ctrl.get('time_discretization_method')
-        if (time_discretization_method == 'tdens_mirror_descent'):
+        method = self.ctrl.get(['dmk','type'])
+        if (method == 'tdens_mirror_descent'):
             ierr = self.tdens_mirror_descent(sol)
             return ierr
         
-        elif (time_discretization_method == 'gfvar_gradient_descent'):
+        elif (method == 'gfvar_gradient_descent'):
             ierr = self.gfvar_gradient_descent(sol)
             return ierr
         else:
             raise ValueError('value: time_discretization_method not supported.\n',
-                              f'Passed:{time_discretization_method}')   
+                              f'Passed:{method}')   
     
     def save_solution(self, sol, filename):            
         '''
@@ -1242,7 +1382,7 @@ def callback_record_algorithm(self, save_solution, save_directory, save_solution
     """
     
     # unpack related controls
-    current_iteration = self.current_iteration
+    current_iteration = self.iter
     sol = self.sol
 
     if save_solution == 'no':
