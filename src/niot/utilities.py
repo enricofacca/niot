@@ -333,6 +333,8 @@ def nested_get(dic, keys, default=None):
         print(value)
         >>> 1
     """
+    if type(keys) != list:
+        keys = [keys]
     d = dic
     for key in keys[:-1]:
         if key in d:
