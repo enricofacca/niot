@@ -243,7 +243,7 @@ class Controls:
     global_ctrl = {
         # main controls
         'optimization_tol': 1e-2,
-        'constraint_tol': 1e-6,
+        'constraint_tol': 1e-8,
         'max_iter': 100,
         'max_restart': 5,
         'spaces': 'DG0DG0',
@@ -256,7 +256,11 @@ class Controls:
         'tdens2image' : {
             'type': 'identity',
             'scaling': 1.0,
-            'pm': {'sigma' : 1e-2},
+            'pm': {'sigma' : 1e-2,
+                   'verbose' : 0,
+                   'snes_rtol' : 1e-12,
+                   'snes_atol' : 1e-16,
+                   },
             'heat': {'sigma' : 1e-2},
         },
         'pot_solver':{
@@ -276,13 +280,18 @@ class Controls:
                 'deltat' : {
                     'type' : 'adaptive2',
                     'initial' : 1e-6,
-                    'min' : 1e-2,
-                    'max' : 0.5,
+                    'min' : 1e-6,
+                    'max' : 1e-2,
                     'expansion' : 2,
                     'contraction' : 0.5,
                 },                
             }   
-        }
+        },
+        # info
+        'verbose' : 0,
+        'save_log' : 0,
+        'verbose_log' : 2,
+        'file_log' : 'niot.log',
     }   
 
 
@@ -485,7 +494,6 @@ def set_step(increment, state, deltat, ctrl):
     and the increment
     """
     control = ctrl.get('type')
-    print(f'{control=}')
     deltat_min = ctrl.get('min')
     deltat_max = ctrl.get('max')
     deltat_expansion = ctrl.get('expansion')
@@ -677,7 +685,7 @@ class NiotSolver:
 
         
         # init infos
-        self.iter = 0
+        self.iteration = 0
         self.outer_iterations = 0
         self.nonlinear_iterations = 0
         self.nonlinear_res = 0.0
@@ -790,25 +798,35 @@ class NiotSolver:
         elif tdens2image == 'pm':
             test = TestFunction(self.fems.tdens_space)
             self.image_h.assign(self.img_observed)
-            facet_image = self.fems.cell2face(ctrl.get('min_tdens') + self.image_h, self.DG0_cell2face)
+            facet_image = self.fems.cell2face(self.ctrl.get('min_tdens') + self.image_h,
+                                               self.ctrl.get('cell2face'))
+            print(tdens2image_ctrl)
+            sigma = utilities.nested_get(tdens2image_ctrl,['pm','sigma'])
+            print(f'{sigma=}')
             pm_PDE = (
                 (self.image_h - tdens_h) * test * dx 
-                + ctrl.get('sigma_smoothing') * facet_image * jump(self.image_h) * jump(test) / self.fems.delta_h * dS
+                + sigma * facet_image * jump(self.image_h) * jump(test) / self.fems.delta_h * dS
             )
             self.pm_problem = NonlinearVariationalProblem(
                 pm_PDE, self.image_h)
 
-            self.pm_solver = NonlinearVariationalSolver(
-                self.pm_problem,
-                solver_parameters={
+            solver_parameters={
                     'snes_type': 'newtonls',
-                    'snes_rtol': 1e-12,
-                    'snes_atol': 1e-16,
+                    'snes_rtol': utilities.nested_get(tdens2image_ctrl,['pm','snes_rtol']), 
+                    'snes_atol': utilities.nested_get(tdens2image_ctrl,['pm','snes_atol']),
                     'snes_linesearch_type':'bt',
-                    'snes_monitor': None,
                     'ksp_type': 'gmres',
                     'ksp_rtol': 1e-8,
-                    'pc_type': 'hypre'},
+                    'pc_type': 'hypre'}
+            verbose = utilities.nested_get(tdens2image_ctrl,['pm','verbose']) 
+            if verbose >= 1:
+                solver_parameters['snes_monitor'] = None
+            if verbose >= 2:
+                solver_parameters['ksp_monitor'] = None
+
+            self.pm_solver = NonlinearVariationalSolver(
+                self.pm_problem,
+                solver_parameters=solver_parameters,
                 options_prefix='porous_solver_')
 
             def tdens2image_map(fun):
@@ -822,8 +840,24 @@ class NiotSolver:
     
                
     def print_info(self, msg, priority=0, where=['stdout'], color='black'):
-        self.ctrl.print_info(msg, priority=priority, where=where, color=color)
+        '''
+        Print messagge to stdout and to log 
+        file according to priority passed
+        '''
+        verbose = self.ctrl.get('verbose')
+        verbose_log = self.ctrl.get('verbose_log')
+        save_log = self.ctrl.get('save_log')
+        log_file = self.ctrl.get('file_log')
+        for mode in where:
+            if mode=='stdout':
+                if (verbose >= priority): 
+                    if color != 'black':
+                        msg = utilities.color(color, msg)
+                    PETSc.Sys.Print('   '*(priority-1)+msg)
 
+            elif mode == 'log':
+                if (save_log > 0 and verbose_log >= priority):
+                    PETSc.Sys.Print(msg, file=log_file)  
 
     def residual(self, sol):
         """
@@ -991,7 +1025,7 @@ class NiotSolver:
                 break
 
             # break if max iter is reached
-            if (self.iter == max_iter):
+            if (self.iteration == max_iter):
                 ierr_dmk = 1
         
         return ierr_dmk
@@ -1215,7 +1249,7 @@ class NiotSolver:
             d *= scaling_vec
             
             # define step length
-            if self.iter == 0:
+            if self.iteration == 0:
                 self.deltat = utilities.nested_get(method_ctrl,['deltat','initial'])
             step = set_step(d, tdens_vec, self.deltat, 
                             utilities.nested_get(method_ctrl,'deltat'))
@@ -1382,7 +1416,7 @@ def callback_record_algorithm(self, save_solution, save_directory, save_solution
     """
     
     # unpack related controls
-    current_iteration = self.iter
+    current_iteration = self.iteration
     sol = self.sol
 
     if save_solution == 'no':

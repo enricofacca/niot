@@ -372,7 +372,7 @@ def nested_set(dic, keys, value, create_missing=False):
         elif create_missing:
             d = d.setdefault(key, {})
         else:
-            return dic
+            raise KeyError
     if keys[-1] in d or create_missing:
         d[keys[-1]] = value
     return dic
