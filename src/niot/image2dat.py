@@ -203,10 +203,10 @@ def image2numpy(img_name, normalize=True, invert=True, factor=1):
    #open file in fileList:
    img_file = Image.open(img_name)
 
-   if (factor <1):
+   if abs(factor-1)>1e-16:
       # resize image
       width, height = img_file.size
-      img_file = img_file.resize((int(width*factor),int(height*factor)), Image.ANTIALIAS)
+      img_file = img_file.resize((int(width*factor),int(height*factor)), resample=Image.NEAREST)
    
    # get original image parameters...
    width, height = img_file.size

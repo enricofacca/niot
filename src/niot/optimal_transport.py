@@ -85,7 +85,11 @@ class BranchedTransportProblem():
         self.source = source
         self.sink = sink
         self.Dirichlet = Dirichlet
-        self.kappa = kappa
+        if isinstance(kappa,float):
+            R = FunctionSpace(self.mesh, 'R', 0)
+            self.kappa = Function(R,val=1,name='kappa')
+        else:
+            self.kappa = kappa
         
         # Check data consistency
         mass_source = assemble(self.source * dx)
