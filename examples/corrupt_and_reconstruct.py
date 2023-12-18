@@ -154,8 +154,8 @@ def corrupt_and_reconstruct(img_source,
     
     ctrl = Controls(
         # globals controls
-        optimization_tol=5e-2,
-        max_iter=1000,
+        optimization_tol=1e-2,
+        max_iter=4000,
         spaces=fem,
         # niot controls
         weight_discrepancy=weights[0],
@@ -176,18 +176,11 @@ def corrupt_and_reconstruct(img_source,
     ctrl.deltat_control = 'adaptive2'
     ctrl.deltat_expansion = 1.02
     ctrl.deltat_min = 1e-7
-    ctrl.deltat_max = 1e-1
+    ctrl.deltat_max = 1e-2
     ctrl.verbose = 2
     ctrl.max_restarts = 7
-    ctrl.save_solution = 'none'
-    ctrl.save_solution_every = 10
-    ctrl.save_directory = os.path.join(directory,'evolution'+label+'/')
-    
     ctrl.scaling = tdens2image_scaling
 
-    if ctrl.save_solution != 'none':
-        if (not os.path.exists(ctrl.save_directory)):
-            os.makedirs(ctrl.save_directory)
     
     #
     # solve the problem
@@ -197,6 +190,31 @@ def corrupt_and_reconstruct(img_source,
     btp = ot.BranchedTransportProblem(source, sink, gamma=gamma)
 
     print(f'{ctrl.spaces=}')
+
+    utilities.nested_set(ctrl.global_ctrl,['optimization_tol'], 1e-2)
+    utilities.nested_set(ctrl.global_ctrl,['constaint_tol'], 1e-9)
+    utilities.nested_set(ctrl.global_ctrl,['max_iter'], 1000)
+    utilities.nested_set(ctrl.global_ctrl,['max_restart'], 5)
+
+    utilities.nested_set(ctrl.global_ctrl,['weight_discrepancy'],weights[0])
+    utilities.nested_set(ctrl.global_ctrl,['weight_penalty'],1.0)
+    utilities.nested_set(ctrl.global_ctrl,['weight_regularization'],weights[2])
+    
+
+    utilities.nested_set(ctrl.global_ctrl,['dmk','type'],'tdens_mirror_descent')
+    utilities.nested_set(ctrl.global_ctrl,['dmk','tdens_mirror_descent','scaling'], 'dmk')
+    utilities.nested_set(ctrl.global_ctrl,['dmk','tdens_mirror_descent','deltat','type'], 'adaptive2')
+    utilities.nested_set(ctrl.global_ctrl,['dmk','tdens_mirror_descent','deltat','min'], 1e-6)
+    utilities.nested_set(ctrl.global_ctrl,['dmk','tdens_mirror_descent','deltat','max'], 1e-1)
+
+    utilities.nested_set(ctrl.global_ctrl,['tdens2image','type'],tdens2image)
+    utilities.nested_set(ctrl.global_ctrl,['tdens2image','pm','sigma'], sigma_smoothing)
+    utilities.nested_set(ctrl.global_ctrl,['tdens2image','heat','sigma'], sigma_smoothing)
+    utilities.nested_set(ctrl.global_ctrl,['tdens2image','scaling'], tdens2image_scaling)
+    
+    
+    utilities.nested_set(ctrl.global_ctrl,['verbose'], 2)
+    
     
     niot_solver = NiotSolver(btp, corrupted,  confidence, ctrl)
     if corrupted_as_initial_guess == 1:
