@@ -334,12 +334,14 @@ class Controls:
         #: real: smoothing parameter for conductivity to image map
         self.sigma_smoothing = sigma_smoothing
 
+
+        self.dmk_mode = 'semi_implicit'
         #############################
         # inpainting parameters
         #############################
         self.weight_discrepancy = weight_discrepancy
         self.weight_regularization = weight_regularization
-
+        self.weight_penalization = 1.0
 
         #############################
         # discretization parameters
@@ -411,7 +413,7 @@ class Controls:
         '''
         Get the value of the key in the global_ctrl dictionary
         '''
-        return getattr(self,key,default)
+        return getattr(self,key)
     
     def set(self, key, value):
         '''
@@ -538,12 +540,6 @@ class NiotSolver:
         self.confidence = confidence
         #self.confidence.rename('confidence','confidence')
         
-        # weights of the discrepancy, penalization and transport energy
-        self.weights = np.array(
-            [ctrl.get('weight_discrepancy'),
-             1.0,
-             ctrl.get('weight_regularization')])
-
         # map from tdens to image
         PETSc.Sys.Print(f"{ctrl.get('tdens2image')=}",f"{ctrl.get('scaling')=}",f"{ctrl.get('sigma_smoothing')=}")
         
@@ -628,11 +624,17 @@ class NiotSolver:
             raise ValueError(f"Map tdens2iamge not supported {ctrl.get('tdens2image')=}\n"
                              +"Only identity, heat are implemented")
 
+
+
+                                                
+
         
         # init infos
         self.outer_iterations = 0
         self.nonlinear_iterations = 0
         self.nonlinear_res = 0.0
+
+        self.deltat = self.ctrl.get('deltat')
 
         #############################################################
         # Cached funcitons and solvers that are used in the algorithm
@@ -652,9 +654,7 @@ class NiotSolver:
         }
         self.setup_pot_solver(petsc_controls)
     
-        # cached functions
-        self.rhs_ode = Function(self.fems.tdens_space) # used in mirror descent
-        self.rhs_ode.rename('rhs_ode')
+        
         
         
         
@@ -688,7 +688,25 @@ class NiotSolver:
                                                 options_prefix='pot_solver_')
         self.snes_solver.snes.ksp.setConvergenceHistory()
 
-    
+    def setup_increment_solver(self, shift=0.0):
+        test = TestFunction(self.fems.tdens_space)  
+        trial = TrialFunction(self.fems.tdens_space)
+        form =  inner(test, trial)*dx
+        form += shift * self.fems.Laplacian_form('tdens')
+
+        self.increment_h = Function(self.fems.tdens_space)
+        self.increment_h.rename('increment_h')
+        
+        self.IncrementMatrix = assemble(form).M.handle
+        self.IncrementSolver = linalg.LinSolMatrix(self.IncrementMatrix,
+                                                    self.fems.tdens_space, 
+                                                    solver_parameters={
+                                        'ksp_monitor': None,                
+                                        'ksp_type': 'cg',
+                                        'ksp_rtol': 1e-10,
+                                        'pc_type': 'hypre'},
+                                        options_prefix='increment_solver_')
+
                
     def print_info(self, msg, priority=0, where=['stdout'], color='black'):
         self.ctrl.print_info(msg, priority=priority, where=where, color=color)
@@ -782,23 +800,23 @@ class NiotSolver:
         max_iter = self.ctrl.get('max_iter')
         max_restart = self.ctrl.get('max_restart')
         
-        iter = 0
+        self.iteration = 0
         ierr_dmk = 0
         tape.clear_tape()
-        while ierr_dmk == 0 and iter < max_iter:
+        while ierr_dmk == 0 and self.iteration < max_iter:
             # update with restarts
             sol_old.assign(self.sol)
             nrestart = 0 
             
             while nrestart < max_restart:
-                msg = f"\nIt: {iter} method {self.ctrl.get('time_discretization_method')}"
+                msg = f"\nIt: {self.iteration} method {self.ctrl.get('time_discretization_method')}"
                 if nrestart > 0:
                     msg += f'! restart {nrestart} '
                 self.print_info(msg, priority=2, where=['stdout','log'], color='green')
     
                 ierr = self.iterate(self.sol)
                 # clean memory every 10 iterations
-                if iter%10 == 0:
+                if self.iteration%10 == 0:
                     # Clear tape is required to avoid memory accumalation
                     # It works but I don't know why
                     # see also https://github.com/firedrakeproject/firedrake/issues/3133
@@ -826,7 +844,7 @@ class NiotSolver:
                 break
 
             # study state of convergence
-            iter += 1
+            self.iteration += 1
             
             residual_opt = self.residual(self.sol)
             avg_outer = self.outer_iterations / max(self.nonlinear_iterations,1)
@@ -860,7 +878,7 @@ class NiotSolver:
                 break
 
             # break if max iter is reached
-            if (iter == max_iter):
+            if self.iteration == max_iter:
                 ierr_dmk = 1
         
         return ierr_dmk
@@ -958,11 +976,15 @@ class NiotSolver:
         returns:
             Lag: Lagrangian functional = w_0*discrepancy + w_1*penalization + w_2*regularization
         '''
-        Lag = self.weights[1] * self.penalization(pot,tdens)
-        if abs(self.weights[0]) > 1e-16:
-            Lag += self.weights[0] * self.discrepancy(pot,tdens)
-        if abs(self.weights[2]) > 1e-16:
-            Lag += self.weights[2] * self.regularization(pot,tdens)
+        wr = self.ctrl.get('weight_regularization')
+        wp = self.ctrl.get('weight_penalization')
+        wd = self.ctrl.get('weight_discrepancy')
+
+        Lag = wp * self.penalization(pot,tdens)
+        if abs(wd) > 1e-16:
+            Lag += wd * self.discrepancy(pot,tdens)
+        if abs(wr) > 1e-16:
+            Lag += wr * self.regularization(pot,tdens)
         return Lag
     
     def solve_pot_PDE(self, sol, tol = None):
@@ -1047,34 +1069,57 @@ class NiotSolver:
         #   L=functional
         #   PDE = derivative(L,tdens)
         #   gradient = assemble(PDE)
-        self.lagrangian_fun = assemble(self.Lagrangian(self.pot_h,self.tdens_h))
+        
+        mode = self.ctrl.get('dmk_mode')
+
+
+        wd = self.ctrl.get('weight_discrepancy')
+        wp = self.ctrl.get('weight_penalization')
+        wr = self.ctrl.get('weight_regularization')
+
+        if mode == 'explicit':
+            self.lagrangian_fun = assemble(
+                #self.Lagrangian(self.pot_h,self.tdens_h)
+                wd * self.discrepancy(self.pot_h,self.tdens_h)
+                + wp * self.penalization(self.pot_h,self.tdens_h)
+                + wr * self.regularization(self.pot_h,self.tdens_h)
+                )
+        elif mode == 'semi_implicit':
+            self.lagrangian_fun = assemble(
+                #self.Lagrangian(self.pot_h,self.tdens_h)
+                wd * self.discrepancy(self.pot_h,self.tdens_h)
+                + wp * self.penalization(self.pot_h,self.tdens_h)
+                )
+
         # The stop_annotating is required to avoid memory accumalation
         # It works but I don't know why.   
         with fire_adj.stop_annotating():
             self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
             self.rhs_ode = self.lagrangian_fun_reduced.derivative()
+            
         time_stop = time.time()
 
-
         # compute a scaling vector for the gradient
-        update = Function(self.fems.tdens_space)
         scaling = Function(self.fems.tdens_space)
-        
+        self.increment_h = Function(self.fems.tdens_space)
+
         gradient_scaling = ctrl.get('gradient_scaling')
         if gradient_scaling == 'dmk':            
             tdens_power = 2 - self.btp.gamma
-        elif gradient_scaling == 'mirror_descent':
+        elif gradient_scaling == 'mirrow_descent':
             tdens_power = 1.0
         else:
             raise ValueError(f'Wrong scaling method {gradient_scaling=}')
         scaling.interpolate(self.tdens_h**tdens_power)
 
-        with self.rhs_ode.dat.vec as rhs, scaling.dat.vec_ro as scaling_vec, update.dat.vec as d, self.tdens_h.dat.vec_ro as tdens_vec:
-    
-            #rhs *= scaling_vec
+        with self.rhs_ode.dat.vec as rhs, scaling.dat.vec_ro as scaling_vec, self.increment_h.dat.vec as d, self.tdens_h.dat.vec_ro as tdens_vec:
             rhs.scale(-1)
-            self.fems.tdens_inv_mass_matrix.solve(rhs, d)           
 
+
+            #
+            # estimate the step lenght
+            # 
+            self.fems.tdens_inv_mass_matrix.solve(rhs, d)           
 
             # scale the gradient w.r.t. tdens by tdens**tdens_power itself
             d *= scaling_vec
@@ -1083,10 +1128,18 @@ class NiotSolver:
                 msg=utilities.msg_bounds(d,'increment tdens')+f' dt={step:.2e}',
                 priority=2, 
                 where=['stdout','log'],
-                color='black')
-            
+                color='black')            
             self.deltat = step
-            
+
+            # update
+            if mode == 'explicit':
+                tdens_vec.axpy(step, d)
+            elif mode == 'semi_implicit':
+                self.setup_increment_solver(shift=step*wr)
+                self.IncrementSolver.solve(rhs,d) 
+                d *= scaling_vec
+
+
             # update
             tdens_vec.axpy(step, d)
             self.print_info(
