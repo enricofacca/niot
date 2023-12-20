@@ -273,32 +273,38 @@ class Controls:
         'regularization_type' : 'explicit', # semi_implicit
         'dmk': {
             'type' : 'tdens_mirror_descent',
-            'tdens_mirror_descent' : {
+            'tdens_mirror_descent_explicit' : {
                 'gradient_scaling' : 'dmk',
                 'deltat' : {
                     'type' : 'adaptive2',
-                    'min' : 1e-2,
-                    'max' : 0.5,
+                    'lower_bound' : 1e-2,
+                    'upper_bound' : 0.5,
                     'expansion' : 2,
-                    'contraction' : 0.5,
+                },                
+            },
+            'tdens_mirror_descent_semi_implicit' : {
+                'gradient_scaling' : 'dmk',
+                'deltat' : {
+                    'type' : 'adaptive2',
+                    'lower_bound' : 1e-2,
+                    'upper_bound' : 0.5,
+                    'expansion' : 2,
                 },                
             },
             'gfvar_gradient_descent_semi_implicit' : {
                 'deltat' : {
                     'type' : 'adaptive2',
-                    'min' : 1e-2,
-                    'max' : 0.5,
+                    'lower_bound' : 1e-2,
+                    'upper_bound' : 0.5,
                     'expansion' : 2,
-                    'contraction' : 0.5,
                 },                
             },
-            'gfvar_gradient_descent' : {
+            'gfvar_gradient_descent_explicit' : {
                 'deltat' : {
                     'type' : 'adaptive2',
-                    'min' : 1e-2,
-                    'max' : 0.5,
+                    'lower_bound' : 1e-2,
+                    'upper_bound' : 0.5,
                     'expansion' : 2,
-                    'contraction' : 0.5,
                 },                
             }
         }
@@ -442,47 +448,47 @@ class Controls:
         #return setattr(self,key,value)
 
 
-    def set_step(self, increment, state=None):
-        """
-        Set the step lenght according to the control strategy
-        and the increment
-        """
-        if (self.deltat_control == 'adaptive'):
-            abs_inc = abs(increment)
-            _,d_max = abs_inc.max()
-            if (d_max < 0):
-                step = self.deltat_max
-            else:
-                print(f'{d_max=:.2e}')
-                step = max(min(1.0 / d_max, self.deltat_max),self.deltat_min)
-        elif (self.deltat_control == 'adaptive2'):
-            order_down = -1
-            order_up = 1
-            r = increment / state
-            r_np = r.array
-            if np.min(r_np) < 0:
-                negative = np.where(r_np<0)
-                hdown = (10**order_down-1) / r_np[negative]
-                deltat_down = np.min(hdown)
-            else:
-                deltat_down = self.deltat_max
-            if np.max(r_np) > 0:
-                positive = np.where(r_np>0)
-                hup = (10**order_up-1) / r_np[positive]
-                deltat_up = np.min(hup)
-            else:
-                deltat_up = self.deltat_max
-            step = min(deltat_up,deltat_down)
-            step = max(step,self.deltat_min)
-            step = min(step,self.deltat_max)
+    # def set_step(self, increment, state=None):
+    #     """
+    #     Set the step lenght according to the control strategy
+    #     and the increment
+    #     """
+    #     if (self.deltat_control == 'adaptive'):
+    #         abs_inc = abs(increment)
+    #         _,d_max = abs_inc.max()
+    #         if (d_max < 0):
+    #             step = self.deltat_max
+    #         else:
+    #             print(f'{d_max=:.2e}')
+    #             step = max(min(1.0 / d_max, self.deltat_max),self.deltat_min)
+    #     elif (self.deltat_control == 'adaptive2'):
+    #         order_down = -1
+    #         order_up = 1
+    #         r = increment / state
+    #         r_np = r.array
+    #         if np.min(r_np) < 0:
+    #             negative = np.where(r_np<0)
+    #             hdown = (10**order_down-1) / r_np[negative]
+    #             deltat_down = np.min(hdown)
+    #         else:
+    #             deltat_down = self.deltat_max
+    #         if np.max(r_np) > 0:
+    #             positive = np.where(r_np>0)
+    #             hup = (10**order_up-1) / r_np[positive]
+    #             deltat_up = np.min(hup)
+    #         else:
+    #             deltat_up = self.deltat_max
+    #         step = min(deltat_up,deltat_down)
+    #         step = max(step,self.deltat_min)
+    #         step = min(step,self.deltat_max)
 
-        elif (self.deltat_control == 'expansive'):
-            step = max(min(self.deltat * self.deltat_expansion, self.deltat_max),self.deltat_min)
-        elif (self.deltat_control == 'fixed'):
-            step = self.deltat
-        else:
-            raise ValueError(f'{self.deltat_control=} not supported')
-        return step
+    #     elif (self.deltat_control == 'expansive'):
+    #         step = max(min(self.deltat * self.deltat_expansion, self.deltat_max),self.deltat_min)
+    #     elif (self.deltat_control == 'fixed'):
+    #         step = self.deltat
+    #     else:
+    #         raise ValueError(f'{self.deltat_control=} not supported')
+    #     return step
 
     def print_info(self, msg, priority=0, where=['stdout'], color='black'):
         '''
@@ -504,8 +510,8 @@ def set_step(increment,
              state, 
              deltat,
              type='adaptive', 
-             min=1e-2, 
-             max=0.5, 
+             lower_bound=1e-2, 
+             upper_bound=0.5, 
              expansion=2):
     """
     Set the step lenght according to the control strategy
@@ -515,10 +521,10 @@ def set_step(increment,
         abs_inc = abs(increment)
         _,d_max = abs_inc.max()
         if (d_max < 0):
-            step = max
+            step = upper_bound
         else:
             print(f'{d_max=:.2e}')
-            step = max(min(1.0 / d_max, max),min)
+            step = max(min(1.0 / d_max, upper_bound), lower_bound)
     elif (type == 'adaptive2'):
         order_down = -1
         order_up = 1
@@ -529,19 +535,21 @@ def set_step(increment,
             hdown = (10**order_down-1) / r_np[negative]
             down = np.min(hdown)
         else:
-            down = max
+            down = upper_bound
         if np.max(r_np) > 0:
             positive = np.where(r_np>0)
             hup = (10**order_up-1) / r_np[positive]
             up = np.min(hup)
         else:
-            up = max
+            up = upper_bound
         step = min(up,down)
-        step = max(step,min)
-        step = min(step,max)
+        step = max(step,lower_bound)
+        step = min(step,upper_bound)
 
     elif (type == 'expansive'):
-        step = max(min(deltat * expansion, max),min)
+        step = deltat * expansion
+        step = min(step, upper_bound)
+        step = max(lower_bound)
     elif (type == 'fixed'):
         step = deltat
     else:
@@ -1216,7 +1224,108 @@ class NiotSolver:
         return ierr
     
     #@profile
-    def tdens_mirror_descent(self, sol):
+    def tdens_mirror_descent_explicit(self, sol):
+        # Tdens is udpdate along the direction of the gradient
+        # of the energy w.r.t. tdens multiply by tdens**(2-gamma)
+        # 
+        #
+        pot, tdens = sol.subfunctions
+        self.pot_h.assign(pot) 
+        self.tdens_h.assign(tdens)
+       
+        time_start = time.time()
+        # We compute the gradient w.r.t to tdens of the Lagrangian
+        # Since the Lagrangian contains the map tdens2image, 
+        # we need to use the adjoint method, where the Jacobian-vector product
+        # of tdens2image is computed automatically.
+        #     
+        # We follow the example in 
+        # see also https://www.dolfin-adjoint.org/en/latest/documentation/custom_functions.html
+        # Note how we need to write 
+        #   L=assemble(functional)
+        #   reduced_functional = ReducedFunctional(functional, Control(tdens))
+        #   compute gradient
+        # instead of
+        #   L=functional
+        #   PDE = derivative(L,tdens)
+        #   gradient = assemble(PDE)
+        wd = self.ctrl.get('discrepancy_weight')
+        wp = self.ctrl.get('penalization_weight')
+        wr = self.ctrl.get('regularization_weight')
+
+        self.lagrangian_fun = assemble(
+            wd * self.discrepancy(self.pot_h,self.tdens_h)
+            + wp * self.penalization(self.pot_h,self.tdens_h)
+            + wr * self.regularization(self.pot_h,self.tdens_h)
+        )
+        
+        # The stop_annotating is required to avoid memory accumalation
+        # It works but I don't know why.   
+        with fire_adj.stop_annotating():
+            self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
+            self.rhs_ode = self.lagrangian_fun_reduced.derivative()
+            
+        time_stop = time.time()
+
+        # compute a scaling vector for the gradient
+        scaling = Function(self.fems.tdens_space)
+        self.increment_h = Function(self.fems.tdens_space)
+
+        gradient_scaling = self.ctrl.get('gradient_scaling')
+        if gradient_scaling == 'dmk':            
+            tdens_power = 2 - self.btp.gamma
+        elif gradient_scaling == 'mirror_descent':
+            tdens_power = 1.0
+        else:
+            raise ValueError(f'Wrong scaling method {gradient_scaling=}')
+        scaling.interpolate(self.tdens_h**tdens_power)
+
+        with self.rhs_ode.dat.vec as rhs, scaling.dat.vec_ro as scaling_vec, self.increment_h.dat.vec as d, self.tdens_h.dat.vec_ro as tdens_vec:
+            rhs.scale(-1)
+
+
+            #
+            # estimate the step lenght
+            # 
+            self.fems.inv_tdens_mass_matrix.solve(rhs, d)           
+
+            # scale the gradient w.r.t. tdens by tdens**tdens_power itself
+            d *= scaling_vec
+
+            ctrl_step = self.ctrl.get(['dmk','tdens_mirror_descent_explicit','deltat'])
+            step = set_step(d,tdens_vec, 
+                            self.deltat,
+                            **ctrl_step)
+
+            self.print_info(
+                msg=utilities.msg_bounds(d,'increment tdens')+f' dt={step:.2e}',
+                priority=2, 
+                where=['stdout','log'],
+                color='black')            
+            self.deltat = step
+
+            # update tdens
+            tdens_vec.axpy(step, d)
+            self.print_info(
+                msg=utilities.msg_bounds(tdens_vec,'tdens')+f' dt={step:.2e}',
+                priority=2,
+                where=['stdout','log'],
+                color='blue')
+            
+
+        # threshold from below tdens
+        utilities.threshold_from_below(self.tdens_h, 0)
+
+        # assign new tdens to solution
+        sol.sub(1).assign(self.tdens_h)
+        
+        # compute pot associated to new tdens
+        tol = self.ctrl.get('constraint_tol')
+        ierr = self.solve_pot_PDE(sol, tol=tol)        
+        
+        return ierr            
+    
+    def tdens_mirror_descent_semi_implicit(self, sol):
         # Tdens is udpdate along the direction of the gradient
         # of the energy w.r.t. tdens multiply by tdens**(2-gamma)
         # 
@@ -1242,26 +1351,14 @@ class NiotSolver:
         #   PDE = derivative(L,tdens)
         #   gradient = assemble(PDE)
         
-        mode = self.ctrl.get('regularization_type')
-
-
         wd = self.ctrl.get('discrepancy_weight')
         wp = self.ctrl.get('penalization_weight')
         wr = self.ctrl.get('regularization_weight')
 
-        if mode == 'explicit':
-            self.lagrangian_fun = assemble(
-                #self.Lagrangian(self.pot_h,self.tdens_h)
-                wd * self.discrepancy(self.pot_h,self.tdens_h)
-                + wp * self.penalization(self.pot_h,self.tdens_h)
-                + wr * self.regularization(self.pot_h,self.tdens_h)
-                )
-        elif mode == 'semi_implicit':
-            self.lagrangian_fun = assemble(
-                #self.Lagrangian(self.pot_h,self.tdens_h)
-                wd * self.discrepancy(self.pot_h,self.tdens_h)
-                + wp * self.penalization(self.pot_h,self.tdens_h)
-                )
+        self.lagrangian_fun = assemble(
+            wd * self.discrepancy(self.pot_h,self.tdens_h)
+            + wp * self.penalization(self.pot_h,self.tdens_h)
+            )
 
         # The stop_annotating is required to avoid memory accumalation
         # It works but I don't know why.   
@@ -1278,7 +1375,7 @@ class NiotSolver:
         gradient_scaling = self.ctrl.get('gradient_scaling')
         if gradient_scaling == 'dmk':            
             tdens_power = 2 - self.btp.gamma
-        elif gradient_scaling == 'mirrow_descent':
+        elif gradient_scaling == 'mirror_descent':
             tdens_power = 1.0
         else:
             raise ValueError(f'Wrong scaling method {gradient_scaling=}')
@@ -1295,7 +1392,12 @@ class NiotSolver:
 
             # scale the gradient w.r.t. tdens by tdens**tdens_power itself
             d *= scaling_vec
-            step = self.ctrl.set_step(d,tdens_vec)
+
+            ctrl_step = self.ctrl.get(['dmk','tdens_mirror_descent','deltat'])
+            step = set_step(d,tdens_vec, 
+                            self.deltat,
+                            **ctrl_step)
+
             self.print_info(
                 msg=utilities.msg_bounds(d,'increment tdens')+f' dt={step:.2e}',
                 priority=2, 
@@ -1303,28 +1405,27 @@ class NiotSolver:
                 color='black')            
             self.deltat = step
 
-            mode = self.ctrl.get('regularization_type')
-            # explicit and explciit ARE NOT EQUAVALENT
-            if mode == 'explicit':
-                tdens_vec.axpy(step, d)
-            elif mode == 'semi_implicit':
-                self.print_info(utilities.msg_bounds(tdens_vec,'gfvar'), color='blue')
-                wr = self.ctrl.get('regularization_weight')
-                print(f'{wr=} shift={step*wr:.1e} {step=}')
-                self.setup_increment_solver(shift=step*wr)
+            
+            self.print_info(
+                utilities.msg_bounds(tdens_vec,'tdens'),
+                priority=2, 
+                color='blue')
+            wr = self.ctrl.get('regularization_weight')
+            shift = step*wr
+            self.setup_increment_solver(shift=shift)
                 
-                test = TestFunction(self.fems.tdens_space)
-                tdens_integrated = assemble(self.tdens_h*test*dx)
-                with tdens_integrated.dat.vec_ro as tdens0_vec:
-                    rhs *= scaling_vec
-                    rhs.scale(step)
-                    rhs.axpy(1.0, tdens0_vec)
-                
-                self.IncrementSolver.solve(rhs, tdens_vec) 
-                self.print_info(
-                msg=self.IncrementSolver.info(),
-                priority=2,
-                where=['stdout','log'])
+            test = TestFunction(self.fems.tdens_space)
+            tdens_integrated = assemble(self.tdens_h * test * dx)
+            with tdens_integrated.dat.vec_ro as tdens0_vec:
+                rhs *= scaling_vec
+                rhs.scale(step)
+                rhs.axpy(1.0, tdens0_vec)
+            
+            self.IncrementSolver.solve(rhs, tdens_vec) 
+            self.print_info(
+            msg=self.IncrementSolver.info(),
+            priority=2,
+            where=['stdout','log'])
 
 
 
@@ -1347,7 +1448,8 @@ class NiotSolver:
         tol = self.ctrl.get('constraint_tol')
         ierr = self.solve_pot_PDE(sol, tol=tol)        
         
-        return ierr            
+        return ierr  
+              
        
     def tdens_of_gfvar(self,gfvar):
         return gfvar**(2/self.btp.gamma)
@@ -1356,7 +1458,7 @@ class NiotSolver:
     def gfvar_of_tdens(self,tdens):
         return (tdens)**(self.btp.gamma/2)
         
-    def gfvar_gradient_descent(self, sol):
+    def gfvar_gradient_descent_explicit(self, sol):
         '''
         Update of using transformation tdens_of_gfvar and gradient descent
         args:
@@ -1365,29 +1467,18 @@ class NiotSolver:
             ierr : control flag. It is 0 if everthing worked.
         Update of gfvar using gradient descent direction
         '''
-        ctrl=self.ctrl
+        method_ctrl = self.ctrl.get(['dmk','gfvar_gradient_descent_explicit'])
 
 
         # convert tdens to gfvar
-        pot, tdens = sol.subfunctions
+        _ , tdens = sol.subfunctions
         self.tdens_h.assign(tdens)
         gfvar = Function(self.fems.tdens_space)
         gfvar.interpolate(self.gfvar_of_tdens(tdens))
 
         # compute gradient of energy w.r.t. gfvar
         # see tdens_mirror_descent for more details on the implementation
-        mode = ctrl.get('regularization_type')
-        if mode == 'explicit':
-            L = assemble(self.Lagrangian(self.pot_h,self.tdens_h))
-        elif mode == 'semi_implicit':
-            wd = self.ctrl.get('discrepancy_weight')
-            wp = self.ctrl.get('penalization_weight')
-            L = assemble(
-                wd * self.discrepancy(self.pot_h,self.tdens_h)
-                + wp * self.penalization(self.pot_h,self.tdens_h)
-                )
-        else:
-            raise ValueError(f'Wrong regularization type {mode=}')
+        L = assemble(self.Lagrangian(self.pot_h, self.tdens_h))
             
         with fire_adj.stop_annotating():
             reduced_functional = fire_adj.ReducedFunctional(L, fire_adj.Control(self.tdens_h))
@@ -1416,40 +1507,17 @@ class NiotSolver:
             self.fems.inv_tdens_mass_matrix.solve(rhs, d)
             
             # update
-            step = self.ctrl.set_step(d, gfvar_vec)
+
+            ctrl_step = method_ctrl['deltat']
+            step = set_step(d,gfvar_vec, 
+                            self.deltat,
+                            **ctrl_step)
             self.deltat = step
             self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}',color='blue')
             
-            
             # update
-            mode = ctrl.get('regularization_type')
-            if mode == 'explicit':
-                gfvar_vec.axpy(step, d)
-            elif mode == 'semi_implicit':
-                # 
-                # M(gf-gf_0)/step + grad P+D(gf  ) + wr (-L) gf= 0
-                # ~ semi_implicit 
-                # M(gf-gf_0)/step + grad P+D(gf_0) + wr (-L) gf = 0
-                #
-                # (M+step*wr*Laplacian) gf = M gf_0 + step*rhs
-                #
-                self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), color='blue')
-                wr = self.ctrl.get('regularization_weight')
-                print(f'{wr=} shift={step*wr:.1e} {step=}')
-                self.setup_increment_solver(shift=step*wr)
-                
-                test = TestFunction(self.fems.tdens_space)
-                gf0 = assemble(gfvar*test*dx)
-                with gf0.dat.vec_ro as g0_vec:
-                    rhs.scale(step)
-                    rhs.axpy(1.0, g0_vec)
-                
-                self.IncrementSolver.solve(rhs, gfvar_vec) 
-                self.print_info(
-                msg=self.IncrementSolver.info(),
-                priority=2,
-                where=['stdout','log'])
-
+            gfvar_vec.axpy(step, d)
+            
             self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), color='blue')
         
         # convert gfvar to tdens
@@ -1517,7 +1585,10 @@ class NiotSolver:
             self.fems.inv_tdens_mass_matrix.solve(rhs, d)
             
             # update
-            step = self.ctrl.set_step(d, gfvar_vec)
+            ctrl_step = self.ctrl.get(['dmk','tdens_mirror_descent','deltat'])
+            step = set_step(d,gfvar_vec, 
+                            self.deltat,
+                            **ctrl_step)
             self.deltat = step
             self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}',color='blue')
             
@@ -1574,12 +1645,16 @@ class NiotSolver:
 
         '''
         method = self.ctrl.get('dmk_type')
-        if method == 'tdens_mirror_descent':
-            ierr = self.tdens_mirror_descent(sol)
+        if method == 'tdens_mirror_descent_explicit':
+            ierr = self.tdens_mirror_descent_explicit(sol)
             return ierr
         
-        elif method == 'gfvar_gradient_descent':
-            ierr = self.gfvar_gradient_descent(sol)
+        if method == 'tdens_mirror_descent_semi_implicit':
+            ierr = self.tdens_mirror_descent_semi_implicit(sol)
+            return ierr
+        
+        elif method == 'gfvar_gradient_descent_explicit':
+            ierr = self.gfvar_gradient_descent_explicit(sol)
             return ierr
         
         elif method == 'gfvar_gradient_descent_semi_implicit':

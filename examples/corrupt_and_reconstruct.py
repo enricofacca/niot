@@ -53,7 +53,8 @@ def corrupt_and_reconstruct(img_source,
                             tdens2image,
                             directory,
                             sigma_smoothing=1e-6,
-                            tdens2image_scaling= 1e0):
+                            tdens2image_scaling=1e0,
+                            method=None):
     print('Corrupting and reconstructing')
     print('Sources: '+img_source)
     print('Sinks: '+img_sink)
@@ -62,7 +63,7 @@ def corrupt_and_reconstruct(img_source,
 
 
     label= [
-        f'semi_nref{nref}',
+        f'nref{nref}',
         f'fem{fem}',
              f'gamma{gamma:.1e}',
              f'wd{weights[0]:.1e}',
@@ -78,6 +79,19 @@ def corrupt_and_reconstruct(img_source,
     else:
         raise ValueError(f'Unknown tdens2image {tdens2image}')
     label.append(f'scaling{tdens2image_scaling:.1e}')  
+    if method is not None:
+        if method == 'tdens_mirror_descent_explicit':
+            short_method = 'te'
+        elif method == 'tdens_mirror_descent_semi_implicit':
+            short_method = 'tsi'
+        elif method == 'gfvar_gradient_descent_explicit':
+            short_method = 'ge'
+        elif method == 'gfvar_gradient_descent_semi_implicit':
+            short_method = 'gsi'
+        else:
+            raise ValueError(f'Unknown method {method}')
+        label.append(f'method{short_method}')
+    
     label = '_'.join(label)
     print('Problem label: '+label)
     
@@ -201,20 +215,23 @@ def corrupt_and_reconstruct(img_source,
     ctrl.global_ctrl['scaling'] = ctrl.scaling
     
     # time discretization
-    #ctrl.global_ctrl['dmk_type'] = 'gfvar_gradient_descent_semi_implicit'
-    ctrl.global_ctrl['dmk_type'] = 'tdens_mirror_descent'
+    if method is not None:
+        ctrl.global_ctrl['dmk_type'] = 'tdens_mirror_descent_explicit'
+    else:
+        ctrl.global_ctrl['dmk_type'] = method
     ctrl.global_ctrl['gradient_scaling'] = 'dmk'
 
     # time step
     deltat_control = {
         'type': 'adaptive2',
+        'lower_bound': ctrl.deltat_min,
+        'upper_bound': ctrl.deltat_max,
         'expansion': ctrl.deltat_expansion,
-        'min': ctrl.deltat_min,
-        'max': ctrl.deltat_max,
     }
-    ctrl.global_ctrl['dmk']['tdens_mirror_descent']['deltat_control'] = deltat_control
-    ctrl.global_ctrl['dmk']['gfvar_gradient_descent']['deltat_control'] = deltat_control
-    ctrl.global_ctrl['dmk']['gfvar_gradient_descent_semi_implicit']['deltat_control'] = deltat_control
+    ctrl.global_ctrl['dmk']['tdens_mirror_descent_explicit']['deltat'] = deltat_control
+    ctrl.global_ctrl['dmk']['tdens_mirror_descent_semi_implicit']['deltat'] = deltat_control
+    ctrl.global_ctrl['dmk']['gfvar_gradient_descent_explicit']['deltat'] = deltat_control
+    ctrl.global_ctrl['dmk']['gfvar_gradient_descent_semi_implicit']['deltat'] = deltat_control
 
 
 
