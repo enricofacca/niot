@@ -142,7 +142,7 @@ class SpaceDiscretization:
         # $\xhi_l$ funciton of Tdens
         mass_form = inner(self.tdens_trial,self.tdens_test)*dx
         self.tdens_mass_matrix = assemble( mass_form ,mat_type='aij').M.handle
-        self.tdens_inv_mass_matrix = linalg.LinSolMatrix(self.tdens_mass_matrix, self.tdens_space,
+        self.inv_tdens_mass_matrix = linalg.LinSolMatrix(self.tdens_mass_matrix, self.tdens_space,
                         solver_parameters={
                             'ksp_type':'cg',
                             'ksp_rtol': 1e-6,
@@ -245,21 +245,21 @@ class Controls:
         'optimization_tol': 1e-2,
         'constraint_tol': 1e-6,
         'max_iter': 100,
-        'discretization':{
-            'type' : 'DG0DG0',
-            'cell2face' : 'harmonic_mean',
-        },
-        'inpainting' : {
-            'weight_discrepancy': 1.0,
-            'weight_regularization': 0.0,
-            'weight_penalization': 1.0,
+        'max_restart': 2,
+        'spaced' : 'DG0DG0',
+        'cell2face' : 'harmonic_mean',
+        'min_tdens' : 1e-8,
+        #'inpainting' : {
+            'discrepancy_weight': 1.0,
+            'regularization_weight': 0.0,
+            'penalization_weight': 1.0,
             'mu2image' : {
                 'type' : 'identity', # idendity, heat, pm
                 'scaling': 1.0,
                 'pm': {'sigma' : 1e-2},
                 'heat': {'sigma' : 1e-2},
             },
-        },
+        #},
         'pot_solver':{
             'ksp': {
                 'type' : 'cg',
@@ -270,9 +270,10 @@ class Controls:
                 },
         },
         'optimization_type' : 'dmk',
+        'regularization_type' : 'explicit', # semi_implicit
         'dmk': {
-            'type' : 'mirror_descent',
-            'mirror_descent' : {
+            'type' : 'tdens_mirror_descent',
+            'tdens_mirror_descent' : {
                 'gradient_scaling' : 'dmk',
                 'deltat' : {
                     'type' : 'adaptive2',
@@ -281,7 +282,25 @@ class Controls:
                     'expansion' : 2,
                     'contraction' : 0.5,
                 },                
-            }   
+            },
+            'gfvar_gradient_descent_semi_implicit' : {
+                'deltat' : {
+                    'type' : 'adaptive2',
+                    'min' : 1e-2,
+                    'max' : 0.5,
+                    'expansion' : 2,
+                    'contraction' : 0.5,
+                },                
+            },
+            'gfvar_gradient_descent' : {
+                'deltat' : {
+                    'type' : 'adaptive2',
+                    'min' : 1e-2,
+                    'max' : 0.5,
+                    'expansion' : 2,
+                    'contraction' : 0.5,
+                },                
+            }
         }
     }   
 
@@ -296,14 +315,13 @@ class Controls:
                 scaling=1.0,
                 sigma_smoothing=1e-4,
                 # inpainting parameters
-                weight_discrepancy=1.0,
-                weight_regularization=0.0,
-                gamma=0.5,
+                discrepancy_weight=1.0,
+                regularization_weight=0.0,
                 # discretization parameters
                 spaces='CR1DG0',
                 cell2face='harmonic_mean',
                 # optimization parameters
-                time_discretization_method='mirror_descent',
+                dmk_type='tdens_mirror_descent',
                 gradient_scaling='dmk',
                 deltat=0.5,
                 nonlinear_tol=1e-6,
@@ -335,13 +353,13 @@ class Controls:
         self.sigma_smoothing = sigma_smoothing
 
 
-        self.dmk_mode = 'semi_implicit'
+        self.regularization_type = 'semi_implicit'
         #############################
         # inpainting parameters
         #############################
-        self.weight_discrepancy = weight_discrepancy
-        self.weight_regularization = weight_regularization
-        self.weight_penalization = 1.0
+        self.discrepancy_weight = discrepancy_weight
+        self.regularization_weight = regularization_weight
+        self.penalization_weight = 1.0
 
         #############################
         # discretization parameters
@@ -355,7 +373,7 @@ class Controls:
 
 
         #: character: time discretization approach
-        self.time_discretization_method = time_discretization_method
+        self.dmk_type = dmk_type
         
         #: int: max number of time steps
         self.max_iter = max_iter
@@ -413,13 +431,15 @@ class Controls:
         '''
         Get the value of the key in the global_ctrl dictionary
         '''
-        return getattr(self,key)
+        return utilities.nested_get(self.global_ctrl,key)
+        #return getattr(self,key)
     
     def set(self, key, value):
         '''
         Set the value of the key in the global_ctrl dictionary
         '''
-        return setattr(self,key,value)
+        return utilities.nested_set(self.global_ctrl,key,value)
+        #return setattr(self,key,value)
 
 
     def set_step(self, increment, state=None):
@@ -480,7 +500,56 @@ class Controls:
                 if (self.save_log > 0 and self.verbose_log >= priority):
                     PETSc.Sys.Print(msg, file=self.log_file)           
             
- 
+def set_step(increment,
+             state, 
+             deltat,
+             type='adaptive', 
+             min=1e-2, 
+             max=0.5, 
+             expansion=2):
+    """
+    Set the step lenght according to the control strategy
+    and the increment
+    """
+    if (type == 'adaptive'):
+        abs_inc = abs(increment)
+        _,d_max = abs_inc.max()
+        if (d_max < 0):
+            step = max
+        else:
+            print(f'{d_max=:.2e}')
+            step = max(min(1.0 / d_max, max),min)
+    elif (type == 'adaptive2'):
+        order_down = -1
+        order_up = 1
+        r = increment / state
+        r_np = r.array
+        if np.min(r_np) < 0:
+            negative = np.where(r_np<0)
+            hdown = (10**order_down-1) / r_np[negative]
+            down = np.min(hdown)
+        else:
+            down = max
+        if np.max(r_np) > 0:
+            positive = np.where(r_np>0)
+            hup = (10**order_up-1) / r_np[positive]
+            up = np.min(hup)
+        else:
+            up = max
+        step = min(up,down)
+        step = max(step,min)
+        step = min(step,max)
+
+    elif (type == 'expansive'):
+        step = max(min(deltat * expansion, max),min)
+    elif (type == 'fixed'):
+        step = deltat
+    else:
+        raise ValueError(f'{type=} not supported')
+    return step
+
+
+
 class NiotSolver:
     '''
     Solver for the network inpaiting problem-
@@ -504,7 +573,7 @@ class NiotSolver:
         ###########################
         # SETUP FEM DISCRETIZATION
         ###########################
-        self.spaces = ctrl.get('spaces')
+        self.spaces = self.ctrl.get('spaces')
         self.mesh = btp.mesh
         cell2face = self.ctrl.get("cell2face")
         if self.spaces == 'CR1DG0':
@@ -541,7 +610,7 @@ class NiotSolver:
         #self.confidence.rename('confidence','confidence')
         
         # map from tdens to image
-        PETSc.Sys.Print(f"{ctrl.get('tdens2image')=}",f"{ctrl.get('scaling')=}",f"{ctrl.get('sigma_smoothing')=}")
+        PETSc.Sys.Print(f"{self.ctrl.get('tdens2image')=}",f"{self.ctrl.get('scaling')=}",f"{self.ctrl.get('sigma_smoothing')=}")
         
         self.tdens_h = Function(self.fems.tdens_space) # used by tdens2image map
         self.tdens_h.rename('tdens_h')
@@ -557,7 +626,8 @@ class NiotSolver:
             test = TestFunction(self.fems.tdens_space)  
             trial = TrialFunction(self.fems.tdens_space)
             form =  inner(test, trial)*dx
-            form += ctrl.get('sigma_smoothing') * self.fems.Laplacian_form('tdens')
+            sigma = self.ctrl.get('sigma_smoothing')
+            form += sigma * self.fems.Laplacian_form('tdens')
                         
             self.HeatMatrix = assemble(form).M.handle
             self.HeatSmoother = linalg.LinSolMatrix(self.HeatMatrix,
@@ -589,9 +659,145 @@ class NiotSolver:
             test = TestFunction(self.fems.tdens_space)
             self.image_h.assign(self.img_observed)
             facet_image = self.fems.cell2face(ctrl.get('min_tdens') + self.image_h, self.DG0_cell2face)
+            sigma = ctrl.get('sigma_smoothing')
             pm_PDE = (
                 (self.image_h - self.tdens_h) * test * dx 
-                + ctrl.get('sigma_smoothing') * facet_image * jump(self.image_h) * jump(test) / self.fems.delta_h * dS
+                + sigma * facet_image * jump(self.image_h) * jump(test) / self.fems.delta_h * dS
+            )
+            self.pm_problem = NonlinearVariationalProblem(
+                pm_PDE, self.image_h)
+
+            self.pm_solver = NonlinearVariationalSolver(
+                self.pm_problem,
+                solver_parameters={
+                    'snes_type': 'newtonls',
+                    'snes_rtol': 1e-12,
+                    'snes_atol': 1e-16,
+                    'snes_linesearch_type':'bt',
+                    'snes_monitor': None,
+                    'ksp_type': 'gmres',
+                    'ksp_rtol': 1e-8,
+                    'pc_type': 'hypre'},
+                options_prefix='porous_solver_')
+
+            def tdens2image_map(fun):
+                self.tdens_h.interpolate(fun)
+                self.pm_solver.solve()
+                self.image_h *= self.scaling
+                return self.image_h
+            
+            self.tdens2image = tdens2image_map
+
+        
+            
+
+        else:
+            raise ValueError(f"Map tdens2iamge not supported {self.ctrl.get('tdens2image')=}\n"
+                             +"Only identity, heat are implemented")
+
+
+
+                                                
+
+        
+        # init infos
+        self.outer_iterations = 0
+        self.nonlinear_iterations = 0
+        self.nonlinear_res = 0.0
+
+        # set to initial state
+        self.deltat = 0.0
+
+        #############################################################
+        # Cached funcitons and solvers that are used in the algorithm
+        #############################################################
+        petsc_controls ={
+            # krylov solver controls
+            'ksp_type': 'cg',
+            'ksp_atol': 1e-12,
+            'ksp_rtol': self.ctrl.get('constraint_tol'),
+            'ksp_divtol': 1e4,
+            'ksp_max_it' : 100,
+            'ksp_initial_guess_nonzero': True,
+            'ksp_norm_type': 'unpreconditioned',
+            # preconditioner controls
+            'pc_type': 'hypre',
+            #'ksp_monitor_true_residual': None,
+        }
+        self.setup_pot_solver(petsc_controls)
+    
+        
+    def setup_tdens2image(self):
+        # Init funciton storing the image
+        self.image_h = Function(self.fems.tdens_space)
+        self.image_h.rename('image_h') # used by tdens2image map
+        
+
+        self.scaling = self.ctrl.scaling
+        tdens2image = self.ctrl.get('tdens2image')
+        if tdens2image == 'identity':
+            self.tdens2image = lambda x: self.scaling * x
+        elif tdens2image == 'heat':
+            test = TestFunction(self.fems.tdens_space)  
+            trial = TrialFunction(self.fems.tdens_space)
+            form =  inner(test, trial)*dx
+            form += self.ctrl.get('sigma_smoothing') * self.fems.Laplacian_form('tdens')
+
+            my_linear_solver = True
+            if my_linear_solver:           
+                # form the matrix and setup a ksp solver
+                # and use Block class od adjoint module
+                self.HeatMatrix = assemble(form).M.handle
+                self.HeatSmoother = linalg.LinSolMatrix(self.HeatMatrix,
+                                                    self.fems.tdens_space, 
+                                                    solver_parameters={
+                                        'ksp_monitor': None,                
+                                        'ksp_type': 'cg',
+                                        'ksp_rtol': 1e-10,
+                                        'pc_type': 'hypre'},
+                                        options_prefix='heat_smoother_')
+            
+                self.tdens2image = lambda fun: self.scaling*conductivity2image.LaplacianSmoothing(fun,self.HeatSmoother)
+
+            else:
+                # use the firedrake solver
+                # It seems that it reassambles the matrix at each call
+                self.heat_matrix = assemble(form)
+                self.heat_solver = LinearSolver(A, 
+                                                solver_parameters={
+                                                    'ksp_type': 'cg',
+                                                    'ksp_rtol': 1e-10,
+                                                    'pc_type': 'hypre',
+                                                    },
+                                                options_prefix='heat_solver_') 
+
+                
+                # test = TestFunction(self.fems.tdens_space)
+                # self.rhs_heat = self.tdens_h * test * dx
+                # self.heat_problem = LinearVariationalProblem(form,
+                #                                             self.rhs_heat,
+                #                                             self.tdens_h,
+                #                                             constant_jacobian=True)
+                # self.heat_solver = LinearSolver(self.HeatMatrix,
+                #                                 solver_parameters={
+                #                                     'ksp_type': 'cg',
+                #                                     'ksp_rtol': 1e-10,
+                #                                     'pc_type': 'hypre',},
+                #                                     options_prefix='heat_solver_')
+                def tdens2image_map(tdens):
+                    rhs = tdens * test * dx
+                    self.heat_solver.solve(self.image_h, rhs)
+                    self.image_h *= self.scaling
+                    return self.image_h
+                self.tdens2image = tdens2image_map
+
+        elif tdens2image == 'pm':
+            test = TestFunction(self.fems.tdens_space)
+            self.image_h.assign(self.img_observed)
+            facet_image = self.fems.cell2face(self.ctrl.get('min_tdens') + self.image_h, self.DG0_cell2face)
+            pm_PDE = (
+                (self.image_h - self.tdens_h) * test * dx 
+                + self.ctrl.get('sigma_smoothing') * facet_image * jump(self.image_h) * jump(test) / self.fems.delta_h * dS
             )
             self.pm_problem = NonlinearVariationalProblem(
                 pm_PDE, self.image_h)
@@ -623,39 +829,7 @@ class NiotSolver:
         else:
             raise ValueError(f"Map tdens2iamge not supported {ctrl.get('tdens2image')=}\n"
                              +"Only identity, heat are implemented")
-
-
-
-                                                
-
-        
-        # init infos
-        self.outer_iterations = 0
-        self.nonlinear_iterations = 0
-        self.nonlinear_res = 0.0
-
-        self.deltat = self.ctrl.get('deltat')
-
-        #############################################################
-        # Cached funcitons and solvers that are used in the algorithm
-        #############################################################
-        petsc_controls ={
-            # krylov solver controls
-            'ksp_type': 'cg',
-            'ksp_atol': 1e-12,
-            'ksp_rtol': ctrl.get('constraint_tol'),
-            'ksp_divtol': 1e4,
-            'ksp_max_it' : 100,
-            'ksp_initial_guess_nonzero': True,
-            'ksp_norm_type': 'unpreconditioned',
-            # preconditioner controls
-            'pc_type': 'hypre',
-            #'ksp_monitor_true_residual': None,
-        }
-        self.setup_pot_solver(petsc_controls)
-    
-        
-        
+   
         
         
 
@@ -701,9 +875,10 @@ class NiotSolver:
         self.IncrementSolver = linalg.LinSolMatrix(self.IncrementMatrix,
                                                     self.fems.tdens_space, 
                                                     solver_parameters={
-                                        'ksp_monitor': None,                
+                                        #'ksp_monitor': None,                
                                         'ksp_type': 'cg',
                                         'ksp_rtol': 1e-10,
+                                        'ksp_atol': 1e-13,
                                         'pc_type': 'hypre'},
                                         options_prefix='increment_solver_')
 
@@ -730,7 +905,7 @@ class NiotSolver:
         d = self.fems.tdens_mass_matrix.createVecLeft()
         
         with self.rhs_ode.dat.vec_ro as f_vec, self.tdens_h.dat.vec as tdens_vec:
-            self.fems.tdens_inv_mass_matrix.solve(f_vec,d)
+            self.fems.inv_tdens_mass_matrix.solve(f_vec,d)
             d *= tdens_vec
             residuum = d.norm()#PETSc.NormType.NORM_INFINITY)
         return residuum
@@ -809,7 +984,7 @@ class NiotSolver:
             nrestart = 0 
             
             while nrestart < max_restart:
-                msg = f"\nIt: {self.iteration} method {self.ctrl.get('time_discretization_method')}"
+                msg = f"\nIt: {self.iteration} method {self.ctrl.get('dmk_type')}"
                 if nrestart > 0:
                     msg += f'! restart {nrestart} '
                 self.print_info(msg, priority=2, where=['stdout','log'], color='green')
@@ -849,7 +1024,7 @@ class NiotSolver:
             residual_opt = self.residual(self.sol)
             avg_outer = self.outer_iterations / max(self.nonlinear_iterations,1)
 
-            msg = (f'It: {iter} '
+            msg = (f'It: {self.iteration} '
                 +f' dt: {self.deltat:.1e}'
                 +f' var:{residual_opt:.1e}'
                 +f' nsym:{self.nonlinear_iterations:1d}'
@@ -976,9 +1151,9 @@ class NiotSolver:
         returns:
             Lag: Lagrangian functional = w_0*discrepancy + w_1*penalization + w_2*regularization
         '''
-        wr = self.ctrl.get('weight_regularization')
-        wp = self.ctrl.get('weight_penalization')
-        wd = self.ctrl.get('weight_discrepancy')
+        wr = self.ctrl.get('regularization_weight')
+        wp = self.ctrl.get('penalization_weight')
+        wd = self.ctrl.get('discrepancy_weight')
 
         Lag = wp * self.penalization(pot,tdens)
         if abs(wd) > 1e-16:
@@ -1046,9 +1221,6 @@ class NiotSolver:
         # of the energy w.r.t. tdens multiply by tdens**(2-gamma)
         # 
         #
-        ctrl = self.ctrl
-
-
         pot, tdens = sol.subfunctions
         self.pot_h.assign(pot) 
         self.tdens_h.assign(tdens)
@@ -1070,12 +1242,12 @@ class NiotSolver:
         #   PDE = derivative(L,tdens)
         #   gradient = assemble(PDE)
         
-        mode = self.ctrl.get('dmk_mode')
+        mode = self.ctrl.get('regularization_type')
 
 
-        wd = self.ctrl.get('weight_discrepancy')
-        wp = self.ctrl.get('weight_penalization')
-        wr = self.ctrl.get('weight_regularization')
+        wd = self.ctrl.get('discrepancy_weight')
+        wp = self.ctrl.get('penalization_weight')
+        wr = self.ctrl.get('regularization_weight')
 
         if mode == 'explicit':
             self.lagrangian_fun = assemble(
@@ -1103,7 +1275,7 @@ class NiotSolver:
         scaling = Function(self.fems.tdens_space)
         self.increment_h = Function(self.fems.tdens_space)
 
-        gradient_scaling = ctrl.get('gradient_scaling')
+        gradient_scaling = self.ctrl.get('gradient_scaling')
         if gradient_scaling == 'dmk':            
             tdens_power = 2 - self.btp.gamma
         elif gradient_scaling == 'mirrow_descent':
@@ -1119,11 +1291,11 @@ class NiotSolver:
             #
             # estimate the step lenght
             # 
-            self.fems.tdens_inv_mass_matrix.solve(rhs, d)           
+            self.fems.inv_tdens_mass_matrix.solve(rhs, d)           
 
             # scale the gradient w.r.t. tdens by tdens**tdens_power itself
             d *= scaling_vec
-            step = ctrl.set_step(d,tdens_vec)
+            step = self.ctrl.set_step(d,tdens_vec)
             self.print_info(
                 msg=utilities.msg_bounds(d,'increment tdens')+f' dt={step:.2e}',
                 priority=2, 
@@ -1131,13 +1303,29 @@ class NiotSolver:
                 color='black')            
             self.deltat = step
 
-            # update
+            mode = self.ctrl.get('regularization_type')
+            # explicit and explciit ARE NOT EQUAVALENT
             if mode == 'explicit':
                 tdens_vec.axpy(step, d)
             elif mode == 'semi_implicit':
+                self.print_info(utilities.msg_bounds(tdens_vec,'gfvar'), color='blue')
+                wr = self.ctrl.get('regularization_weight')
+                print(f'{wr=} shift={step*wr:.1e} {step=}')
                 self.setup_increment_solver(shift=step*wr)
-                self.IncrementSolver.solve(rhs,d) 
-                d *= scaling_vec
+                
+                test = TestFunction(self.fems.tdens_space)
+                tdens_integrated = assemble(self.tdens_h*test*dx)
+                with tdens_integrated.dat.vec_ro as tdens0_vec:
+                    rhs *= scaling_vec
+                    rhs.scale(step)
+                    rhs.axpy(1.0, tdens0_vec)
+                
+                self.IncrementSolver.solve(rhs, tdens_vec) 
+                self.print_info(
+                msg=self.IncrementSolver.info(),
+                priority=2,
+                where=['stdout','log'])
+
 
 
             # update
@@ -1161,18 +1349,17 @@ class NiotSolver:
         
         return ierr            
        
-    def gfvar2tdens(self,gfvar):
+    def tdens_of_gfvar(self,gfvar):
         return gfvar**(2/self.btp.gamma)
-        #return 2*atan(gfvar)
-    def tdens2gfvar(self,tdens):
-        return tdens**(self.btp.gamma/2)
-        #return tan(tdens/2)
+        
     
+    def gfvar_of_tdens(self,tdens):
+        return (tdens)**(self.btp.gamma/2)
+        
     def gfvar_gradient_descent(self, sol):
         '''
-        Update of using transformation tdens=gfvar**2 and gradient descent
+        Update of using transformation tdens_of_gfvar and gradient descent
         args:
-            ctrl : Class with controls  (tol, max_iter, deltat, etc.)
             sol : Class with unkowns (pot,tdens, in this case)
         returns:
             ierr : control flag. It is 0 if everthing worked.
@@ -1185,11 +1372,23 @@ class NiotSolver:
         pot, tdens = sol.subfunctions
         self.tdens_h.assign(tdens)
         gfvar = Function(self.fems.tdens_space)
-        gfvar.interpolate(sqrt(tdens))
+        gfvar.interpolate(self.gfvar_of_tdens(tdens))
 
         # compute gradient of energy w.r.t. gfvar
         # see tdens_mirror_descent for more details on the implementation
-        L = assemble(self.Lagrangian(pot, self.tdens_h))
+        mode = ctrl.get('regularization_type')
+        if mode == 'explicit':
+            L = assemble(self.Lagrangian(self.pot_h,self.tdens_h))
+        elif mode == 'semi_implicit':
+            wd = self.ctrl.get('discrepancy_weight')
+            wp = self.ctrl.get('penalization_weight')
+            L = assemble(
+                wd * self.discrepancy(self.pot_h,self.tdens_h)
+                + wp * self.penalization(self.pot_h,self.tdens_h)
+                )
+        else:
+            raise ValueError(f'Wrong regularization type {mode=}')
+            
         with fire_adj.stop_annotating():
             reduced_functional = fire_adj.ReducedFunctional(L, fire_adj.Control(self.tdens_h))
             self.rhs_ode = reduced_functional.derivative()
@@ -1197,32 +1396,164 @@ class NiotSolver:
         # compute derivative of the transformation gfvar2tdens
         # TODO: this is really a bad workaround working
         # only for piecewise constant tdens
-        if self.fem.tdens_space.ufl_element().degree() != 0:
+        if self.fems.tdens_space.ufl_element().degree() != 0:
             raise NotImplementedError('Only piecewise constant tdens is implemented')
-        else:
-            f = self.gfvar2tdens(gfvar)*dx
-            scaling_cofun = assemble(derivative(f,gfvar))
-            scaling_fun = Function(self.fems.tdens_space)
-            with scaling_cofun.dat.vec_ro as scaling_cofun_vec, scaling_fun.dat.vec as scaling_fun_vec:
-                self.fems.tdens_mass_matrix.solve(scaling_cofun_vec, scaling_fun_vec)
-            # chain rule
-            with self.rhs_ode.dat.vec as rhs, scaling_fun.dat.vec_ro as scaling_fun_vec, update.dat.vec as d:
-                self.rhs_ode *= scaling_fun
+        
+        #test = TestFunction(self.fems.tdens_space)
+        f = self.tdens_of_gfvar(gfvar)*dx
+        scaling_cofun = assemble(derivative(f,gfvar))
+        scaling_fun = Function(self.fems.tdens_space)
+        with scaling_cofun.dat.vec_ro as scaling_cofun_vec, scaling_fun.dat.vec as scaling_fun_vec:
+            self.fems.inv_tdens_mass_matrix.solve(scaling_cofun_vec, scaling_fun_vec)
+        # chain rule
+        with self.rhs_ode.dat.vec as rhs, scaling_fun.dat.vec as scaling_fun_vec:
+            rhs *= scaling_fun_vec
+            rhs.scale(-1)
 
         update = Function(self.fems.tdens_space)
         with self.rhs_ode.dat.vec as rhs, gfvar.dat.vec_ro as gfvar_vec, update.dat.vec as d:
             # scale by the inverse mass matrix
-            self.fems.tdens_inv_mass_matrix.solve(rhs, d)
+            self.fems.inv_tdens_mass_matrix.solve(rhs, d)
             
             # update
-            step = ctrl.set_step(d)
+            step = self.ctrl.set_step(d, gfvar_vec)
             self.deltat = step
-            self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}')
-            gfvar_vec.axpy(-step, d)
+            self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}',color='blue')
+            
+            
+            # update
+            mode = ctrl.get('regularization_type')
+            if mode == 'explicit':
+                gfvar_vec.axpy(step, d)
+            elif mode == 'semi_implicit':
+                # 
+                # M(gf-gf_0)/step + grad P+D(gf  ) + wr (-L) gf= 0
+                # ~ semi_implicit 
+                # M(gf-gf_0)/step + grad P+D(gf_0) + wr (-L) gf = 0
+                #
+                # (M+step*wr*Laplacian) gf = M gf_0 + step*rhs
+                #
+                self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), color='blue')
+                wr = self.ctrl.get('regularization_weight')
+                print(f'{wr=} shift={step*wr:.1e} {step=}')
+                self.setup_increment_solver(shift=step*wr)
+                
+                test = TestFunction(self.fems.tdens_space)
+                gf0 = assemble(gfvar*test*dx)
+                with gf0.dat.vec_ro as g0_vec:
+                    rhs.scale(step)
+                    rhs.axpy(1.0, g0_vec)
+                
+                self.IncrementSolver.solve(rhs, gfvar_vec) 
+                self.print_info(
+                msg=self.IncrementSolver.info(),
+                priority=2,
+                where=['stdout','log'])
 
+            self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), color='blue')
+        
         # convert gfvar to tdens
         utilities.threshold_from_below(gfvar, 0)
-        sol.sub(1).assign(self.gfvar2tdens(gfvar))
+        self.tdens_h.interpolate(self.tdens_of_gfvar(gfvar))
+        sol.sub(1).assign(self.tdens_h)
+        with self.tdens_h.dat.vec_ro as tdens_vec:
+            self.print_info(utilities.msg_bounds(tdens_vec,'tdens'), color='blue')   
+
+        # compute pot associated to new tdens
+        tol = self.ctrl.get('constraint_tol')
+        ierr = self.solve_pot_PDE(sol, tol=tol)
+        
+        return ierr
+    
+    def gfvar_gradient_descent_semi_implicit(self, sol):
+        '''
+        Update of using transformation tdens_of_gfvar and gradient descent
+        args:
+            sol : Class with unkowns (pot,tdens, in this case)
+        returns:
+            ierr : control flag. It is 0 if everthing worked.
+        Update of gfvar using gradient descent direction
+        '''
+        
+        # convert tdens to gfvar
+        _ , tdens = sol.subfunctions
+        self.tdens_h.assign(tdens)
+        gfvar = Function(self.fems.tdens_space)
+        gfvar.interpolate(self.gfvar_of_tdens(tdens))
+
+        # compute gradient of energy w.r.t. gfvar
+        # see tdens_mirror_descent for more details on the implementation
+        wd = self.ctrl.get('discrepancy_weight')
+        wp = self.ctrl.get('penalization_weight')
+        L = assemble(
+            wd * self.discrepancy(self.pot_h,self.tdens_h)
+            + wp * self.penalization(self.pot_h,self.tdens_h)
+            )
+            
+        with fire_adj.stop_annotating():
+            reduced_functional = fire_adj.ReducedFunctional(L, fire_adj.Control(self.tdens_h))
+            self.rhs_ode = reduced_functional.derivative()
+        
+        # compute derivative of the transformation gfvar2tdens
+        # TODO: this is really a bad workaround working
+        # only for piecewise constant tdens
+        if self.fems.tdens_space.ufl_element().degree() != 0:
+            raise NotImplementedError('Only piecewise constant tdens is implemented')
+        
+        #test = TestFunction(self.fems.tdens_space)
+        f = self.tdens_of_gfvar(gfvar)*dx
+        scaling_cofun = assemble(derivative(f,gfvar))
+        scaling_fun = Function(self.fems.tdens_space)
+        with scaling_cofun.dat.vec_ro as scaling_cofun_vec, scaling_fun.dat.vec as scaling_fun_vec:
+            self.fems.inv_tdens_mass_matrix.solve(scaling_cofun_vec, scaling_fun_vec)
+        # chain rule
+        with self.rhs_ode.dat.vec as rhs, scaling_fun.dat.vec as scaling_fun_vec:
+            rhs *= scaling_fun_vec
+            rhs.scale(-1)
+
+        update = Function(self.fems.tdens_space)
+        with self.rhs_ode.dat.vec as rhs, gfvar.dat.vec_ro as gfvar_vec, update.dat.vec as d:
+            # scale by the inverse mass matrix
+            self.fems.inv_tdens_mass_matrix.solve(rhs, d)
+            
+            # update
+            step = self.ctrl.set_step(d, gfvar_vec)
+            self.deltat = step
+            self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}',color='blue')
+            
+            
+            # 
+            # M(gf-gf_0)/step + grad P+D(gf  ) + wr (-L) gf= 0
+            # ~ semi_implicit 
+            # M(gf-gf_0)/step + grad P+D(gf_0) + wr (-L) gf = 0
+            #
+            # (M+step*wr*Laplacian) gf = M gf_0 + step*rhs
+            #
+            self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), color='blue')
+            wr = self.ctrl.get('regularization_weight')
+            print(f'{wr=} shift={step*wr:.1e} {step=}')
+            self.setup_increment_solver(shift=step*wr)
+            
+            test = TestFunction(self.fems.tdens_space)
+            gf0 = assemble(gfvar*test*dx)
+            with gf0.dat.vec_ro as g0_vec:
+                rhs.scale(step)
+                rhs.axpy(1.0, g0_vec)
+            
+            self.IncrementSolver.solve(rhs, gfvar_vec) 
+            self.print_info(
+            msg=self.IncrementSolver.info(),
+            priority=2,
+            where=['stdout','log'])
+
+            self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), color='blue')
+        
+        # convert gfvar to tdens
+        utilities.threshold_from_below(gfvar, 0)
+        self.tdens_h.interpolate(self.tdens_of_gfvar(gfvar))
+        sol.sub(1).assign(self.tdens_h)
+        with self.tdens_h.dat.vec_ro as tdens_vec:
+            self.print_info(utilities.msg_bounds(tdens_vec,'tdens'), color='blue')   
 
         # compute pot associated to new tdens
         tol = self.ctrl.get('constraint_tol')
@@ -1242,17 +1573,22 @@ class NiotSolver:
          ierr : control flag. It is 0 if everthing worked.
 
         '''
-        time_discretization_method = self.ctrl.get('time_discretization_method')
-        if (time_discretization_method == 'tdens_mirror_descent'):
+        method = self.ctrl.get('dmk_type')
+        if method == 'tdens_mirror_descent':
             ierr = self.tdens_mirror_descent(sol)
             return ierr
         
-        elif (time_discretization_method == 'gfvar_gradient_descent'):
+        elif method == 'gfvar_gradient_descent':
             ierr = self.gfvar_gradient_descent(sol)
             return ierr
+        
+        elif method == 'gfvar_gradient_descent_semi_implicit':
+            ierr = self.gfvar_gradient_descent_semi_implicit(sol)
+            return ierr
+        
         else:
-            raise ValueError('value: time_discretization_method not supported.\n',
-                              f'Passed:{time_discretization_method}')   
+            raise ValueError('value: dmk_type not supported.\n',
+                              f'Passed:{method}')   
     
     def save_solution(self, sol, filename):            
         '''
