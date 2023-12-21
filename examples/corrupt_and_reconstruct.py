@@ -60,6 +60,7 @@ def corrupt_and_reconstruct(img_source,
     print('Sinks: '+img_sink)
     print('Networks: '+img_network)
     print('Masks: '+img_mask)
+    
 
 
     label= [
