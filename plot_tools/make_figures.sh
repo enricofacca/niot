@@ -22,16 +22,19 @@ dirout=$(dirname $absvtu)
 #echo "dirname" $dir
 png=${filename%.*}_${pngname}.png
 #echo $png
-sed "s|vtuin|${absvtu}|" $template > changed.session
-sed -i "s|dirout|${dirout}|" changed.session
-sed -i "s|pngout|${png}|" changed.session
-sed -i "s|mintdens|${mintdens}|" changed.session
+changed=${filename%.*}.session
+
+sed "s|vtuin|${absvtu}|" $template > ${changed}
+sed -i "s|dirout|${dirout}|" ${changed}
+sed -i "s|pngout|${png}|" ${changed}
+sed -i "s|mintdens|${mintdens}|" ${changed}
 
 
-/usr/local/visit/bin/visit -cli -nowin -s ${SCRIPTDIR}/restore_print.py changed.session  
+/usr/local/visit/bin/visit -cli -nowin -s ${SCRIPTDIR}/restore_print.py ${changed}
 pdf=${filename%.*}_${pngname}.pdf
 pngfile="${dirout}/${png}"
 pdffile="${dirout}"/${filename%.*}_${pngname}.pdf
 echo $pngfile
 echo $pdffile
 convert $pngfile $pdffile
+rm ${changed}
