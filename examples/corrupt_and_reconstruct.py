@@ -53,12 +53,14 @@ def corrupt_and_reconstruct(img_source,
                             tdens2image,
                             directory,
                             sigma_smoothing=1e-6,
-                            tdens2image_scaling= 1e0):
+                            tdens2image_scaling=1e0,
+                            method=None):
     print('Corrupting and reconstructing')
     print('Sources: '+img_source)
     print('Sinks: '+img_sink)
     print('Networks: '+img_network)
     print('Masks: '+img_mask)
+    
 
 
     label= [
@@ -78,6 +80,19 @@ def corrupt_and_reconstruct(img_source,
     else:
         raise ValueError(f'Unknown tdens2image {tdens2image}')
     label.append(f'scaling{tdens2image_scaling:.1e}')  
+    if method is not None:
+        if method == 'tdens_mirror_descent_explicit':
+            short_method = 'te'
+        elif method == 'tdens_mirror_descent_semi_implicit':
+            short_method = 'tsi'
+        elif method == 'gfvar_gradient_descent_explicit':
+            short_method = 'ge'
+        elif method == 'gfvar_gradient_descent_semi_implicit':
+            short_method = 'gsi'
+        else:
+            raise ValueError(f'Unknown method {method}')
+        label.append(f'method{short_method}')
+    
     label = '_'.join(label)
     print('Problem label: '+label)
     
@@ -155,40 +170,72 @@ def corrupt_and_reconstruct(img_source,
     ctrl = Controls(
         # globals controls
         optimization_tol=5e-2,
-        max_iter=1000,
+        max_iter=2000,
         spaces=fem,
         # niot controls
-        weight_discrepancy=weights[0],
-        #weight_penalty=weights[1],
-        weight_regularization=weights[2],
+        discrepancy_weight=weights[0],
+        regularization_weight=weights[2],
         tdens2image=tdens2image,
         sigma_smoothing=sigma_smoothing,
         # optimization controls
-        time_discretization_method='tdens_mirror_descent',
+        dmk_type='gfvar_gradient_descent_semi_implicit',
         deltat=1e-3,
         nonlinear_tol=1e-5,
         linear_tol=1e-6,
         nonlinear_max_iter=30,
         linear_max_iter=1000)
+    
+
+
 
     # set "manually" the controls
     ctrl.gradient_scaling = 'dmk'
     ctrl.deltat_control = 'adaptive2'
     ctrl.deltat_expansion = 1.02
     ctrl.deltat_min = 1e-7
-    ctrl.deltat_max = 1e-1
+    ctrl.deltat_max = 1e-2
     ctrl.verbose = 2
     ctrl.max_restarts = 7
-    ctrl.save_solution = 'none'
-    ctrl.save_solution_every = 10
-    ctrl.save_directory = os.path.join(directory,'evolution'+label+'/')
-    
     ctrl.scaling = tdens2image_scaling
 
-    if ctrl.save_solution != 'none':
-        if (not os.path.exists(ctrl.save_directory)):
-            os.makedirs(ctrl.save_directory)
+
+    # copy in global_ctrl the controls
+    ctrl.global_ctrl['spaces'] = ctrl.spaces
+
+    # optimization
+    ctrl.global_ctrl['optimization_tol'] = ctrl.optimization_tol
+    ctrl.global_ctrl['constrain_tol'] = ctrl.nonlinear_tol
+    ctrl.global_ctrl['max_iter'] = ctrl.max_iter
+    ctrl.global_ctrl['max_restart'] = ctrl.max_restarts
     
+    # inpainting
+    ctrl.global_ctrl['discrepancy_weight'] = ctrl.discrepancy_weight
+    ctrl.global_ctrl['regularization_weight'] = ctrl.regularization_weight
+    ctrl.global_ctrl['tdens2image'] = ctrl.tdens2image
+    ctrl.global_ctrl['sigma_smoothing'] = ctrl.sigma_smoothing
+    ctrl.global_ctrl['scaling'] = ctrl.scaling
+    
+    # time discretization
+    if method is not None:
+        ctrl.global_ctrl['dmk_type'] = 'tdens_mirror_descent_explicit'
+    else:
+        ctrl.global_ctrl['dmk_type'] = method
+    ctrl.global_ctrl['gradient_scaling'] = 'dmk'
+
+    # time step
+    deltat_control = {
+        'type': 'adaptive2',
+        'lower_bound': ctrl.deltat_min,
+        'upper_bound': ctrl.deltat_max,
+        'expansion': ctrl.deltat_expansion,
+    }
+    ctrl.global_ctrl['dmk']['tdens_mirror_descent_explicit']['deltat'] = deltat_control
+    ctrl.global_ctrl['dmk']['tdens_mirror_descent_semi_implicit']['deltat'] = deltat_control
+    ctrl.global_ctrl['dmk']['gfvar_gradient_descent_explicit']['deltat'] = deltat_control
+    ctrl.global_ctrl['dmk']['gfvar_gradient_descent_semi_implicit']['deltat'] = deltat_control
+
+
+
     #
     # solve the problem
     #
@@ -313,8 +360,8 @@ if (__name__ == '__main__'):
     print ("source = ",args.source)
     print ("sink = ",args.sink)
     print ("gamma = ",args.gamma)
-    print ("weight_discrepancy = ",args.wd)
-    print ("weight_regularization = ",args.wr)
+    print ("dicrepancy_weight = ",args.wd)
+    print ("regularization_weight = ",args.wr)
     print ("directory = ",args.dir)
     print ("curropted_as_initial_guess = ",args.ini)
     print ("scaling_size = ",args.scale)
@@ -350,8 +397,8 @@ if (__name__ == '__main__'):
     print ("sink = ",args.sink)
     print ("fem= ",args.fem)
     print ("gamma = ",args.gamma)
-    print ("weight_discrepancy = ",args.wd)
-    print ("weight_regularization = ",args.wr)
+    print ("dicrepancy_weight = ",args.wd)
+    print ("regularization_weight = ",args.wr)
     print ("directory = ",args.dir)
     print ("curropted_as_initial_guess = ",args.ini)
     print ("scaling_size = ",args.scale)
