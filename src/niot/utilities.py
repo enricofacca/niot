@@ -342,6 +342,7 @@ def nested_get(dic, keys, default=None):
     try:        
         value = d[keys[-1]]
     except:
+        print(keys)
         if default is None:
             raise KeyError
         value = default
@@ -366,13 +367,17 @@ def nested_set(dic, keys, value, create_missing=False):
         >>> {'a': {'b': {'c': 2}}}
     """
     d = dic
+    if type(keys) != list:
+        keys = [keys]
     for key in keys[:-1]:
         if key in d:
             d = d[key]
         elif create_missing:
             d = d.setdefault(key, {})
         else:
-            return dic
+            print(f'Key {key} not found in dictionary {value}')
+            raise KeyError 
+        
     if keys[-1] in d or create_missing:
         d[keys[-1]] = value
     return dic
