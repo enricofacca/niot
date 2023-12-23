@@ -165,77 +165,6 @@ def corrupt_and_reconstruct(img_source,
     confidence_for_contour = Function(CG1)
     confidence_for_contour.interpolate(confidence).rename("confidence_countour","confidence")
 
-    #kappa = 1.0/(1.0 + fire_confidence + 1e-4)
-    
-    ctrl = Controls(
-        # globals controls
-        optimization_tol=5e-2,
-        max_iter=2000,
-        spaces=fem,
-        # niot controls
-        discrepancy_weight=weights[0],
-        regularization_weight=weights[2],
-        tdens2image=tdens2image,
-        sigma_smoothing=sigma_smoothing,
-        # optimization controls
-        dmk_type='gfvar_gradient_descent_semi_implicit',
-        deltat=1e-3,
-        nonlinear_tol=1e-5,
-        linear_tol=1e-6,
-        nonlinear_max_iter=30,
-        linear_max_iter=1000)
-    
-
-
-
-    # set "manually" the controls
-    ctrl.gradient_scaling = 'dmk'
-    ctrl.deltat_control = 'adaptive2'
-    ctrl.deltat_expansion = 1.02
-    ctrl.deltat_min = 1e-7
-    ctrl.deltat_max = 1e-2
-    ctrl.verbose = 2
-    ctrl.max_restarts = 7
-    ctrl.scaling = tdens2image_scaling
-
-
-    # copy in global_ctrl the controls
-    ctrl.global_ctrl['spaces'] = ctrl.spaces
-
-    # optimization
-    ctrl.global_ctrl['optimization_tol'] = ctrl.optimization_tol
-    ctrl.global_ctrl['constrain_tol'] = ctrl.nonlinear_tol
-    ctrl.global_ctrl['max_iter'] = ctrl.max_iter
-    ctrl.global_ctrl['max_restart'] = ctrl.max_restarts
-    
-    # inpainting
-    ctrl.global_ctrl['discrepancy_weight'] = ctrl.discrepancy_weight
-    ctrl.global_ctrl['regularization_weight'] = ctrl.regularization_weight
-    ctrl.global_ctrl['tdens2image'] = ctrl.tdens2image
-    ctrl.global_ctrl['sigma_smoothing'] = ctrl.sigma_smoothing
-    ctrl.global_ctrl['scaling'] = ctrl.scaling
-    
-    # time discretization
-    if method is not None:
-        ctrl.global_ctrl['dmk_type'] = 'tdens_mirror_descent_explicit'
-    else:
-        ctrl.global_ctrl['dmk_type'] = method
-    ctrl.global_ctrl['gradient_scaling'] = 'dmk'
-
-    # time step
-    deltat_control = {
-        'type': 'adaptive2',
-        'lower_bound': ctrl.deltat_min,
-        'upper_bound': ctrl.deltat_max,
-        'expansion': ctrl.deltat_expansion,
-    }
-    ctrl.global_ctrl['dmk']['tdens_mirror_descent_explicit']['deltat'] = deltat_control
-    ctrl.global_ctrl['dmk']['tdens_mirror_descent_semi_implicit']['deltat'] = deltat_control
-    ctrl.global_ctrl['dmk']['gfvar_gradient_descent_explicit']['deltat'] = deltat_control
-    ctrl.global_ctrl['dmk']['gfvar_gradient_descent_semi_implicit']['deltat'] = deltat_control
-
-
-
     #
     # solve the problem
     #
@@ -243,11 +172,55 @@ def corrupt_and_reconstruct(img_source,
     opt_inputs = ot.OTPInputs(source, sink)
     btp = ot.BranchedTransportProblem(source, sink, gamma=gamma)
 
-    print(f'{ctrl.spaces=}')
+    print(f'{fem=}')
     
-    niot_solver = NiotSolver(btp, corrupted,  confidence, ctrl)
+    niot_solver = NiotSolver(btp, corrupted,  confidence, 
+                             spaces = fem,
+                             cell2face = 'harmonic_mean',
+                             setup=True)
+    
     if corrupted_as_initial_guess == 1:
         niot_solver.sol.sub(1).assign(corrupted+1e-6)
+
+
+    # inpainting
+    niot_solver.ctrl_set('discrepancy_weight', weights[0])
+    niot_solver.ctrl_set('regularization_weight', weights[2])
+    niot_solver.ctrl_set(['tdens2image','type'], tdens2image)
+    
+    if tdens2image == 'heat' or tdens2image == 'pm':
+        niot_solver.ctrl_set(['tdens2image',tdens2image,'sigma'], sigma_smoothing)
+    niot_solver.ctrl_set(['tdens2image','scaling'], tdens2image_scaling)
+    s = niot_solver.ctrl_get(['tdens2image','scaling'])
+    print(f'{s=}')
+    #niot_solver.ctrl_set(['tdens2image','scaling'], 1.0)
+    print('dic',niot_solver.ctrl_get('tdens2image'))
+
+    # optimization
+    niot_solver.ctrl_set('optimization_tol', 1e-2)
+    niot_solver.ctrl_set('constrain_tol', 1e-8)
+    niot_solver.ctrl_set('max_iter', 5000)
+    niot_solver.ctrl_set('max_restart', 3)
+    niot_solver.ctrl_set('verbose', 2)  # usign niot_solver method
+    
+    
+    # time discretization
+    if method is None:
+        method = 'tdens_mirror_descent_explicit'
+    niot_solver.ctrl_set(['dmk','type'], method)
+    niot_solver.ctrl_set(['dmk',method,'gradient_scaling'], 'dmk')
+
+
+
+    # time step
+    deltat_control = {
+        'type': 'adaptive2',
+        'lower_bound': 1e-10,
+        'upper_bound': 5e-2,
+        'expansion': 1.02,
+    }
+    niot_solver.ctrl_set(['dmk',method,'deltat'], deltat_control)
+    
     
     
     
