@@ -8,12 +8,12 @@ examples = []#[f'y_net_hand_drawing/nref{i}' for i in [0]]#'frog_tongue']
 examples.append('y_net/')
 #examples.append('y_net_hand_drawing/nref2')
 #examples.append('y_net_hand_drawing/nref1')
-nref=[0]
+nref=[1]
 fems = ['DG0DG0']
 mask=['mask_large.png']
 gamma = [0.5]
 wd = [0]#1e-2]
-wr = [0.0]#1e-4, 1e-3, 1e-2]#, 1e-3, 1e-2]
+wr = [1e-4]#1e-4, 1e-3, 1e-2]#, 1e-3, 1e-2]
 ini = [0]
 conf = ['ONE']#,'CORRUPTED','MASK']#,'MASK','CORRUPTED']
 maps = ['identity']#'heat']#,'pm']
@@ -22,8 +22,8 @@ tdens2image_scaling = [1e1]
 method = [
     #'tdens_mirror_descent_explicit',
     #'tdens_mirror_descent_semi_implicit',
-    'gfvar_gradient_descent_explicit',
-    #'gfvar_gradient_descent_semi_implicit',
+    #'gfvar_gradient_descent_explicit',
+    'gfvar_gradient_descent_semi_implicit',
 ]
 
 parameters=[examples,nref,fems,mask,gamma,wd,wr,ini,conf,maps,sigma,tdens2image_scaling,method]
