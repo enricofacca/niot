@@ -369,49 +369,6 @@ class Controls:
         return utilities.nested_set(self.global_ctrl,key,value)
         #return setattr(self,key,value)
 
-
-    # def set_step(self, increment, state=None):
-    #     """
-    #     Set the step lenght according to the control strategy
-    #     and the increment
-    #     """
-    #     if (self.deltat_control == 'adaptive'):
-    #         abs_inc = abs(increment)
-    #         _,d_max = abs_inc.max()
-    #         if (d_max < 0):
-    #             step = self.deltat_max
-    #         else:
-    #             print(f'{d_max=:.2e}')
-    #             step = max(min(1.0 / d_max, self.deltat_max),self.deltat_min)
-    #     elif (self.deltat_control == 'adaptive2'):
-    #         order_down = -1
-    #         order_up = 1
-    #         r = increment / state
-    #         r_np = r.array
-    #         if np.min(r_np) < 0:
-    #             negative = np.where(r_np<0)
-    #             hdown = (10**order_down-1) / r_np[negative]
-    #             deltat_down = np.min(hdown)
-    #         else:
-    #             deltat_down = self.deltat_max
-    #         if np.max(r_np) > 0:
-    #             positive = np.where(r_np>0)
-    #             hup = (10**order_up-1) / r_np[positive]
-    #             deltat_up = np.min(hup)
-    #         else:
-    #             deltat_up = self.deltat_max
-    #         step = min(deltat_up,deltat_down)
-    #         step = max(step,self.deltat_min)
-    #         step = min(step,self.deltat_max)
-
-    #     elif (self.deltat_control == 'expansive'):
-    #         step = max(min(self.deltat * self.deltat_expansion, self.deltat_max),self.deltat_min)
-    #     elif (self.deltat_control == 'fixed'):
-    #         step = self.deltat
-    #     else:
-    #         raise ValueError(f'{self.deltat_control=} not supported')
-    #     return step
-
             
 def set_step(increment,
              state, 
