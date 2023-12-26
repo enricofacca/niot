@@ -19,7 +19,6 @@ import numpy as np
 import cProfile
 sys.path.append('../src/niot')
 from niot import NiotSolver
-from niot import Controls
 import optimal_transport as ot 
 import image2dat as i2d
 
