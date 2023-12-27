@@ -314,7 +314,7 @@ class NiotSolver:
             'scaling': 1.0,
             'pm': {
                 'sigma' : 1e-2,
-                'exp_m': 2,
+                'exponent_m': 2,
                 },
             'heat': {
                 'sigma' : 1e-2
@@ -629,7 +629,7 @@ class NiotSolver:
             
             
             sigma = self.ctrl_get(['tdens2image','pm','sigma'])
-            exp_m = self.ctrl_get(['tdens2image','pm','exp_m'])
+            exp_m = self.ctrl_get(['tdens2image','pm','exponent_m'])
             self.print_info(f"{tdens2image=} {sigma=}{scaling=}",priority=2)
             if abs(sigma) > 1e-16:
                 approach='arithmetic_mean'

@@ -38,8 +38,8 @@ pl.add_mesh(contours, line_width=2, color="black",show_scalar_bar=False)
 # 
 sargs = dict(
     title="",
-    title_font_size=18,
-    label_font_size=18,
+    title_font_size=40,
+    label_font_size=40,
     shadow=True,
     n_labels=2,
     #italic=True,
@@ -47,7 +47,7 @@ sargs = dict(
     font_family="arial",
     vertical=False,
     position_x=0.3,
-    position_y=0.78,
+    position_y=0.92,
     width=0.35,
     height=0.1,    
 )
@@ -73,8 +73,8 @@ min_tdens = np.min(tdens)
 max_tdens = np.max(tdens)
 pl.add_text(
     text=rf'${min_tdens:.1e}\leq \mu \leq {max_tdens:.1e}$',
-        position=[350,570],
-        font_size=10,
+        position=[250,850],
+        font_size=20,
         color=None,
         font=None,
         shadow=False,
@@ -83,7 +83,8 @@ pl.add_text(
         orientation=0.0,
         font_file=None)
 #pl.show()
-#pl.window_size = 1000, 1000
+pl.window_size = 1000, 1000
+pl.zoom_camera('tight')
 print('saved in')
 print(pdf_filename)
 pl.save_graphic(pdf_filename)

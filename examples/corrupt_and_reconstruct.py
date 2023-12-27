@@ -38,44 +38,29 @@ import image2dat as i2d
 
 from scipy.ndimage import gaussian_filter
 
-#@profile
-def corrupt_and_reconstruct(img_source,
-                            img_sink,
-                            img_network,
-                            img_mask, 
-                            nref,
-                            fem,
-                            gamma, 
-                            weights, 
-                            corrupted_as_initial_guess,
-                            confidence,
-                            tdens2image,
-                            directory,
-                            sigma_smoothing=1e-6,
-                            tdens2image_scaling=1e0,
-                            method=None):
-    print('Corrupting and reconstructing')
-    print('Sources: '+img_source)
-    print('Sinks: '+img_sink)
-    print('Networks: '+img_network)
-    print('Masks: '+img_mask)
-    
-
-
+def labels(nref,fem,
+           gamma,wd,wr,
+           corrupted_as_initial_guess,
+           confidence,
+           tdens2image,
+           tdens2image_scaling, 
+           method):
     label= [
         f'nref{nref}',
         f'fem{fem}',
-             f'gamma{gamma:.1e}',
-             f'wd{weights[0]:.1e}',
-             f'wr{weights[2]:.1e}',
-             f'ini{corrupted_as_initial_guess:d}',
-             f'conf{confidence}']
-    if tdens2image == 'identity':
-        label.append(f'mu2i{tdens2image}')
-    elif tdens2image == 'heat':
-        label.append(f'mu2i{tdens2image}{sigma_smoothing:.1e}')
-    elif tdens2image == 'pm':
-        label.append(f'mu2i{tdens2image}{sigma_smoothing:.1e}')
+        f'gamma{gamma:.1e}',
+        f'wd{wd:.1e}',
+        f'wr{wr:.1e}',
+        f'ini{corrupted_as_initial_guess:d}',
+        f'conf{confidence}']
+    print(tdens2image)
+    print('this',tdens2image['type'])
+    if tdens2image['type'] == 'identity':
+        label.append(f'mu2iidentity')
+    elif tdens2image['type'] == 'heat':
+        label.append(f"mu2iheat{tdens2image['sigma']:.1e}")
+    elif tdens2image['type'] == 'pm':
+        label.append(f"mu2ipm{tdens2image['sigma']:.1e}")
     else:
         raise ValueError(f'Unknown tdens2image {tdens2image}')
     label.append(f'scaling{tdens2image_scaling:.1e}')  
@@ -90,9 +75,72 @@ def corrupt_and_reconstruct(img_source,
             short_method = 'gsi'
         else:
             raise ValueError(f'Unknown method {method}')
-        label.append(f'method{short_method}')
+    label.append(f'method{short_method}')
+    return label
+
+
+#@profile
+def corrupt_and_reconstruct(img_source,
+                            img_sink,
+                            img_network,
+                            img_mask, 
+                            nref=0,
+                            fem="DG0DG0",
+                            gamma=0.5, 
+                            wd=1e-2,
+                            wr=1e-4, 
+                            corrupted_as_initial_guess=0,
+                            confidence='ONE',
+                            tdens2image='identity',
+                            tdens2image_scaling=1e0,
+                            method='tdens_mirror_descent_explicit'  ,
+                            directory='out/'
+                            ):
+    print('Corrupting and reconstructing')
+    print('Sources: '+img_source)
+    print('Sinks: '+img_sink)
+    print('Networks: '+img_network)
+    print('Masks: '+img_mask)
     
-    label = '_'.join(label)
+
+
+    # label= [
+    #     f'nref{nref}',
+    #     f'fem{fem}',
+    #          f'gamma{gamma:.1e}',
+    #          f'wd{weights[0]:.1e}',
+    #          f'wr{weights[2]:.1e}',
+    #          f'ini{corrupted_as_initial_guess:d}',
+    #          f'conf{confidence}']
+    # if tdens2image == 'identity':
+    #     label.append(f'mu2i{tdens2image}')
+    # elif tdens2image == 'heat':
+    #     label.append(f'mu2i{tdens2image}{sigma_smoothing:.1e}')
+    # elif tdens2image == 'pm':
+    #     label.append(f'mu2i{tdens2image}{sigma_smoothing:.1e}')
+    # else:
+    #     raise ValueError(f'Unknown tdens2image {tdens2image}')
+    # label.append(f'scaling{tdens2image_scaling:.1e}')  
+    # if method is not None:
+    #     if method == 'tdens_mirror_descent_explicit':
+    #         short_method = 'te'
+    #     elif method == 'tdens_mirror_descent_semi_implicit':
+    #         short_method = 'tsi'
+    #     elif method == 'gfvar_gradient_descent_explicit':
+    #         short_method = 'ge'
+    #     elif method == 'gfvar_gradient_descent_semi_implicit':
+    #         short_method = 'gsi'
+    #     else:
+    #         raise ValueError(f'Unknown method {method}')
+    #     label.append(f'method{short_method}')
+    labels_problem = labels(nref,fem,gamma,wd,wr,
+              corrupted_as_initial_guess,
+                confidence,
+                tdens2image,
+                tdens2image_scaling,
+                method)
+    
+    label = '_'.join(labels_problem)
     print('Problem label: '+label)
     
 
@@ -183,22 +231,15 @@ def corrupt_and_reconstruct(img_source,
 
 
     # inpainting
-    niot_solver.ctrl_set('discrepancy_weight', weights[0])
-    niot_solver.ctrl_set('regularization_weight', weights[2])
-    niot_solver.ctrl_set(['tdens2image','type'], tdens2image)
-    
-    if tdens2image == 'heat' or tdens2image == 'pm':
-        niot_solver.ctrl_set(['tdens2image',tdens2image,'sigma'], sigma_smoothing)
-    niot_solver.ctrl_set(['tdens2image','scaling'], tdens2image_scaling)
-    s = niot_solver.ctrl_get(['tdens2image','scaling'])
-    print(f'{s=}')
-    #niot_solver.ctrl_set(['tdens2image','scaling'], 1.0)
-    print('dic',niot_solver.ctrl_get('tdens2image'))
+    niot_solver.ctrl_set('discrepancy_weight', wd)
+    niot_solver.ctrl_set('regularization_weight', wr)
+    map_ctrl={**tdens2image, **{'scaling': tdens2image_scaling}}
+    niot_solver.ctrl_set(['tdens2image'], map_ctrl)
 
     # optimization
     niot_solver.ctrl_set('optimization_tol', 1e-2)
     niot_solver.ctrl_set('constrain_tol', 1e-8)
-    niot_solver.ctrl_set('max_iter', 5000)
+    niot_solver.ctrl_set('max_iter', 1)
     niot_solver.ctrl_set('max_restart', 3)
     niot_solver.ctrl_set('verbose', 1)  # usign niot_solver method
     
@@ -284,7 +325,7 @@ def corrupt_and_reconstruct(img_source,
     #    tdens, network, mask_for_contour,
     #                    ],filename)
 
-
+    return ierr
     
     
 def get_image_path(directory_example, name):
@@ -362,15 +403,19 @@ if (__name__ == '__main__'):
                             args.sink,
                             args.network,
                             args.mask,
-                            args.scale,
-                            args.fem,
-                            args.gamma,
-                            weights,
-                            args.ini,
-                            args.conf,
-                            args.t2i,
-                            args.dir,
-                            out_dir)
+                            nref=args.scale,
+                            fem=args.fem,
+                            gamma=args.gamma,
+                            wd=args.wd,
+                            wr=args.wr,
+                            corrupted_as_initial_guess=args,
+                            confidence=args.conf,
+                            tdens2image=args.t2i,
+                            tdens2image_scaling=10,
+                            method='tdens_mirror_descent_explicit'  ,
+                            out_dir=out_dir)
+    
+    
     print ("network = ",args.network)
     print ("mask = ",args.mask)
     print ("source = ",args.source)
