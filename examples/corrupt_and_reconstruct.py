@@ -198,11 +198,19 @@ def corrupt_and_reconstruct(img_source,
     # optimization
     niot_solver.ctrl_set('optimization_tol', 1e-2)
     niot_solver.ctrl_set('constrain_tol', 1e-8)
-    niot_solver.ctrl_set('max_iter', 5000)
+    niot_solver.ctrl_set('max_iter', 5)
     niot_solver.ctrl_set('max_restart', 3)
-    niot_solver.ctrl_set('verbose', 2)  # usign niot_solver method
+    niot_solver.ctrl_set('verbose', 1)  # usign niot_solver method
     
+    niot_solver.ctrl_set('log_verbose', 1)  # using niot_solver method
+    log_file = os.path.join(directory, f'{label}.log')
+    niot_solver.ctrl_set('log_file', log_file)
+    # remove if exists
+    if niot_solver.mesh.comm.rank == 0:
+        if os.path.exists(log_file):
+            os.remove(log_file)
     
+
     # time discretization
     if method is None:
         method = 'tdens_mirror_descent_explicit'

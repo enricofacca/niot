@@ -303,9 +303,8 @@ class NiotSolver:
         'min_tdens' : 1e-8,
         # info 
         'verbose' : 0,
-        'log': 0,
-        'log_file': 'niot.log',
         'log_verbose': 2,
+        'log_file': 'niot.log',
         #'inpainting' : {
         'discrepancy_weight': 1.0,
         'regularization_weight': 0.0,
@@ -745,16 +744,18 @@ class NiotSolver:
                 verbose = self.ctrl_get('verbose')
                 if verbose >= priority: 
                     if color != 'black':
-                        msg = utilities.color(color, msg)
-                    PETSc.Sys.Print('   '*(priority-1)+msg)
+                        stdout_msg = utilities.color(color, msg)
+                    else:
+                        stdout_msg = msg
+                    PETSc.Sys.Print('   '*(priority-1) + stdout_msg)
 
-            elif mode == 'log':
-                log = self.ctrl_get('log')
+            if mode == 'log':
                 log_verbose = self.ctrl_get('log_verbose')
-                log_file = self.ctrl_get('log_file')
-
-                if (log > 0 and log_verbose >= priority):
-                    PETSc.Sys.Print(msg, file=log_file)           
+                if log_verbose >= priority:
+                    if not hasattr(self,'log_viewer'):
+                        self.log_viewer = PETSc.Viewer().createASCII(self.ctrl_get('log_file'), comm=COMM_WORLD)
+                    self.log_viewer.pushASCIISynchronized()
+                    self.log_viewer.printfASCIISynchronized('   '*(priority-1)+msg+'\n')
 
     
 
@@ -844,8 +845,6 @@ class NiotSolver:
         # Initialize the parameter-dependent solvers
         self.setup()
         
-        
-
         # solve initial 
         ierr = self.solve_pot_PDE(self.sol)
         avg_outer = self.outer_iterations / max(self.nonlinear_iterations,1)
@@ -902,7 +901,7 @@ class NiotSolver:
                     msg =(f'{ierr=}. Failure in due to {SNESReasons[ierr]}')
                     self.print_info(
                         msg, 
-                        priority=1,
+                        priority = 1,
                         where=['stdout','log'],
                         color='red')
 
@@ -928,7 +927,7 @@ class NiotSolver:
                 +f' avgouter: {avg_outer:.1f}')
             self.print_info(
                 msg, 
-                priority=0,
+                priority=1,
                 where=['stdout','log'],
                 color='green'
             )
@@ -949,7 +948,6 @@ class NiotSolver:
                 ierr_dmk = 0
                 break
 
-        
         return ierr_dmk
               
     def discrepancy(self, pot, tdens ):
@@ -1116,7 +1114,7 @@ class NiotSolver:
         with self.rhs_ode.dat.vec as rhs:
             self.print_info(
                 msg=utilities.msg_bounds(rhs,'gradient'),
-                priority=0, 
+                priority=2, 
                 where=['stdout','log'],
                 color='black')
 
@@ -1329,9 +1327,15 @@ class NiotSolver:
 
         # compute gradient of energy w.r.t. gfvar
         # see tdens_mirror_descent for more details on the implementation
-        #L = assemble(self.Lagrangian(self.pot_h, self.tdens_h))
-        L = assemble(self.Lagrangian(pot, self.tdens_of_gfvar(gfvar)))
-
+        dw = self.ctrl_get('discrepancy_weight')
+        pw = self.ctrl_get('penalization_weight')
+        rw = self.ctrl_get('regularization_weight')
+        L = assemble(
+            dw * self.discrepancy(pot,self.tdens_of_gfvar(gfvar))
+            + pw * self.penalization(pot,self.tdens_of_gfvar(gfvar))
+            + rw * self.regularization(pot, gfvar)
+            )
+        
         #with fire_adj.stop_annotating():
         control_var = fire_adj.Control(gfvar)
         reduced_functional = fire_adj.ReducedFunctional(L, control_var)
@@ -1351,19 +1355,19 @@ class NiotSolver:
                             self.deltat,
                             **ctrl_step)
             self.deltat = step
-            self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}',color='blue')
+            self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}',priority=3, color='blue')
             
             # update
             gfvar_vec.axpy(step, d)
             
-            self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), color='blue')
+            self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'),priority=3, color='blue')
         
         # convert gfvar to tdens
         utilities.threshold_from_below(gfvar, 0)
         self.tdens_h.interpolate(self.tdens_of_gfvar(gfvar))
         sol.sub(1).assign(self.tdens_h)
         with self.tdens_h.dat.vec_ro as tdens_vec:
-            self.print_info(utilities.msg_bounds(tdens_vec,'tdens'), color='blue')   
+            self.print_info(utilities.msg_bounds(tdens_vec,'tdens'), priority=2,color='blue')   
 
         # compute pot associated to new tdens
         tol = self.ctrl_get('constraint_tol')
@@ -1414,7 +1418,7 @@ class NiotSolver:
                             self.deltat,
                             **ctrl_step)
             self.deltat = step
-            self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}',color='blue')
+            self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}', priority=2, color='blue')
             
             
             # 
@@ -1440,14 +1444,14 @@ class NiotSolver:
             priority=2,
             where=['stdout','log'])
 
-            self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), color='blue')
+            self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), priority=2, color='blue')
         
         # convert gfvar to tdens
         utilities.threshold_from_below(gfvar, 0)
         self.tdens_h.interpolate(self.tdens_of_gfvar(gfvar))
         sol.sub(1).assign(self.tdens_h)
         with self.tdens_h.dat.vec_ro as tdens_vec:
-            self.print_info(utilities.msg_bounds(tdens_vec,'tdens'), color='blue')   
+            self.print_info(utilities.msg_bounds(tdens_vec,'tdens'), priority=2, color='blue')   
 
         # compute pot associated to new tdens
         tol = self.ctrl_get('constraint_tol')
