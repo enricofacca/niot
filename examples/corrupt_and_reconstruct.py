@@ -214,7 +214,7 @@ def corrupt_and_reconstruct(img_source,
     niot_solver = NiotSolver(btp, corrupted,  confidence, 
                              spaces = fem,
                              cell2face = 'harmonic_mean',
-                             setup=True)
+                             setup=False)
     
     if corrupted_as_initial_guess == 1:
         niot_solver.sol.sub(1).assign(corrupted+1e-5)
@@ -264,8 +264,13 @@ def corrupt_and_reconstruct(img_source,
     
     
     # solve the potential PDE
-    ierr = niot_solver.solve_pot_PDE(niot_solver.sol)
+    max_iter = niot_solver.ctrl_get('max_iter')
+    niot_solver.ctrl_set('max_iter', 1)
+    ierr = niot_solver.solve()
     sol0 = cp(niot_solver.sol)
+
+    niot_solver.ctrl_set('max_iter', max_iter)
+    
 
 
     # solve the problem

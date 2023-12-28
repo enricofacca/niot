@@ -412,8 +412,7 @@ class NiotSolver:
             self.fems = SpaceDiscretization(self.mesh,'DG',0,'DG',0, cell2face)
         else:
             raise ValueError('Wrong spaces only (pot,tdens) in (CR1,DG0) or (DG0,DG0) implemented')
-        self.print_info(f'Number of cells: {self.mesh.num_cells()}',priority=2,where=['stdout','log'])
-
+        
         # initialize the solution
         self.sol = self.create_solution()
         self.sol_old = self.sol.copy(deepcopy=True)
@@ -446,6 +445,7 @@ class NiotSolver:
 
         if setup:
             self.setup()
+
 
     def setup(self):
         """
@@ -485,7 +485,12 @@ class NiotSolver:
         
         
         self.setup_pot_solver(petsc_controls)
+
+        log_verbose = self.ctrl_get('log_verbose')
+        if log_verbose > 0:
+            self.log_viewer = PETSc.Viewer().createASCII(self.ctrl_get('log_file'), 'w', comm=COMM_WORLD)
     
+        self.print_info(f'Number of cells: {self.mesh.num_cells()}',priority=2,where=['stdout','log'])
 
     def setup_tdensimage(self):
         """
@@ -764,8 +769,6 @@ class NiotSolver:
             if mode == 'log':
                 log_verbose = self.ctrl_get('log_verbose')
                 if log_verbose >= priority:
-                    if not hasattr(self,'log_viewer'):
-                        self.log_viewer = PETSc.Viewer().createASCII(self.ctrl_get('log_file'), comm=COMM_WORLD)
                     self.log_viewer.pushASCIISynchronized()
                     self.log_viewer.printfASCIISynchronized('   '*(priority-1)+msg+'\n')
 
@@ -883,6 +886,9 @@ class NiotSolver:
 
         # Initialize the parameter-dependent solvers
         self.setup()
+        # open log file
+        #if self.ctrl_get('log_verbose') > 0:
+        #    f_log = open(self.ctrl_get('log_file'), 'w')
         
         # solve initial 
         ierr = self.solve_pot_PDE(self.sol)
@@ -967,6 +973,9 @@ class NiotSolver:
             if (residual_opt < self.ctrl_get('optimization_tol')):
                 ierr_dmk = 0
                 break
+
+        #if self.ctrl_get('log_verbose') > 0:
+        #    f_log.close()
 
         return ierr_dmk
               
