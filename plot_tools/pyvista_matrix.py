@@ -57,8 +57,8 @@ def fixed_changing(parameters):
             nel+=1
         else:
             f.append(i)
-    if nel != 2:
-        raise ValueError('rows or cols must have exactly one element')
+    if (len(c) != 2):
+        raise ValueError('Only due elments can more more than one')
     return f,c
 
 
@@ -66,12 +66,12 @@ directory="../examples/y_net/mask_large/"
 
 
 mask=['mask_large.png']
-nref=[0,1]
+nref=[0]
 fems = ['DG0DG0']
-gamma = [0.5]
+gamma = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
 wd = [0]#1e-2]
-wr = [1e-4, 1e-3, 1e-2]
-ini = [0]
+wr = [1e-4]
+ini = [0,1]
 conf = ['ONE']
 maps = [
     {'type':'identity'}, 

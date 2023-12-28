@@ -1,5 +1,5 @@
 """
-This script is used to corrupt and reconstruct a network image.
+e script is used to corrupt and reconstruct a network image.
 The corrupted image is created adding a mask to the known network.
 Two parameters are used to control the reconstruction:
     gamma: controls the branching angle
@@ -53,8 +53,6 @@ def labels(nref,fem,
         f'wr{wr:.1e}',
         f'ini{corrupted_as_initial_guess:d}',
         f'conf{confidence}']
-    print(tdens2image)
-    print('this',tdens2image['type'])
     if tdens2image['type'] == 'identity':
         label.append(f'mu2iidentity')
     elif tdens2image['type'] == 'heat':
@@ -96,14 +94,7 @@ def corrupt_and_reconstruct(img_source,
                             method='tdens_mirror_descent_explicit'  ,
                             directory='out/'
                             ):
-    print('Corrupting and reconstructing')
-    print('Sources: '+img_source)
-    print('Sinks: '+img_sink)
-    print('Networks: '+img_network)
-    print('Masks: '+img_mask)
     
-
-
     # label= [
     #     f'nref{nref}',
     #     f'fem{fem}',
@@ -219,7 +210,6 @@ def corrupt_and_reconstruct(img_source,
     opt_inputs = ot.OTPInputs(source, sink)
     btp = ot.BranchedTransportProblem(source, sink, gamma=gamma)
 
-    print(f'{fem=}')
     
     niot_solver = NiotSolver(btp, corrupted,  confidence, 
                              spaces = fem,
@@ -227,7 +217,7 @@ def corrupt_and_reconstruct(img_source,
                              setup=True)
     
     if corrupted_as_initial_guess == 1:
-        niot_solver.sol.sub(1).assign(corrupted+1e-6)
+        niot_solver.sol.sub(1).assign(corrupted+1e-5)
 
 
     # inpainting
@@ -239,11 +229,11 @@ def corrupt_and_reconstruct(img_source,
     # optimization
     niot_solver.ctrl_set('optimization_tol', 1e-2)
     niot_solver.ctrl_set('constrain_tol', 1e-8)
-    niot_solver.ctrl_set('max_iter', 1)
+    niot_solver.ctrl_set('max_iter', 5000)
     niot_solver.ctrl_set('max_restart', 3)
-    niot_solver.ctrl_set('verbose', 1)  # usign niot_solver method
+    niot_solver.ctrl_set('verbose', 0)  # usign niot_solver method
     
-    niot_solver.ctrl_set('log_verbose', 1)  # using niot_solver method
+    niot_solver.ctrl_set('log_verbose', 2)  # using niot_solver method
     log_file = os.path.join(directory, f'{label}.log')
     niot_solver.ctrl_set('log_file', log_file)
     # remove if exists
@@ -263,9 +253,10 @@ def corrupt_and_reconstruct(img_source,
     # time step
     deltat_control = {
         'type': 'adaptive2',
-        'lower_bound': 1e-10,
-        'upper_bound': 5e-2,
+        'lower_bound': 1e-15,
+        'upper_bound': 1e-2,
         'expansion': 1.02,
+        'contraction': 0.5,
     }
     niot_solver.ctrl_set(['dmk',method,'deltat'], deltat_control)
     
@@ -276,10 +267,10 @@ def corrupt_and_reconstruct(img_source,
     ierr = niot_solver.solve_pot_PDE(niot_solver.sol)
     sol0 = cp(niot_solver.sol)
 
+
     # solve the problem
     ierr = niot_solver.solve()
-    print("Error code: ",ierr)
-
+    
     # save solution
     pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
     pot0, tdens0, vel0 = niot_solver.get_otp_solution(sol0)
@@ -299,7 +290,7 @@ def corrupt_and_reconstruct(img_source,
 
 
     filename = os.path.join(directory, f'{label}.pvd')
-    print("Saving solution to "+filename)
+    print(f"{ierr=} Saving solution to \n"+filename)
     utilities.save2pvd([
         corrupted,
         corrupted_for_contour,

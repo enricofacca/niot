@@ -236,7 +236,8 @@ def set_step(increment,
              type='adaptive', 
              lower_bound=1e-2, 
              upper_bound=0.5, 
-             expansion=2):
+             expansion=2,
+             contraction=0.5):
     """
     Set the step lenght according to the control strategy
     and the increment
@@ -340,6 +341,7 @@ class NiotSolver:
                     'lower_bound' : 1e-2,
                     'upper_bound' : 0.5,
                     'expansion' : 2,
+                    'contraction': 0.5,
                 },                
             },
             'tdens_mirror_descent_semi_implicit' : {
@@ -349,6 +351,7 @@ class NiotSolver:
                     'lower_bound' : 1e-2,
                     'upper_bound' : 0.5,
                     'expansion' : 2,
+                    'contraction': 0.5,
                 },                
             },
             'gfvar_gradient_descent_semi_implicit' : {
@@ -357,6 +360,7 @@ class NiotSolver:
                     'lower_bound' : 1e-2,
                     'upper_bound' : 0.5,
                     'expansion' : 2,
+                    'contraction': 0.5,
                 },                
             },
             'gfvar_gradient_descent_explicit' : {
@@ -365,6 +369,7 @@ class NiotSolver:
                     'lower_bound' : 1e-2,
                     'upper_bound' : 0.5,
                     'expansion' : 2,
+                    'contraction': 0.5,
                 },                
             }
         }
@@ -407,11 +412,11 @@ class NiotSolver:
             self.fems = SpaceDiscretization(self.mesh,'DG',0,'DG',0, cell2face)
         else:
             raise ValueError('Wrong spaces only (pot,tdens) in (CR1,DG0) or (DG0,DG0) implemented')
-        PETSc.Sys.Print(f'Number of cells: {self.mesh.num_cells()}')
+        self.print_info(f'Number of cells: {self.mesh.num_cells()}',priority=2,where=['stdout','log'])
 
         # initialize the solution
         self.sol = self.create_solution()
-
+        self.sol_old = self.sol.copy(deepcopy=True)
 
         # The class BranchedTransportProblem
         # that contains the physical information of the problem
@@ -430,6 +435,8 @@ class NiotSolver:
         self.confidence.rename('confidence','confidence')
 
         # init infos
+        self.iteration = 0
+        self.restart = 0
         self.outer_iterations = 0
         self.nonlinear_iterations = 0
         self.nonlinear_res = 0.0
@@ -453,6 +460,11 @@ class NiotSolver:
         self.tdens_h = Function(self.fems.tdens_space) # used by tdens2image map
         self.tdens_h.rename('tdens_h')
 
+        self.gfvar = Function(self.fems.tdens_space)
+        self.gfvar.rename('gfvar')
+
+
+
         self.setup_tdensimage()
 
 
@@ -462,7 +474,7 @@ class NiotSolver:
             'ksp_type': 'cg',
             'ksp_atol': 1e-12,
             'ksp_rtol': self.ctrl_get('constraint_tol'),
-            'ksp_divtol': 1e4,
+            'ksp_divtol': 1e6,
             'ksp_max_it' : 1000,
             'ksp_initial_guess_nonzero': True, 
             'ksp_norm_type': 'unpreconditioned',
@@ -772,15 +784,42 @@ class NiotSolver:
         # The stop_annotating is required to avoid memory accumalation
         # It works but I don't know why.   
         #with fire_adj.stop_annotating():
-        self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
-        self.rhs_ode = self.lagrangian_fun_reduced.derivative()
-        d = self.fems.tdens_mass_matrix.createVecLeft()
-        
-        with self.rhs_ode.dat.vec_ro as f_vec, self.tdens_h.dat.vec as tdens_vec:
-            self.fems.inv_tdens_mass_matrix.solve(f_vec,d)
-            d *= tdens_vec
-            residuum = d.norm()#PETSc.NormType.NORM_INFINITY)
-        return residuum
+        method = self.ctrl_get(['dmk','type'])
+        if "tdens" in method:
+            self.lagrangian_fun = assemble(self.Lagrangian(pot,self.tdens_h))   
+            self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
+            self.rhs_ode = self.lagrangian_fun_reduced.derivative()
+            d = self.fems.tdens_mass_matrix.createVecLeft()
+            
+            with self.rhs_ode.dat.vec_ro as f_vec, self.tdens_h.dat.vec as tdens_vec:
+                self.fems.inv_tdens_mass_matrix.solve(f_vec,d)
+                d *= tdens_vec
+                residuum = d.norm()#PETSc.NormType.NORM_INFINITY)
+            return residuum
+        elif "gfvar" in method:
+            gfvar = self.gfvar 
+            gfvar.interpolate(self.gfvar_of_tdens(tdens))
+            dw = self.ctrl_get('discrepancy_weight')
+            pw = self.ctrl_get('penalization_weight')
+            rw = self.ctrl_get('regularization_weight')
+            L = assemble(
+                dw * self.discrepancy(pot,self.tdens_of_gfvar(gfvar))
+                + pw * self.penalization(pot,self.tdens_of_gfvar(gfvar))
+                + rw * self.regularization(pot, gfvar)
+            )
+            self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(L, fire_adj.Control(gfvar))
+            self.rhs_ode = self.lagrangian_fun_reduced.derivative()
+            d = self.fems.tdens_mass_matrix.createVecLeft()
+            
+            with self.rhs_ode.dat.vec_ro as f_vec:
+                self.fems.inv_tdens_mass_matrix.solve(f_vec, d)
+                residuum = d.norm()#PETSc.NormType.NORM_INFINITY)
+            return residuum
+        else:
+            raise ValueError(f'Wrong optimization type {method=}')
+
+
+
 
     def create_solution(self):
         """
@@ -847,6 +886,13 @@ class NiotSolver:
         
         # solve initial 
         ierr = self.solve_pot_PDE(self.sol)
+        if ierr != 0:
+            self.print_info(
+            msg=f'First solve_pot_PDE failed with {ierr}\n. Aborting', 
+            priority=0, 
+            where=['stdout','log'], 
+            color='red')
+            return ierr
         avg_outer = self.outer_iterations / max(self.nonlinear_iterations,1)
         self.print_info(
             msg=f'It: {0} avgouter: {avg_outer:.1f}', 
@@ -854,61 +900,35 @@ class NiotSolver:
             where=['stdout','log'], 
             color='green')
         
-        # create the backup solution
-        sol_old = cp(self.sol)           
-
         # udpack main controls and start main loop
         max_iter = self.ctrl_get('max_iter')
-        max_restart = self.ctrl_get('max_restart')
         
         self.iteration = 0
         ierr_dmk = 0
-        #tape.clear_tape()
         while ierr_dmk == 0 and self.iteration < max_iter:
             # update with restarts
-            sol_old.assign(self.sol)
-            nrestart = 0 
             
-            while nrestart < max_restart:
-                msg = f"\nIt: {self.iteration+1} method {self.ctrl_get(['dmk','type'])}"
-                if nrestart > 0:
-                    msg += f'! restart {nrestart} '
-                self.print_info(msg, priority=2, where=['stdout','log'], color='green')
+            msg = f"\nIt: {self.iteration+1} method {self.ctrl_get(['dmk','type'])}"
+            self.print_info(msg, priority=2, where=['stdout','log'], color='green')
     
-                ierr = self.iterate(self.sol)
-                # clean memory every 10 iterations
-                if self.iteration%10 == 0:
-                    # Clear tape is required to avoid memory accumalation
-                    # It works but I don't know why
-                    # see also https://github.com/firedrakeproject/firedrake/issues/3133
-                    tape.clear_tape()
+            ierr = self.iterate(self.sol)
+            # clean memory every 10 iterations
+            if self.iteration%10 == 0:
+                # Clear tape is required to avoid memory accumalation
+                # It works but I don't know why
+                # see also https://github.com/firedrakeproject/firedrake/issues/3133
+                tape.clear_tape()
                     
-                    # other clean up taken from 
-                    # https://github.com/LLNL/pyMMAopt/commit/e2f83bd932207a8adbd60ae793b3e5a3058daecf
-                    #TSFCKernel._cache.clear()
-                    #GlobalKernel._cache.clear()
-                    #gc.collect()
-                    #petsc4py.PETSc.garbage_cleanup(self.mesh._comm)
-                    #petsc4py.PETSc.garbage_cleanup(self.mesh.comm)
-
-                if ierr == 0:
-                    break
-                else:
-                    nrestart +=1
-                    # reset controls after failure
-                    self.deltat = max(self.ctrl_get('deltat_min'),
-                                      self.ctrl_get('deltat_contraction') * self.deltat)
-                    msg =(f'{ierr=}. Failure in due to {SNESReasons[ierr]}')
-                    self.print_info(
-                        msg, 
-                        priority = 1,
-                        where=['stdout','log'],
-                        color='red')
-
-                    # restore old solution
-                    self.sol.assign(sol_old)
+                # other clean up taken from 
+                # https://github.com/LLNL/pyMMAopt/commit/e2f83bd932207a8adbd60ae793b3e5a3058daecf
+                #TSFCKernel._cache.clear()
+                #GlobalKernel._cache.clear()
+                #gc.collect()
+                #petsc4py.PETSc.garbage_cleanup(self.mesh._comm)
+                #petsc4py.PETSc.garbage_cleanup(self.mesh.comm)
 
             if (ierr != 0):
+                ierr_dmk = 1
                 self.print_info(f'{ierr=}')
                 break
 
@@ -1300,11 +1320,13 @@ class NiotSolver:
               
        
     def tdens_of_gfvar(self,gfvar):
+        #return sqrt(gfvar)
         return (gfvar)**(2/self.btp.gamma)
+        
         
     
     def gfvar_of_tdens(self,tdens):
-        #return (tdens)**2#(self.btp.gamma/2)
+        #return (tdens)**2
         return (tdens)**(self.btp.gamma/2)
         
     def gfvar_gradient_descent_explicit(self, sol):
@@ -1321,8 +1343,7 @@ class NiotSolver:
 
         # convert tdens to gfvar
         pot , tdens = sol.subfunctions
-        #self.tdens_h.assign(tdens)
-        gfvar = Function(self.fems.tdens_space)
+        gfvar = self.gfvar
         gfvar.interpolate(self.gfvar_of_tdens(tdens))
 
         # compute gradient of energy w.r.t. gfvar
@@ -1384,79 +1405,97 @@ class NiotSolver:
             ierr : control flag. It is 0 if everthing worked.
         Update of gfvar using gradient descent direction
         '''
-        
-        # convert tdens to gfvar
-        pot , tdens = sol.subfunctions
-        self.tdens_h.assign(tdens)
-        gfvar = Function(self.fems.tdens_space)
-        gfvar.interpolate(self.gfvar_of_tdens(tdens))
+        self.sol_old.assign(sol)
 
-        # compute gradient of energy w.r.t. gfvar
-        # see tdens_mirror_descent for more details on the implementation
-        dw = self.ctrl_get('discrepancy_weight')
-        pw = self.ctrl_get('penalization_weight')
-        L = assemble(
-            dw * self.discrepancy(pot,self.tdens_of_gfvar(gfvar))
-            + pw * self.penalization(pot,self.tdens_of_gfvar(gfvar))
-            )
+        self.restart = 0
+        max_restart = self.ctrl_get('max_restart')
+        ierr = -1
+        while self.restart < max_restart and ierr != 0:
+            # convert tdens to gfvar
+            pot , tdens = sol.subfunctions
+            self.tdens_h.assign(tdens)
+            gfvar = self.gfvar
+            gfvar.interpolate(self.gfvar_of_tdens(tdens))
+
+
+            # compute gradient of energy w.r.t. gfvar
+            # see tdens_mirror_descent for more details on the implementation
+            dw = self.ctrl_get('discrepancy_weight')
+            pw = self.ctrl_get('penalization_weight')
+            L = assemble(
+                dw * self.discrepancy(pot,self.tdens_of_gfvar(gfvar))
+                + pw * self.penalization(pot,self.tdens_of_gfvar(gfvar))
+                )
+                
+            #with fire_adj.stop_annotating():
+            var = fire_adj.Control(gfvar)
+            reduced_functional = fire_adj.ReducedFunctional(L, var)
+            self.rhs_ode = reduced_functional.derivative()
+            self.rhs_ode *= -1.0
             
-        #with fire_adj.stop_annotating():
-        var = fire_adj.Control(gfvar)
-        reduced_functional = fire_adj.ReducedFunctional(L, var)
-        self.rhs_ode = reduced_functional.derivative()
-        self.rhs_ode *= -1.0
+
+            update = Function(self.fems.tdens_space)
+            with self.rhs_ode.dat.vec as rhs, gfvar.dat.vec_ro as gfvar_vec, update.dat.vec as d:
+                # scale by the inverse mass matrix
+                self.fems.inv_tdens_mass_matrix.solve(rhs, d)
+                
+                # estimate the step lenght
+                ctrl_step = self.ctrl_get(['dmk','gfvar_gradient_descent_semi_implicit','deltat'])
+                if self.restart == 0:
+                    step = set_step(d,gfvar_vec, 
+                                self.deltat,
+                                **ctrl_step)
+                    self.deltat = step
+                else:
+                    self.deltat /= ctrl_step['contraction']
+                self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}', priority=2, color='blue')
+                
+                
+                # 
+                # M(gf-gf_0)/step + grad P+D(gf  ) + wr (-L) gf= 0
+                # ~ semi_implicit 
+                # M(gf-gf_0)/step + grad P+D(gf_0) + wr (-L) gf = 0
+                #
+                # (M+step*wr*Laplacian) gf = M gf_0 + step*rhs
+                #
+                self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), priority=3, where=['stdout','log'], color='blue')
+                wr = self.ctrl_get('regularization_weight')
+                self.setup_increment_solver(shift=step*wr)
+                
+                test = TestFunction(self.fems.tdens_space)
+                gf0 = assemble(gfvar*test*dx)
+                with gf0.dat.vec_ro as g0_vec:
+                    rhs.scale(step)
+                    rhs.axpy(1.0, g0_vec)
+                
+                self.IncrementSolver.solve(rhs, gfvar_vec) 
+                self.print_info(
+                msg=self.IncrementSolver.info(),
+                priority=2,
+                where=['stdout','log'])
+
+                self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), priority=2, color='blue')
+            
+            # convert gfvar to tdens
+            utilities.threshold_from_below(gfvar, 0)
+            self.tdens_h.interpolate(self.tdens_of_gfvar(gfvar))
+            sol.sub(1).assign(self.tdens_h)
+            with self.tdens_h.dat.vec_ro as tdens_vec:
+                self.print_info(utilities.msg_bounds(tdens_vec,'tdens'), priority=2, color='blue')   
+
+            # compute pot associated to new tdens
+            tol = self.ctrl_get('constraint_tol')
+            ierr = self.solve_pot_PDE(sol, tol=tol)
+
+            if ierr != 0:
+                sol.assign(self.sol_old)
+                fire_adj.stop_annotating()
+                self.restart += 1
+                self.print_info(f'Restart {self.restart} failed with {ierr}.', priority=0, color='red')
+            
         
 
-        update = Function(self.fems.tdens_space)
-        with self.rhs_ode.dat.vec as rhs, gfvar.dat.vec_ro as gfvar_vec, update.dat.vec as d:
-            # scale by the inverse mass matrix
-            self.fems.inv_tdens_mass_matrix.solve(rhs, d)
-            
-            # update
-            ctrl_step = self.ctrl_get(['dmk','gfvar_gradient_descent_semi_implicit','deltat'])
-            step = set_step(d,gfvar_vec, 
-                            self.deltat,
-                            **ctrl_step)
-            self.deltat = step
-            self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}', priority=2, color='blue')
-            
-            
-            # 
-            # M(gf-gf_0)/step + grad P+D(gf  ) + wr (-L) gf= 0
-            # ~ semi_implicit 
-            # M(gf-gf_0)/step + grad P+D(gf_0) + wr (-L) gf = 0
-            #
-            # (M+step*wr*Laplacian) gf = M gf_0 + step*rhs
-            #
-            self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), color='blue')
-            wr = self.ctrl_get('regularization_weight')
-            self.setup_increment_solver(shift=step*wr)
-            
-            test = TestFunction(self.fems.tdens_space)
-            gf0 = assemble(gfvar*test*dx)
-            with gf0.dat.vec_ro as g0_vec:
-                rhs.scale(step)
-                rhs.axpy(1.0, g0_vec)
-            
-            self.IncrementSolver.solve(rhs, gfvar_vec) 
-            self.print_info(
-            msg=self.IncrementSolver.info(),
-            priority=2,
-            where=['stdout','log'])
 
-            self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), priority=2, color='blue')
-        
-        # convert gfvar to tdens
-        utilities.threshold_from_below(gfvar, 0)
-        self.tdens_h.interpolate(self.tdens_of_gfvar(gfvar))
-        sol.sub(1).assign(self.tdens_h)
-        with self.tdens_h.dat.vec_ro as tdens_vec:
-            self.print_info(utilities.msg_bounds(tdens_vec,'tdens'), priority=2, color='blue')   
-
-        # compute pot associated to new tdens
-        tol = self.ctrl_get('constraint_tol')
-        ierr = self.solve_pot_PDE(sol, tol=tol)
-        
         return ierr
     
    
