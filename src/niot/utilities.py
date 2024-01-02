@@ -16,10 +16,12 @@ from pyadjoint.overloaded_function import overload_function
 
 import firedrake.adjoint as fire_adj
 
+from firedrake import COMM_WORLD, COMM_SELF
 
-
+import re
 import os
 import numpy as np
+
 
 """
 Define a variable to store the reason of the SNES solver
@@ -54,13 +56,35 @@ def save2pvd(functions,filename):
 
     # get file name without extension
     filename = filename[:-4]
-    # Firedrake appends _0 to vtu
-    # We remove it
-    firedrake_vtu_name = filename+'_0.vtu'
-    new_vtu_name = filename+'.vtu'
+    if COMM_WORLD.size == 1:
+        firedrake_vtu_name = filename+'_0.vtu'
+        new_vtu_name = filename+'.vtu'
+        os.rename(firedrake_vtu_name,new_vtu_name)
+    else:
+        if COMM_WORLD.rank == 0:
+            firedrake_vtu_name = filename+'_0.pvtu'
+            new_vtu_name = filename+'.pvtu'
+            os.rename(firedrake_vtu_name,new_vtu_name)
+            with open(new_vtu_name, "r") as sources:
+                lines = sources.readlines()
+            with open(new_vtu_name,'w') as sources:
+                for line in lines:
+                    sources.write(re.sub(r'_0_', '_', line))
+            
+            with open(filename+'.pvd', "r") as sources:
+                lines = sources.readlines()
+            with open(filename+'.pvd','w') as sources:
+                for line in lines:
+                    sources.write(re.sub(r'_0.', '.', line))    
 
-    # rename vtu file
-    os.rename(firedrake_vtu_name,new_vtu_name)
+        
+        # each processor has a vtu file
+        firedrake_vtu_name = f'{filename}_0_{COMM_WORLD.rank}.vtu'
+        new_vtu_name = f'{filename}_{COMM_WORLD.rank}.vtu'
+        os.rename(firedrake_vtu_name,new_vtu_name)
+        
+        COMM_WORLD.Barrier()
+
 
 
 def get_subfunction(function, index):
