@@ -8,21 +8,24 @@ examples = []#[f'y_net_hand_drawing/nref{i}' for i in [0]]#'frog_tongue']
 examples.append('y_net/')
 #examples.append('y_net_hand_drawing/nref2')
 #examples.append('y_net_hand_drawing/nref1')
-mask=['mask_large.png']
+mask=['mask_medium.png','mask_large.png']
 
-nref=[0,1]
+nref=[0,1,2]
 fems = ['DG0DG0']
-gamma = [0.5]
-wd = [0]#1e-2]
-wr = [1e-4, 1e-3, 1e-2]#, 1e-3, 1e-2]
-ini = [0]
-conf = ['ONE']#,'CORRUPTED','MASK']#,'MASK','CORRUPTED']
+gamma = [0.5]#[0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+wd = [1e-3,1e-2,1e-1]
+wr = [1e-4, 1e-3]
+ini = [0,1]
+conf = ['CORRUPTED','MASK']#,'MASK','CORRUPTED']
 maps = [
-    {'type':'identity'}, 
+    #{'type':'identity'}, 
     {'type':'heat', 'sigma': 1e-4},
+    {'type':'heat', 'sigma': 1e-3},
     {'type':'pm', 'sigma': 1e-4, 'exponent_m': 2.0},
+    {'type':'pm', 'sigma': 1e-3, 'exponent_m': 2.0},
+    {'type':'pm', 'sigma': 1e-2, 'exponent_m': 2.0},
 ]
-tdens2image_scaling = [1e1]
+tdens2image_scaling = [100]
 method = [
     #'tdens_mirror_descent_explicit',
     #'tdens_mirror_descent_semi_implicit',
