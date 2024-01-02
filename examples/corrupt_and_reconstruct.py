@@ -297,22 +297,41 @@ def corrupt_and_reconstruct(img_source,
     filename = os.path.join(directory, f'{label}.pvd')
     print(f"{ierr=} Saving solution to \n"+filename)
     utilities.save2pvd([
-        corrupted,
-        corrupted_for_contour,
-        confidence,
-        confidence_for_contour,
-        pot, tdens, vel,
-        pot0, tdens0, vel0, 
-                        niot_solver.btp.source,
-                        niot_solver.btp.sink,
-                        reconstruction,
-                        reconstruction_for_contour,
-                        tdens_for_contour,
-                        network,
-                        network_for_contour,
-                        mask,
-                        mask_for_contour,
+        pot, tdens, 
+        #pot0, tdens0,
+        reconstruction,
+        reconstruction_for_contour,
+        tdens_for_contour,
                         ],filename)
+    
+    filename = os.path.join(directory, f'{labels_problem[0]}_btp.pvd')
+    if (not os.path.exists(filename)):
+        print(filename)
+        utilities.save2pvd([
+            niot_solver.btp.source,
+            niot_solver.btp.sink,
+            ],filename)
+        
+    filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.pvd')
+    print(filename)
+    if (not os.path.exists(filename)):
+        print(filename)
+        utilities.save2pvd([
+            corrupted,
+            corrupted_for_contour,
+            network,
+            network_for_contour,
+            mask,
+            mask_for_contour,
+            ],filename)
+        
+    filename = os.path.join(directory, f'{labels_problem[0]}_confidence.pvd')
+    if (not os.path.exists(filename)):
+        print(filename)
+        utilities.save2pvd([
+            confidence,
+            confidence_for_contour,
+            ],filename)
     
     #mask_for_contour.rename('mask_for_contour')
     #filename = os.path.join(directory, f'simple_{label}.pvd')
