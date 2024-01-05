@@ -1157,6 +1157,8 @@ class NiotSolver:
             tdens_power = 2 - self.btp.gamma
         elif gradient_scaling == 'mirror_descent':
             tdens_power = 1.0
+        elif gradient_scaling == 'no':
+            tdens_power = 0.0     
         else:
             raise ValueError(f'Wrong scaling method {gradient_scaling=}')
         scaling.interpolate(self.tdens_h**tdens_power)
@@ -1257,6 +1259,8 @@ class NiotSolver:
             tdens_power = 2 - self.btp.gamma
         elif gradient_scaling == 'mirror_descent':
             tdens_power = 1.0
+        elif gradient_scaling == 'no':
+            tdens_power = 0.0     
         else:
             raise ValueError(f'Wrong scaling method {gradient_scaling=}')
         scaling.interpolate(self.tdens_h**tdens_power)

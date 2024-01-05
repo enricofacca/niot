@@ -9,7 +9,7 @@
 # python #
 ##########
 **/__pycache__/
-**/niot.egg-info/
+src/niot/niot.egg-info/
 ########
 # niot #
 ########
