@@ -404,4 +404,8 @@ def nested_set(dic, keys, value, create_missing=False):
         
     if keys[-1] in d or create_missing:
         d[keys[-1]] = value
+    else:
+        print(f'Key {keys[-1]} not found in dictionary {value}')
+        raise KeyError 
+    
     return dic
