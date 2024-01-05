@@ -15,7 +15,7 @@ fems = ['DG0DG0']
 # gamm from 0.1 to 0.8
 gamma = [0.5]#,0.3,0.4,0.5,0.6,0.7,0.8]
 wd = [0]#1e-2]
-wr = [1e-4]#, 1e-3, 1e-2]
+wr = [1e-4, 1e-3]#, 1e-2]
 ini = [1]
 conf = ['ONE']#,'CORRUPTED','MASK']#,'MASK','CORRUPTED']
 maps = [

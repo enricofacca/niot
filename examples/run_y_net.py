@@ -1,31 +1,43 @@
 import multiprocessing as mp
 import itertools
 import os
-from corrupt_and_reconstruct import corrupt_and_reconstruct
+from corrupt_and_reconstruct import corrupt_and_reconstruct,labels
+import sys
+
+try:
+    overwrite=(int(sys.argv[1])==1)
+    print('overwritting')
+except:
+    overwrite=False
+    print('skipping')
+    
+
 
 examples = []#[f'y_net_hand_drawing/nref{i}' for i in [0]]#'frog_tongue'] 
 #examples.append('y_net_hand_drawing/nref3')
 examples.append('y_net/')
 #examples.append('y_net_hand_drawing/nref2')
 #examples.append('y_net_hand_drawing/nref1')
-mask=['mask_medium.png','mask_large.png']
+mask=['mask_large.png','mask_medium.png']
 
-nref=[0,1,2]
+nref=[1,2]
 fems = ['DG0DG0']
-gamma = [0.5]#[0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-wd = [1e-3,1e-2,1e-1]
-wr = [1e-4, 1e-3]
-ini = [0,1]
-conf = ['CORRUPTED','MASK']#,'MASK','CORRUPTED']
+gamma = [0.5]#, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+wd = [1e-4,1e-3,1e-2,1e-1,1e0]
+wr = [1e-4,5e-4,1e-3]
+ini = [0]
+conf = ['ONE']#['CORRUPTED','MASK']#,'MASK','CORRUPTED']
 maps = [
-    #{'type':'identity'}, 
+    {'type':'identity'}, 
     {'type':'heat', 'sigma': 1e-4},
+    {'type':'heat', 'sigma': 5e-4},
     {'type':'heat', 'sigma': 1e-3},
     {'type':'pm', 'sigma': 1e-4, 'exponent_m': 2.0},
     {'type':'pm', 'sigma': 1e-3, 'exponent_m': 2.0},
     {'type':'pm', 'sigma': 1e-2, 'exponent_m': 2.0},
+    {'type':'pm', 'sigma': 1e-1, 'exponent_m': 2.0},
 ]
-tdens2image_scaling = [100]
+tdens2image_scaling = [25]
 method = [
     #'tdens_mirror_descent_explicit',
     #'tdens_mirror_descent_semi_implicit',
@@ -49,7 +61,23 @@ def fun(example,nref,fem,mask,gamma,wd,wr,ini,conf,tdens2image,tdens2image_scali
     if not os.path.exists(f'{example}/{mask_name}/'):
         os.makedirs(f'{example}/{mask_name}/')
 
+
+    labels_problem = labels(nref,fem,gamma,wd,wr,
+                            ini,
+                conf,
+                tdens2image,
+                tdens2image_scaling,
+                method)
+    
+    label = '_'.join(labels_problem)
+    directory=f'{example}/{mask_name}/'
+    filename = os.path.join(directory, f'{label}.pvd')
+    
     run = True
+    if os.path.exists(filename):
+        if not overwrite:
+            run = False
+    print(f'{filename} {os.path.exists(filename)=} {run=}')
     if run:
         ierr = corrupt_and_reconstruct(img_sources,img_sinks,img_networks,img_masks, 
                             nref=nref,
