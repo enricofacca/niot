@@ -207,7 +207,6 @@ def corrupt_and_reconstruct(img_source,
     # solve the problem
     #
     ot.balance(source, sink)
-    opt_inputs = ot.OTPInputs(source, sink)
     btp = ot.BranchedTransportProblem(source, sink, gamma=gamma)
 
     
@@ -228,12 +227,12 @@ def corrupt_and_reconstruct(img_source,
 
     # optimization
     niot_solver.ctrl_set('optimization_tol', 1e-2)
-    niot_solver.ctrl_set('constrain_tol', 1e-8)
+    niot_solver.ctrl_set('constraint_tol', 1e-8)
     niot_solver.ctrl_set('max_iter', 5000)
     niot_solver.ctrl_set('max_restart', 3)
-    niot_solver.ctrl_set('verbose', 0)  # usign niot_solver method
+    niot_solver.ctrl_set('verbose', 0)  
     
-    niot_solver.ctrl_set('log_verbose', 2)  # using niot_solver method
+    niot_solver.ctrl_set('log_verbose', 2) 
     log_file = os.path.join(directory, f'{label}.log')
     niot_solver.ctrl_set('log_file', log_file)
     # remove if exists
@@ -245,15 +244,16 @@ def corrupt_and_reconstruct(img_source,
     # time discretization
     if method is None:
         method = 'tdens_mirror_descent_explicit'
+    print(f"Using {method}")
     niot_solver.ctrl_set(['dmk','type'], method)
-    niot_solver.ctrl_set(['dmk',method,'gradient_scaling'], 'dmk')
-
-
+    if 'tdens' in method:
+        niot_solver.ctrl_set(['dmk',method,'gradient_scaling'], 'no')
+        
 
     # time step
     deltat_control = {
         'type': 'adaptive2',
-        'lower_bound': 1e-15,
+        'lower_bound': 1e-13,
         'upper_bound': 1e-2,
         'expansion': 1.02,
         'contraction': 0.5,
@@ -307,9 +307,15 @@ def corrupt_and_reconstruct(img_source,
     filename = os.path.join(directory, f'{labels_problem[0]}_btp.pvd')
     if (not os.path.exists(filename)):
         print(filename)
+        source_for_contour = Function(CG1)
+        source_for_contour.interpolate(source).rename("source_countour","source")
+        sink_for_contour = Function(CG1)
+        sink_for_contour.interpolate(sink).rename("sink_countour","sink")
         utilities.save2pvd([
             niot_solver.btp.source,
             niot_solver.btp.sink,
+            source_for_contour,
+            sink_for_contour,
             ],filename)
         
     filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.pvd')
