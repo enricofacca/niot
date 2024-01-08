@@ -18,24 +18,24 @@ examples = []#[f'y_net_hand_drawing/nref{i}' for i in [0]]#'frog_tongue']
 examples.append('y_net/')
 #examples.append('y_net_hand_drawing/nref2')
 #examples.append('y_net_hand_drawing/nref1')
-mask=['mask_large.png','mask_medium.png']
+mask=['mask_blur.png','mask_large.png','mask_medium.png']
 
-nref=[1,2]
+nref=[1]
 fems = ['DG0DG0']
 gamma = [0.5]#, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-wd = [1e-4,1e-3,1e-2,1e-1,1e0]
+wd = [1e-4,1e-3,1e-2,5e-2,1e-1,1e0]
 wr = [1e-4,5e-4,1e-3]
-ini = [0]
-conf = ['ONE']#['CORRUPTED','MASK']#,'MASK','CORRUPTED']
+ini = [0,1]
+conf = ['ONE','CORRUPTED','MASK']#,'MASK','CORRUPTED']
 maps = [
-    {'type':'identity'}, 
-    {'type':'heat', 'sigma': 1e-4},
-    {'type':'heat', 'sigma': 5e-4},
-    {'type':'heat', 'sigma': 1e-3},
-    {'type':'pm', 'sigma': 1e-4, 'exponent_m': 2.0},
-    {'type':'pm', 'sigma': 1e-3, 'exponent_m': 2.0},
-    {'type':'pm', 'sigma': 1e-2, 'exponent_m': 2.0},
-    {'type':'pm', 'sigma': 1e-1, 'exponent_m': 2.0},
+   {'type':'identity'}, 
+   {'type':'heat', 'sigma': 1e-4},
+   {'type':'heat', 'sigma': 1e-3},
+   {'type':'pm', 'sigma': 1e-3, 'exponent_m': 2.0},
+   {'type':'pm', 'sigma': 1e-2, 'exponent_m': 2.0},
+   {'type':'pm', 'sigma': 1e-1, 'exponent_m': 2.0},
+    {'type':'pm', 'sigma': 5e-1, 'exponent_m': 2.0},
+    {'type':'pm', 'sigma': 1e0, 'exponent_m': 2.0},
 ]
 tdens2image_scaling = [25]
 method = [

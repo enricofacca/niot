@@ -535,7 +535,7 @@ class NiotSolver:
                         'ksp_type': 'cg',
                         'ksp_rtol': 1e-10,
                         'ksp_initial_guess_nonzero': True,
-                        'ksp_monitor_true_residual': None,
+                        #'ksp_monitor_true_residual': None,
                         'pc_type': 'hypre',
                         },
                     options_prefix='heat_solver_')
@@ -577,7 +577,7 @@ class NiotSolver:
                         'ksp_type': 'cg',
                         'ksp_rtol': 1e-10,
                         'ksp_initial_guess_nonzero': True,
-                        'ksp_monitor_true_residual': None,
+                        #'ksp_monitor_true_residual': None,
                         'pc_type': 'hypre',
                         },
                     options_prefix='heat_solver_')
@@ -610,7 +610,7 @@ class NiotSolver:
                                                     'ksp_type': 'cg',
                                                     'ksp_rtol': 1e-10,
                                                     'ksp_initial_guess_nonzero': True,
-                                                    'ksp_monitor_true_residual':None,
+                                                    #'ksp_monitor_true_residual':None,
                                                     'pc_type': 'hypre',},
                                                     options_prefix='heat_solver_')
                 
@@ -632,7 +632,7 @@ class NiotSolver:
                 self.HeatSmoother = linalg.LinSolMatrix(self.HeatMatrix,
                                                         self.fems.tdens_space, 
                                                         solver_parameters={
-                                            'ksp_monitor': None,                
+                                            #'ksp_monitor': None,                
                                             'ksp_type': 'cg',
                                             'ksp_rtol': 1e-10,
                                             'pc_type': 'hypre'},
@@ -666,11 +666,11 @@ class NiotSolver:
                     'snes_rtol': 1e-20,
                     'snes_atol': 1e-7,
                     'snes_linesearch_type':'bt',
-                    'snes_monitor': None,
+                    #'snes_monitor': None,
                     'ksp_type': 'gmres',
                     'ksp_rtol': 1e-6,
                     'ksp_atol': 1e-6,
-                    'ksp_monitor': None,
+                    #'ksp_monitor': None,
                     'pc_type': 'hypre'
                     },
                 options_prefix='porous_solver_')

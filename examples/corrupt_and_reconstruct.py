@@ -227,7 +227,7 @@ def corrupt_and_reconstruct(img_source,
 
     # optimization
     niot_solver.ctrl_set('optimization_tol', 1e-3)
-    niot_solver.ctrl_set('constrain_tol', 1e-8)
+    niot_solver.ctrl_set('constraint_tol', 1e-8)
     niot_solver.ctrl_set('max_iter', 5000)
     niot_solver.ctrl_set('max_restart', 3)
     niot_solver.ctrl_set('verbose', 0)  
