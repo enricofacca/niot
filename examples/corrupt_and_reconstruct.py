@@ -304,6 +304,13 @@ def corrupt_and_reconstruct(img_source,
         tdens_for_contour,
                         ],filename)
     
+    filename = os.join.path(directory, f'{label}.h5')
+    with CheckpointFile(filename, 'w') as afile:
+        afile.save_mesh(mesh)  # optional
+        afile.write(pot, 'pot')
+        afile.write(tdens, 'tdens')
+        afile.write(reconstruction, 'reconstruction')
+    
     filename = os.path.join(directory, f'{labels_problem[0]}_btp.pvd')
     if (not os.path.exists(filename)):
         print(filename)
@@ -318,6 +325,13 @@ def corrupt_and_reconstruct(img_source,
             sink_for_contour,
             ],filename)
         
+        filename = os.path.join(directory, f'{labels_problem[0]}_btp.h5')
+        with CheckpointFile(filename, 'w') as afile:
+            afile.save_mesh(mesh)  # optional
+            afile.write(niot_solver.btp.source, 'source')
+            afile.write(niot_solver.btp.sink, 'sink')
+            
+        
     filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.pvd')
     print(filename)
     if (not os.path.exists(filename)):
@@ -330,14 +344,23 @@ def corrupt_and_reconstruct(img_source,
             mask,
             mask_for_contour,
             ],filename)
+        filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.h5')
+        with CheckpointFile(filename, 'w') as afile:
+            afile.write(mask, 'mask')
+            afile.write(network, 'network')
+            afile.write(corrupted, 'corrupted')
         
-    filename = os.path.join(directory, f'{labels_problem[0]}_confidence.pvd')
+    filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[6]}.pvd')
     if (not os.path.exists(filename)):
         print(filename)
         utilities.save2pvd([
             confidence,
             confidence_for_contour,
             ],filename)
+        
+        filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[6]}.h5')
+        with CheckpointFile(filename, 'w') as afile:
+            afile.write(mask, 'confidence')
     
     #mask_for_contour.rename('mask_for_contour')
     #filename = os.path.join(directory, f'simple_{label}.pvd')
