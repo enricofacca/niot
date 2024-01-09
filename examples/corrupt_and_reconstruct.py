@@ -175,7 +175,6 @@ def corrupt_and_reconstruct(img_source,
     else:
         raise ValueError(f'Unknown confidence {confidence}')
 
-
     # Init. solver for a given reconstruction problem
     #niot_solver = NiotSolver(fem, np_corrupted, DG0_cell2face = 'harmonic_mean')
     if fem == 'CR1DG0':
@@ -203,11 +202,65 @@ def corrupt_and_reconstruct(img_source,
     confidence_for_contour = Function(CG1)
     confidence_for_contour.interpolate(confidence).rename("confidence_countour","confidence")
 
+
+    # save common inputs
+    filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.pvd')
+    print(filename)
+    if (not os.path.exists(filename)):
+        print(filename)
+        utilities.save2pvd([
+            corrupted,
+            corrupted_for_contour,
+            network,
+            network_for_contour,
+            mask,
+            mask_for_contour,
+            ],filename)
+        filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.h5')
+        with CheckpointFile(filename, 'w') as afile:
+            afile.write(mask, 'mask')
+            afile.write(network, 'network')
+            afile.write(corrupted, 'corrupted')
+
+        
+    filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[6]}.pvd')
+    if (not os.path.exists(filename)):
+        print(filename)
+        utilities.save2pvd([
+            confidence,
+            confidence_for_contour,
+            ],filename)
+        
+        filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[6]}.h5')
+        with CheckpointFile(filename, 'w') as afile:
+            afile.write(mask, 'confidence')
+
+
     #
     # solve the problem
     #
     ot.balance(source, sink)
     btp = ot.BranchedTransportProblem(source, sink, gamma=gamma)
+
+    filename = os.path.join(directory, f'{labels_problem[0]}_btp.pvd')
+    if (not os.path.exists(filename)):
+        print(filename)
+        source_for_contour = Function(CG1)
+        source_for_contour.interpolate(source).rename("source_countour","source")
+        sink_for_contour = Function(CG1)
+        sink_for_contour.interpolate(sink).rename("sink_countour","sink")
+        utilities.save2pvd([
+            source,
+            sink,
+            source_for_contour,
+            sink_for_contour,
+            ],filename)
+        
+        filename = os.path.join(directory, f'{labels_problem[0]}_btp.h5')
+        with CheckpointFile(filename, 'w') as afile:
+            afile.save_mesh(mesh)  # optional
+            afile.write(source, 'source')
+            afile.write(sink, 'sink')
 
     
     niot_solver = NiotSolver(btp, corrupted,  confidence, 
@@ -216,7 +269,7 @@ def corrupt_and_reconstruct(img_source,
                              setup=False)
     
     if corrupted_as_initial_guess == 1:
-        niot_solver.sol.sub(1).assign(corrupted+1e-5)
+        niot_solver.sol.sub(1).assign((corrupted /tdens2image_scaling + 1e-5))
 
 
     # inpainting
@@ -311,64 +364,8 @@ def corrupt_and_reconstruct(img_source,
         afile.write(tdens, 'tdens')
         afile.write(reconstruction, 'reconstruction')
     
-    filename = os.path.join(directory, f'{labels_problem[0]}_btp.pvd')
-    if (not os.path.exists(filename)):
-        print(filename)
-        source_for_contour = Function(CG1)
-        source_for_contour.interpolate(source).rename("source_countour","source")
-        sink_for_contour = Function(CG1)
-        sink_for_contour.interpolate(sink).rename("sink_countour","sink")
-        utilities.save2pvd([
-            niot_solver.btp.source,
-            niot_solver.btp.sink,
-            source_for_contour,
-            sink_for_contour,
-            ],filename)
-        
-        filename = os.path.join(directory, f'{labels_problem[0]}_btp.h5')
-        with CheckpointFile(filename, 'w') as afile:
-            afile.save_mesh(mesh)  # optional
-            afile.write(niot_solver.btp.source, 'source')
-            afile.write(niot_solver.btp.sink, 'sink')
-            
-        
-    filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.pvd')
-    print(filename)
-    if (not os.path.exists(filename)):
-        print(filename)
-        utilities.save2pvd([
-            corrupted,
-            corrupted_for_contour,
-            network,
-            network_for_contour,
-            mask,
-            mask_for_contour,
-            ],filename)
-        filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.h5')
-        with CheckpointFile(filename, 'w') as afile:
-            afile.write(mask, 'mask')
-            afile.write(network, 'network')
-            afile.write(corrupted, 'corrupted')
-        
-    filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[6]}.pvd')
-    if (not os.path.exists(filename)):
-        print(filename)
-        utilities.save2pvd([
-            confidence,
-            confidence_for_contour,
-            ],filename)
-        
-        filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[6]}.h5')
-        with CheckpointFile(filename, 'w') as afile:
-            afile.write(mask, 'confidence')
     
-    #mask_for_contour.rename('mask_for_contour')
-    #filename = os.path.join(directory, f'simple_{label}.pvd')
-    #print("Saving solution to "+filename)
-    #utilities.save2pvd([
-    #    tdens, network, mask_for_contour,
-    #                    ],filename)
-
+        
     return ierr
     
     
