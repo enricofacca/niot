@@ -1,7 +1,7 @@
 import multiprocessing as mp
 import itertools
 import os
-from corrupt_and_reconstruct import corrupt_and_reconstruct,labels,imagebtp2np
+from corrupt_and_reconstruct import corrupt_and_reconstruct,labels
 import sys
 import numpy as np
 from niot import image2dat as i2d
