@@ -235,10 +235,8 @@ def numpy2image(numpy_matrix, image_path, normalized=True, inverted=True):
    if normalized:
       # normalize to [0,255]
       # this can lead to rounding errors
-      copy = copy * 255
-   else:
-      copy = 255 * copy/np.max(copy)
-
+      copy *= 255
+   
    # invert black and white (to have a white background when array is zero) 
    if inverted:
       copy = 255 - copy
