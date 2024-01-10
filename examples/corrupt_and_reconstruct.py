@@ -16,12 +16,10 @@ import glob
 import os
 from copy import deepcopy as cp
 import numpy as np
-import cProfile
-sys.path.append('../src/niot')
 from niot import NiotSolver
-import optimal_transport as ot 
-import image2dat as i2d
-
+from niot import optimal_transport as ot 
+from niot import image2dat as i2d
+from niot import utilities
 
 from ufl import *
 from firedrake import *
@@ -33,10 +31,8 @@ from firedrake import File
 import firedrake as fire
 #from memory_profiler import profile
 
-import utilities as utilities
-import image2dat as i2d
 
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import zoom,gaussian_filter
 
 def labels(nref,fem,
            gamma,wd,wr,
@@ -78,11 +74,11 @@ def labels(nref,fem,
 
 
 #@profile
-def corrupt_and_reconstruct(img_source,
-                            img_sink,
-                            img_network,
-                            img_mask, 
-                            nref=0,
+def corrupt_and_reconstruct(np_source,
+                            np_sink,
+                            np_network,
+                            np_mask,
+                            nref=0, 
                             fem="DG0DG0",
                             gamma=0.5, 
                             wd=1e-2,
@@ -92,49 +88,17 @@ def corrupt_and_reconstruct(img_source,
                             tdens2image='identity',
                             tdens2image_scaling=1e0,
                             method='tdens_mirror_descent_explicit'  ,
-                            directory='out/'
+                            directory='out/',
+                            label='unnamed',
                             ):
     
-    labels_problem = labels(nref,fem,gamma,wd,wr,
-              corrupted_as_initial_guess,
-                confidence,
-                tdens2image,
-                tdens2image_scaling,
-                method)
-    
-    label = '_'.join(labels_problem)
-    print('Problem label: '+label)
-    
     save_h5 = False
-
-    # convert images to numpy matrices
-    # 1 is the white background
-    np_source = i2d.image2numpy(img_source,normalize=True,invert=True,factor=2**nref)
-    np_sink = i2d.image2numpy(img_sink,normalize=True,invert=True,factor=2**nref)
-    np_network = i2d.image2numpy(img_network,normalize=True,invert=True,factor=2**nref)
-    np_mask = i2d.image2numpy(img_mask,normalize=True,invert=True,factor=2**nref)
-
-    # save image to file
-    # get the filename with no directory
-    image_name = img_source.split('/')[-1]
-    i2d.numpy2image(np_source,f'{directory}/nref{nref}_{image_name}')
-    image_name = img_sink.split('/')[-1]
-    i2d.numpy2image(np_sink,f'{directory}/nref{nref}_{image_name}')
-    image_name = img_mask.split('/')[-1]
-    i2d.numpy2image(np_mask,f'{directory}/nref{nref}_{image_name}')
-    image_name = img_network.split('/')[-1]
-    i2d.numpy2image(np_network,f'{directory}/nref{nref}_{image_name}')
-   
-
-
-    # taking just the support of the sources and sinks
-    np_source[np.where(np_source>0.0)] = 1.0
-    np_sink[np.where(np_sink>0.0)] = 1.0
-
 
     # the corrupted image is created adding a mask
     # to the known network
     np_corrupted = np_network * (1-np_mask)
+    
+    
     if confidence == 'MASK':
         np_confidence = (1.0 - np_mask)
     elif confidence == 'CORRUPTED':
@@ -162,7 +126,7 @@ def corrupt_and_reconstruct(img_source,
     network = i2d.numpy2firedrake(mesh, np_network, name="network")
     corrupted = i2d.numpy2firedrake(mesh, np_corrupted, name="corrupted")
     mask = i2d.numpy2firedrake(mesh, np_mask, name="mask")
-    confidence = i2d.numpy2firedrake(mesh, np_confidence, name="confidence")
+    confidence_w = i2d.numpy2firedrake(mesh, np_confidence, name="confidence")
     CG1 = fire.FunctionSpace(mesh ,'CG',1)
     mask_for_contour = Function(CG1)
     mask_for_contour.interpolate(mask).rename("mask_countour","mask")
@@ -171,13 +135,22 @@ def corrupt_and_reconstruct(img_source,
     corrupted_for_contour = Function(CG1)
     corrupted_for_contour.interpolate(corrupted).rename("corrupted_countour","corrupted")
     confidence_for_contour = Function(CG1)
-    confidence_for_contour.interpolate(confidence).rename("confidence_countour","confidence")
+    confidence_for_contour.interpolate(confidence_w).rename("confidence_countour","confidence")
+
+    labels_problem = labels(nref,fem,gamma,wd,wr,
+                            corrupted_as_initial_guess,
+                confidence,
+                tdens2image,
+                tdens2image_scaling,
+                method)
 
 
     # save common inputs
     filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.pvd')
+    
+    overwrite=True
     print(filename)
-    if (not os.path.exists(filename)):
+    if (not os.path.exists(filename) or overwrite):
         print(filename)
         utilities.save2pvd([
             corrupted,
@@ -196,10 +169,10 @@ def corrupt_and_reconstruct(img_source,
 
         
     filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[6]}.pvd')
-    if (not os.path.exists(filename)):
+    if (not os.path.exists(filename) or overwrite):
         print(filename)
         utilities.save2pvd([
-            confidence,
+            confidence_w,
             confidence_for_contour,
             ],filename)
 
@@ -216,7 +189,7 @@ def corrupt_and_reconstruct(img_source,
     btp = ot.BranchedTransportProblem(source, sink, gamma=gamma)
 
     filename = os.path.join(directory, f'{labels_problem[0]}_btp.pvd')
-    if (not os.path.exists(filename)):
+    if (not os.path.exists(filename) or overwrite):
         print(filename)
         source_for_contour = Function(CG1)
         source_for_contour.interpolate(source).rename("source_countour","source")
@@ -237,7 +210,7 @@ def corrupt_and_reconstruct(img_source,
                 afile.write(sink, 'sink')
 
     
-    niot_solver = NiotSolver(btp, corrupted,  confidence, 
+    niot_solver = NiotSolver(btp, corrupted,  confidence_w, 
                              spaces = fem,
                              cell2face = 'harmonic_mean',
                              setup=False)
