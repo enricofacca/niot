@@ -18,7 +18,7 @@ except:
     
 
 
-examples = ['frog_thk']#[f'y_net_hand_drawing/nref{i}' for i in [0]]#'frog_tongue'] 
+examples = ['frog_coarse_thk']#[f'y_net_hand_drawing/nref{i}' for i in [0]]#'frog_tongue'] 
 #examples.append('y_net_hand_drawing/nref3')
 #examples.append('y_net/')
 #examples.append('y_net_hand_drawing/nref2')
@@ -30,7 +30,7 @@ nref=[0,1]
 fems = ['DG0DG0']
 gamma = [0.5]#, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 wd = [0]#,1e-3,1e-2,5e-2,1e-1,1e0]
-wr = [1e-6]#,5e-4,1e-3]
+wr = [0,1e-6,1e-4]
 ini = [0]
 conf = ['ONE']#,'CORRUPTED','MASK']#,'MASK','CORRUPTED']
 maps = [
