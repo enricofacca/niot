@@ -95,35 +95,6 @@ def corrupt_and_reconstruct(img_source,
                             directory='out/'
                             ):
     
-    # label= [
-    #     f'nref{nref}',
-    #     f'fem{fem}',
-    #          f'gamma{gamma:.1e}',
-    #          f'wd{weights[0]:.1e}',
-    #          f'wr{weights[2]:.1e}',
-    #          f'ini{corrupted_as_initial_guess:d}',
-    #          f'conf{confidence}']
-    # if tdens2image == 'identity':
-    #     label.append(f'mu2i{tdens2image}')
-    # elif tdens2image == 'heat':
-    #     label.append(f'mu2i{tdens2image}{sigma_smoothing:.1e}')
-    # elif tdens2image == 'pm':
-    #     label.append(f'mu2i{tdens2image}{sigma_smoothing:.1e}')
-    # else:
-    #     raise ValueError(f'Unknown tdens2image {tdens2image}')
-    # label.append(f'scaling{tdens2image_scaling:.1e}')  
-    # if method is not None:
-    #     if method == 'tdens_mirror_descent_explicit':
-    #         short_method = 'te'
-    #     elif method == 'tdens_mirror_descent_semi_implicit':
-    #         short_method = 'tsi'
-    #     elif method == 'gfvar_gradient_descent_explicit':
-    #         short_method = 'ge'
-    #     elif method == 'gfvar_gradient_descent_semi_implicit':
-    #         short_method = 'gsi'
-    #     else:
-    #         raise ValueError(f'Unknown method {method}')
-    #     label.append(f'method{short_method}')
     labels_problem = labels(nref,fem,gamma,wd,wr,
               corrupted_as_initial_guess,
                 confidence,
@@ -134,7 +105,7 @@ def corrupt_and_reconstruct(img_source,
     label = '_'.join(labels_problem)
     print('Problem label: '+label)
     
-
+    save_h5 = False
 
     # convert images to numpy matrices
     # 1 is the white background
@@ -216,11 +187,12 @@ def corrupt_and_reconstruct(img_source,
             mask,
             mask_for_contour,
             ],filename)
-        filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.h5')
-        with CheckpointFile(filename, 'w') as afile:
-            afile.write(mask, 'mask')
-            afile.write(network, 'network')
-            afile.write(corrupted, 'corrupted')
+        if save_h5:
+            filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.h5')
+            with CheckpointFile(filename, 'w') as afile:
+                afile.write(mask, 'mask')
+                afile.write(network, 'network')
+                afile.write(corrupted, 'corrupted')
 
         
     filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[6]}.pvd')
@@ -230,10 +202,11 @@ def corrupt_and_reconstruct(img_source,
             confidence,
             confidence_for_contour,
             ],filename)
-        
-        filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[6]}.h5')
-        with CheckpointFile(filename, 'w') as afile:
-            afile.write(mask, 'confidence')
+
+        if save_h5:
+            filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[6]}.h5')
+            with CheckpointFile(filename, 'w') as afile:
+                afile.write(mask, 'confidence')
 
 
     #
@@ -255,12 +228,13 @@ def corrupt_and_reconstruct(img_source,
             source_for_contour,
             sink_for_contour,
             ],filename)
-        
-        filename = os.path.join(directory, f'{labels_problem[0]}_btp.h5')
-        with CheckpointFile(filename, 'w') as afile:
-            afile.save_mesh(mesh)  # optional
-            afile.write(source, 'source')
-            afile.write(sink, 'sink')
+
+        if save_h5:
+            filename = os.path.join(directory, f'{labels_problem[0]}_btp.h5')
+            with CheckpointFile(filename, 'w') as afile:
+                afile.save_mesh(mesh)  # optional
+                afile.write(source, 'source')
+                afile.write(sink, 'sink')
 
     
     niot_solver = NiotSolver(btp, corrupted,  confidence, 
@@ -357,15 +331,19 @@ def corrupt_and_reconstruct(img_source,
         tdens_for_contour,
                         ],filename)
     
-    filename = os.join.path(directory, f'{label}.h5')
-    with CheckpointFile(filename, 'w') as afile:
-        afile.save_mesh(mesh)  # optional
-        afile.write(pot, 'pot')
-        afile.write(tdens, 'tdens')
-        afile.write(reconstruction, 'reconstruction')
+    filename = os.path.join(directory, f'{label}.h5')
+    if save_h5:
+        if niot_solver.mesh.comm.rank == 0:
+            if os.path.exists(filename):
+                os.remove(filename)
     
-    
-        
+            with CheckpointFile(filename, 'w') as afile:
+                afile.save_mesh(mesh)  # optional
+                afile.write(pot, 'pot')
+                afile.write(tdens, 'tdens')
+                afile.write(reconstruction, 'reconstruction')
+
+    print(f'{ierr=}')
     return ierr
     
     

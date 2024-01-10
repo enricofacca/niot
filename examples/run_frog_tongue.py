@@ -5,18 +5,18 @@ from corrupt_and_reconstruct import corrupt_and_reconstruct
 
 examples = []#[f'y_net_hand_drawing/nref{i}' for i in [0]]#'frog_tongue'] 
 #examples.append('y_net_hand_drawing/nref3')
-examples.append('./frog_tongue/')
+examples=['./frog_tongue_bw/']
 #examples.append('y_net_hand_drawing/nref2')
 #examples.append('y_net_hand_drawing/nref1')
-mask=['mask01.png','mask02.png']
+mask=['mask02.png']
 
 nref=[0,1]
 fems = ['DG0DG0']
 # gamm from 0.1 to 0.8
 gamma = [0.5]#,0.3,0.4,0.5,0.6,0.7,0.8]
 wd = [0]#,1e-4,1e-3,1e-2,1e-1]
-wr = [1e-5]#, 1e-2]
-ini = [1]
+wr = [1e-6,1e-5,1e-4]#, 1e-2]
+ini = [1,0]
 conf = ['ONE']#,'CORRUPTED','MASK']#,'MASK','CORRUPTED']
 maps = [
     {'type':'identity'}, 
@@ -61,7 +61,7 @@ def fun(example,nref,fem,mask,gamma,wd,wr,ini,conf,tdens2image,tdens2image_scali
                             method=method,
                             directory=f'{example}/{mask_name}/',
                             )
-    #print(ierr)
+    print('out',ierr)
     #print(example,fem,mask,gamma,wd,wr,ini,conf)
     
 with mp.Pool(processes = mp.cpu_count()) as p:
