@@ -2,7 +2,9 @@
 # firedrake #
 #############
 *.pvd
+*.ppvd
 *.vtu
+*.pvtu
 *.npy
 *.h5
 ##########
