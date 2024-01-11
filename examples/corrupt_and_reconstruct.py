@@ -90,6 +90,7 @@ def corrupt_and_reconstruct(np_source,
                             method='tdens_mirror_descent_explicit'  ,
                             directory='out/',
                             label='unnamed',
+                            comm=COMM_WORLD,
                             ):
     
     save_h5 = False
@@ -117,7 +118,7 @@ def corrupt_and_reconstruct(np_source,
     elif fem == 'DG0DG0':
         mesh_type = 'cartesian'
 
-    mesh = i2d.build_mesh_from_numpy(np_corrupted, mesh_type=mesh_type)
+    mesh = i2d.build_mesh_from_numpy(np_corrupted, mesh_type=mesh_type, comm=comm)
 
 
     # save inputs    
