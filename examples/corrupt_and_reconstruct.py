@@ -20,7 +20,7 @@ from niot import NiotSolver
 from niot import optimal_transport as ot 
 from niot import image2dat as i2d
 from niot import utilities
-from niot import Heat
+from niot import HeatMap
 
 from ufl import *
 from firedrake import *
@@ -222,7 +222,7 @@ def corrupt_and_reconstruct(np_source,
         #avg_img = assemble(corrupted*dx)/asseble(dx)
         #lift = 1e-5 * max_img
         #print(f'avg_img = {avg_img}')
-        heat_map = Heat(space=niot_solver.fems.tdens_space, scaling=1.0, sigma=1e-4)
+        heat_map = HeatMap(space=niot_solver.fems.tdens_space, scaling=1.0, sigma=1e-4)
         img0 = heat_map(corrupted)
         #np_img0 = gaussian_filter(np_corrupted, sigma=5, radius=50)
         #img0 = i2d.numpy2firedrake(mesh, np_img0, name="tdens0")
