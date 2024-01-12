@@ -16,6 +16,7 @@ src/niot/niot.egg-info/
 # niot #
 ########
 test/*/runs/
+examples/*/
 *.svg
 *.png
 *.dat
@@ -34,3 +35,6 @@ test/*/runs/
 *.pdf
 **/runs/
 **/evolution/
+*.err
+*.out
+*.log
