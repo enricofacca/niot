@@ -229,6 +229,7 @@ class SpaceDiscretization:
         return L
 
 
+
             
 def set_step(increment,
              state, 
@@ -280,6 +281,156 @@ def set_step(increment,
         raise ValueError(f'{type=} not supported')
     return step
 
+def delta_h(space):
+    mesh = space.mesh()
+    if mesh.geometric_dimension() == 2:
+        x,y = mesh.coordinates
+        x_func = interpolate(x, space)
+        y_func = interpolate(y, space)
+        delta_h = sqrt(jump(x_func)**2 + jump(y_func)**2)
+    elif mesh.geometric_dimension() == 3:
+        x,y,z = mesh.coordinates
+        x_func = interpolate(x, pot_space)
+        y_func = interpolate(y, pot_space)
+        z_func = interpolate(z, pot_space)
+        delta_h = sqrt(jump(x_func)**2 
+                            + jump(y_func)**2 
+                            + jump(z_func)**2)
+    return delta_h
+
+def cell2face_map(fun, approach):
+    if approach == 'arithmetic_mean':
+        return (fun('+') + fun('-')) / 2
+    elif approach == 'harmonic_mean':
+        avg_fun = avg(fun)
+        return conditional( gt(avg_fun, 0.0), fun('+') * fun('-') / avg_fun, 0.0)          
+    else:
+        raise ValueError('Wrong approach passed. Only arithmetic_mean or harmonic_mean are implemented')
+
+
+
+class Conductivity2ImageMap:
+    def __init__(self, space, scaling=1.0, **kargs) -> None:
+        raise NotImplementedError('Conductivity2Image is not implemented')
+    def __call__(self, conductivity) -> firedrake.function.Function:
+        raise NotImplementedError('Conductivity2Image is not implemented')
+        
+class HeatMap(Conductivity2ImageMap):
+    def __init__(self, space, scaling=1.0, sigma=1e-2) -> None:
+        self.space = space
+        self.scaling = scaling
+        self.sigma = sigma
+
+        self.image_h = Function(space)
+        self.tdens4transform = Function(space)
+        
+        test = TestFunction(space)  
+        trial = TrialFunction(space)
+        form =  inner(test, trial) * dx # mass matrix
+        if space.ufl_element().degree() > 0:
+            form += sigma * grad(test) * grad(trial) * dx
+        else:
+            form += sigma * jump(test) * jump(trial) / delta_h(space) * dS
+
+        # 1-form for the heat equation
+        self.rhs_heat = self.tdens4transform * test * dx
+        self.heat_problem = LinearVariationalProblem(form, 
+                                                self.rhs_heat,
+                                                self.image_h, 
+                                                constant_jacobian=True)
+                
+        self.heat_solver = LinearVariationalSolver(
+            self.heat_problem,
+            solver_parameters={
+                'ksp_type': 'cg',
+                'ksp_rtol': 1e-10,
+                'ksp_initial_guess_nonzero': True,
+                #'ksp_monitor_true_residual': None,
+                'pc_type': 'hypre',
+                },
+            options_prefix='heat_solver_')
+
+    def __call__(self, conductivity) -> firedrake.function.Function:
+        # image and tdens are expected to be close (up to scaling)
+        self.image_h.interpolate(conductivity / self.scaling)
+                
+        # image = M * tdens
+        self.tdens4transform.interpolate(conductivity)
+                
+        # invoce the solver
+        self.heat_solver.solve()
+                
+        # we scale here so we return a function 
+        # otherwise (scaling * image) is an expression
+        self.image_h *= self.scaling
+
+        return self.image_h
+
+
+class PorousMediaMap(Conductivity2ImageMap):
+    """
+    We I(\mu) as the solution u of the porous media PDE
+    (u-u_0)/sigma - Div u^{m-1} \Grad u = 0
+    with u_0 = \mu 
+    """
+    def __init__(self, space, scaling=1.0, sigma=1e-2, exponent_m=2.0) -> None:
+        self.space = space
+        self.scaling = scaling
+        self.sigma = sigma
+        self.exponent_m = exponent_m
+
+        self.image_h = Function(space)
+        self.tdens4transform = Function(space)
+        
+        approach='arithmetic_mean' # harmoniac mean does not work
+        min_image = 1e-12 # a minimim value for the image
+        
+        # define PDE 
+        test = TestFunction(space)
+        if space.ufl_element().degree() > 0:
+            facet_image = self.image_h ** (self.exponent_m - 1) + min_image
+            pm_Laplacian_PDE = facet_image * inner(grad(test), grad(self.image_h)) * dx  
+        else:
+            facet_image = cell2face_map(self.image_h**(self.exponent_m - 1) + min_image, approach=approach)
+            pm_Laplacian_PDE = facet_image * jump(self.image_h) * jump(test) / delta_h(self.space) * dS
+        self.pm_PDE = ( 
+            (self.image_h - self.tdens4transform) * test * dx 
+            + sigma * pm_Laplacian_PDE )
+
+        self.pm_problem = NonlinearVariationalProblem(
+            self.pm_PDE, self.image_h)
+
+        self.pm_solver = NonlinearVariationalSolver(
+            self.pm_problem,
+            solver_parameters={
+                'snes_type': 'newtonls',
+                'snes_rtol': 1e-20,
+                'snes_atol': 1e-7,
+                'snes_stol': 1e-30,
+                'snes_linesearch_type':'bt',
+                #'snes_monitor': None,
+                'ksp_type': 'gmres',
+                'ksp_rtol': 1e-6,
+                'ksp_atol': 1e-6,
+                #'ksp_monitor': None,
+                'pc_type': 'hypre'
+                },
+            options_prefix='porous_solver_')
+
+    def __call__(self, conductivity) -> firedrake.function.Function:
+        # the image is expected to be close tdens but scaled
+        self.image_h.interpolate(conductivity/self.scaling)
+
+        # this command will inject the fun in the pde 
+        self.tdens4transform.interpolate(conductivity)
+        
+        # invoce the nonlienar solver
+        self.pm_solver.solve(annotate=True)
+        # we scale here so we return a function 
+        # otherwise (scaling * image) is an expression
+        self.image_h *= self.scaling
+
+        return self.image_h
 
 class NiotSolver:
     '''
@@ -331,7 +482,6 @@ class NiotSolver:
                 },
         },
         'optimization_type' : 'dmk',
-        'regularization_type' : 'explicit', # semi_implicit
         'dmk': {
             'type' : 'tdens_mirror_descent',
             'tdens_mirror_descent_explicit' : {
@@ -632,7 +782,7 @@ class NiotSolver:
                 self.HeatSmoother = linalg.LinSolMatrix(self.HeatMatrix,
                                                         self.fems.tdens_space, 
                                                         solver_parameters={
-                                            #'ksp_monitor': None,                
+                                            'ksp_monitor': None,                
                                             'ksp_type': 'cg',
                                             'ksp_rtol': 1e-10,
                                             'pc_type': 'hypre'},
@@ -650,7 +800,8 @@ class NiotSolver:
             self.print_info(f"{tdens2image=} {sigma=}{scaling=}",priority=2)
             if abs(sigma) > 1e-16:
                 approach='arithmetic_mean'
-                facet_image = self.fems.cell2face_map(self.image_h**(exp_m-1) + 1e-8, approach=approach)
+                min_image = 1e-12
+                facet_image = self.fems.cell2face_map(self.image_h**(exp_m-1) + min_image, approach=approach)
                 pm_Laplacian_PDE = facet_image * jump(self.image_h) * jump(test) / self.fems.delta_h * dS
                 self.pm_PDE = ( 
                     (self.image_h - self.tdens4transform) * test * dx 
@@ -665,6 +816,7 @@ class NiotSolver:
                     'snes_type': 'newtonls',
                     'snes_rtol': 1e-20,
                     'snes_atol': 1e-7,
+                    'snes_stol': 1e-30,
                     'snes_linesearch_type':'bt',
                     #'snes_monitor': None,
                     'ksp_type': 'gmres',
@@ -684,7 +836,6 @@ class NiotSolver:
                 
                 # invoce the nonlienar solver
                 self.pm_solver.solve(annotate=True)
-                
                 # we scale here so we return a function 
                 # otherwise (scaling * image) is an expression
                 self.image_h *= scaling
@@ -812,12 +963,12 @@ class NiotSolver:
             )
             self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(L, fire_adj.Control(gfvar))
             self.rhs_ode = self.lagrangian_fun_reduced.derivative()
-            d = self.fems.tdens_mass_matrix.createVecLeft()
-            
-            with self.rhs_ode.dat.vec_ro as f_vec:
-                self.fems.inv_tdens_mass_matrix.solve(f_vec, d)
-                residuum = d.norm()#PETSc.NormType.NORM_INFINITY)
+            with self.rhs_ode.dat.vec_ro as rhs_vec:
+                # the derivative contains the mass matrix, 
+                # we just sum to get the L1 norm of the residuum
+                residuum = rhs_vec.norm(PETSc.NormType.NORM_1)
             return residuum
+
         else:
             raise ValueError(f'Wrong optimization type {method=}')
 

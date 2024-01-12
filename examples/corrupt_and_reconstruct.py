@@ -20,6 +20,7 @@ from niot import NiotSolver
 from niot import optimal_transport as ot 
 from niot import image2dat as i2d
 from niot import utilities
+from niot import HeatMap
 
 from ufl import *
 from firedrake import *
@@ -90,6 +91,7 @@ def corrupt_and_reconstruct(np_source,
                             method='tdens_mirror_descent_explicit'  ,
                             directory='out/',
                             label='unnamed',
+                            comm=COMM_WORLD,
                             ):
     
     save_h5 = False
@@ -117,7 +119,7 @@ def corrupt_and_reconstruct(np_source,
     elif fem == 'DG0DG0':
         mesh_type = 'cartesian'
 
-    mesh = i2d.build_mesh_from_numpy(np_corrupted, mesh_type=mesh_type)
+    mesh = i2d.build_mesh_from_numpy(np_corrupted, mesh_type=mesh_type, comm=comm)
 
 
     # save inputs    
@@ -216,8 +218,23 @@ def corrupt_and_reconstruct(np_source,
                              setup=False)
     
     if corrupted_as_initial_guess == 1:
-        niot_solver.sol.sub(1).assign((corrupted /tdens2image_scaling + 1e-5))
-
+        max_img = np.max(np_corrupted)
+        #avg_img = assemble(corrupted*dx)/asseble(dx)
+        #lift = 1e-5 * max_img
+        #print(f'avg_img = {avg_img}')
+        heat_map = HeatMap(space=niot_solver.fems.tdens_space, scaling=1.0, sigma=1e-4)
+        img0 = heat_map(corrupted)
+        #np_img0 = gaussian_filter(np_corrupted, sigma=5, radius=50)
+        #img0 = i2d.numpy2firedrake(mesh, np_img0, name="tdens0")
+        filename = os.path.join(directory, 'img0.pvd')
+        print(f"Saving solution to \n"+filename)
+        utilities.save2pvd([img0],filename)
+        #niot_solver.sol.sub(1).assign((corrupted+lift) / tdens2image_scaling )
+        niot_solver.sol.sub(1).assign(img0 / tdens2image_scaling )
+    else:
+        niot_solver.sol.sub(1).assign(1.0 / tdens2image_scaling )
+    tdens0 = Function(niot_solver.fems.tdens_space)
+    tdens0.interpolate(niot_solver.sol.sub(1))
 
     # inpainting
     niot_solver.ctrl_set('discrepancy_weight', wd)
@@ -265,9 +282,12 @@ def corrupt_and_reconstruct(np_source,
     
     # solve the potential PDE
     max_iter = niot_solver.ctrl_get('max_iter')
-    niot_solver.ctrl_set('max_iter', 1)
+    niot_solver.ctrl_set('max_iter', 0)
     ierr = niot_solver.solve()
     sol0 = cp(niot_solver.sol)
+    pot0, tdens0 = sol0.subfunctions
+    pot0.rename('pot_0','pot_0')
+    tdens0.rename('tdens_0','tdens_0')
 
     niot_solver.ctrl_set('max_iter', max_iter)
     
@@ -278,11 +298,8 @@ def corrupt_and_reconstruct(np_source,
     
     # save solution
     pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
-    pot0, tdens0, vel0 = niot_solver.get_otp_solution(sol0)
-    pot0.rename('pot_0','pot_0')
-    tdens0.rename('tdens_0','tdens_0')
-    vel0.rename('vel_0','vel_0')
-
+    
+   
     reconstruction = Function(niot_solver.fems.tdens_space)
     reconstruction.interpolate(niot_solver.tdens2image(tdens) )
     reconstruction.rename('reconstruction','Reconstruction')
@@ -298,7 +315,8 @@ def corrupt_and_reconstruct(np_source,
     print(f"{ierr=} Saving solution to \n"+filename)
     utilities.save2pvd([
         pot, tdens, 
-        #pot0, tdens0,
+        #pot0, 
+        tdens0,
         reconstruction,
         reconstruction_for_contour,
         tdens_for_contour,

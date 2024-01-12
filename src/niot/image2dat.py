@@ -9,7 +9,7 @@ from firedrake import mesh as meshtools
 
 from firedrake.petsc import PETSc
 
-def build_mesh_from_numpy(np_image, mesh_type='simplicial'): 
+def build_mesh_from_numpy(np_image, mesh_type='simplicial', comm=COMM_WORLD): 
    '''
    Create a mesh (first axis size=1) from a numpy array
    '''
@@ -32,6 +32,7 @@ def build_mesh_from_numpy(np_image, mesh_type='simplicial'):
             quadrilateral = quadrilateral,
             reorder=False,
             diagonal="right",
+            comm=comm
             )
             
    elif (np_image.ndim == 3):
@@ -41,30 +42,8 @@ def build_mesh_from_numpy(np_image, mesh_type='simplicial'):
             hexahedral = False
       elif (mesh_type == 'cartesian'):
             hexahedral = True
-      simplex = not hexahedral
       
-      use_firedrake = True
-      if not use_firedrake:
-         plex = PETSc.DMPlex().createBoxMesh(
-            #(depth, width, height), 
-            (height, width, depth), 
-            lower=(0., 0., 0.), 
-            upper=(1, height/width, height/depth),
-            simplex=simplex, 
-            periodic=False, 
-            interpolate=True, 
-            comm=COMM_WORLD)
-         mesh = meshtools.Mesh(
-               plex,
-               reorder=False,
-               distribution_parameters=None,
-               name='box',
-               distribution_name=None,
-               permutation_name=None,
-               comm=COMM_WORLD,
-         )
-      else:   
-         mesh = fd.BoxMesh(nx=height,
+      mesh = fd.BoxMesh(nx=height,
                    ny=width, 
                    nz=depth,  
                    Lx=1, 
@@ -73,6 +52,7 @@ def build_mesh_from_numpy(np_image, mesh_type='simplicial'):
                    hexahedral=hexahedral,
                    reorder=False,
                    #diagonal="default"
+                   comm=comm
                   )
    else:
       raise ValueError('Only 2D and 3D images are supported')

@@ -12,19 +12,21 @@ file_skeleton = sys.argv[2]
 thickness = np.loadtxt(file_path, dtype=np.float32, delimiter='\t', skiprows=0)
 # replace Nan with 0 in data
 thickness = np.nan_to_num(thickness)
+print(thickness.shape)
+pixel_h = 1.0 / thickness.shape[1]
+thickness *= pixel_h
+
 # save as npy file
 np.save('thickness.npy', thickness)
 np_skeleton = i2d.image2numpy(file_skeleton,normalize=True,invert=True)
 
-print(np_skeleton.shape)
-pixel_h = 1.0 / thickness.shape[1]
 
-thickness_skeleton = thickness * np_skeleton * pixel_h
+thickness_skeleton = thickness * np_skeleton
+
+pouseille = thickness_skeleton**4
 np.save('thickness_skeleton.npy', thickness_skeleton)
-i2d.numpy2image(thickness_skeleton,'thickness_skeleton.png', normalized=False, inverted=True)
+np.save('pouseille.npy', pouseille)
 
-
-thickness_skeleton_read = i2d.image2numpy('thickness_skeleton.png',normalize=False,invert=True)
 # convert to firedrake function and save
 mesh = i2d.build_mesh_from_numpy(thickness, mesh_type='cartesian')
 
@@ -33,14 +35,14 @@ mesh = i2d.build_mesh_from_numpy(thickness, mesh_type='cartesian')
 thickness_fire = i2d.numpy2firedrake(mesh, thickness, name="thickness_fire")
 np_skeleton_fire = i2d.numpy2firedrake(mesh, np_skeleton, name="skeleton_fire")
 thickness_skeleton_fire = i2d.numpy2firedrake(mesh, thickness_skeleton, name="thickness_skeleton_fire")
-thickness_skeleton_read_fire = i2d.numpy2firedrake(mesh, thickness_skeleton_read, name="thickness_skeleton_read_fire")
+pouseille_fire = i2d.numpy2firedrake(mesh, pouseille, name="pouseille_fire")
 
 # save inputs
 save2pvd([
     thickness_fire,
     np_skeleton_fire,
     thickness_skeleton_fire,
-    thickness_skeleton_read_fire,
+    pouseille_fire
     ], 
     'thickness.pvd'
     )
