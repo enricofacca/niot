@@ -17,7 +17,6 @@ except:
     print('skipping')
     
 
-
 examples = ['frog_coarse_thk']#[f'y_net_hand_drawing/nref{i}' for i in [0]]#'frog_tongue'] 
 #examples.append('y_net_hand_drawing/nref3')
 #examples.append('y_net/')
@@ -43,7 +42,7 @@ maps = [
 #     {'type':'pm', 'sigma': 5e-1, 'exponent_m': 2.0},
 #     {'type':'pm', 'sigma': 1e0, 'exponent_m': 2.0},
 ]
-tdens2image_scaling = [25]
+tdens2image_scaling = [1e2]
 method = [
     #'tdens_mirror_descent_explicit',
     #'tdens_mirror_descent_semi_implicit',
@@ -118,6 +117,7 @@ def fun(example,nref,fem,mask,gamma,wd,wr,ini,conf,tdens2image,tdens2image_scali
         if not overwrite:
             run = False
     print(f'{filename} {os.path.exists(filename)=} {run=}')
+    #    run=False
     if run:
         ierr = corrupt_and_reconstruct(np_source,np_sink,np_network,np_mask, 
                                        nref=nref,
@@ -138,5 +138,4 @@ def fun(example,nref,fem,mask,gamma,wd,wr,ini,conf,tdens2image,tdens2image_scali
 with mp.Pool(processes = mp.cpu_count()) as p:
     p.starmap(fun, combinations)
 
-#for combination in combinations:
-#    fun(*combination)
+print(len(combinations))
