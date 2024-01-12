@@ -309,13 +309,13 @@ def cell2face_map(fun, approach):
 
 
 
-class Conductivity2Image:
-    def __init__(self, space, **kargs) -> None:
+class Conductivity2ImageMap:
+    def __init__(self, space, scaling=1.0, **kargs) -> None:
         raise NotImplementedError('Conductivity2Image is not implemented')
     def __call__(self, conductivity) -> firedrake.function.Function:
         raise NotImplementedError('Conductivity2Image is not implemented')
         
-class Heat(Conductivity2Image):
+class HeatMap(Conductivity2ImageMap):
     def __init__(self, space, scaling=1.0, sigma=1e-2) -> None:
         self.space = space
         self.scaling = scaling
@@ -367,7 +367,7 @@ class Heat(Conductivity2Image):
         return self.image_h
 
 
-class PorousMedia(Conductivity2Image):
+class PorousMediaMap(Conductivity2ImageMap):
     """
     We I(\mu) as the solution u of the porous media PDE
     (u-u_0)/sigma - Div u^{m-1} \Grad u = 0
