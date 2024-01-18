@@ -16,12 +16,8 @@ import glob
 import os
 from copy import deepcopy as cp
 import numpy as np
-import cProfile
-sys.path.append('../src/niot')
-from niot import NiotSolver
-from niot import Controls
-import optimal_transport as ot 
-import image2dat as i2d
+from niot import conductivity2image
+from numpy.random import rand
 
 
 from ufl import *
@@ -33,117 +29,240 @@ from firedrake import interpolate
 from firedrake import File
 import firedrake as fire
 #from memory_profiler import profile
+import firedrake.adjoint as fire_adj
 
-import utilities as utilities
-import image2dat as i2d
+
+
+from niot import utilities as utilities
 
 from scipy.ndimage import gaussian_filter
 
+tape = fire_adj.get_working_tape()
 
-def image2tdens(img_network, tdens2image='pm', sigma_smoothing=1):
-    print('Networks: ' + img_network)
-    # Read image and convert to numpy array
-    np_network = i2d.image2numpy(img_network,normalize=True,invert=True)
+solver_parameters={
+                'snes_type': 'newtonls',
+                'snes_rtol': 1e-16,
+                'snes_atol': 1e-16,
+                'snes_stol': 1e-16,
+                'snes_max_it': 100,
+                'snes_linesearch_type':'l2',
+                #'snes_monitor': None,
+                'ksp_type': 'gmres',
+                'ksp_rtol': 1e-10,
+                'ksp_atol': 1e-10,
+                'ksp_max_it': 500,
+                #'ksp_monitor': None,
+                'pc_type': 'hypre',
+                }
+
+
+def test_adjoint(nref, exponent_m=2.0, sigma=0.1, scaling=1.0, nsteps=10, verbose=False):
+    n0 = 32
+    nx = n0 * 2**nref
+    ny = n0*2 * 2**nref
+    h = 1.0 / nx
     
-    # Build mesh from numpy array
-    mesh = i2d.build_mesh_from_numpy(np_network,mesh_type='cartesian')
-    network = i2d.numpy2firedrake(mesh,np_network, name='network')
+    mesh = RectangleMesh(nx,ny,1,ny*h,quadrilateral=True)
+    space = FunctionSpace(mesh, 'DG', 0)
+    conductivity = Function(space)
+    conductivity.rename('cond')
+    conductivity.vector()[:] = 1*(np.ones(conductivity.vector().local_size())+rand(conductivity.vector().local_size()))
     
+    pm_map = conductivity2image.PorousMediaMap(space,
+                                            sigma=sigma, 
+                                            exponent_m=exponent_m, 
+                                            scaling=scaling, 
+                                            nsteps=nsteps,
+                                            solver_parameters=solver_parameters)
+    if verbose:
+        print(f'Now Conductivity to image map')
+    image = pm_map(conductivity)
+    image.rename('img')
 
-    #
-    # solve the problem
-    #
-    R = FunctionSpace(mesh, 'R', 0)
-    source = Function(R,val=0,name='source')
-    sink = Function(R,val=0,name='sink')
-    btp = ot.BranchedTransportProblem(source, sink, gamma=0.5)
+    integral = assemble(image**2 * dx)
+    integral_reduced = fire_adj.ReducedFunctional(integral, fire_adj.Control(conductivity))
+       
+    if verbose:
+        print(f'Now we should see nsteps={pm_map.steps_done} linear system solves in adjoint mode')
+    gradient = integral_reduced.derivative()
+    if verbose:
+        print(f'Now test convergence')
+    h = conductivity.copy(deepcopy=True)  
+    h *= 0.5     
+    conv = fire_adj.taylor_test(integral_reduced, conductivity, h)
+    if verbose:
+        print(f'conv={conv}')
 
-
-    niot_solver = NiotSolver(btp, network, 
-                             spaces = 'DG0DG0',
-                             cell2face = 'harmonic_mean',
-                             setup=False)
-    niot_solver.set_solution(tdens=network+1e-6)
     
-    
-    # inpainting
-    niot_solver.ctrl_set("discrepancy_weight", 0.1)
-    niot_solver.ctrl_set("regularization_weight", 0)
-    niot_solver.ctrl_set(['tdens2image','type'], tdens2image)
-    niot_solver.ctrl_set(['tdens2image','scaling'], 1.0)
-    if tdens2image == 'heat':
-        niot_solver.ctrl_set(['tdens2image','heat','sigma'], sigma_smoothing)
-    if tdens2image == 'pm':
-        niot_solver.ctrl_set(['tdens2image','pm','sigma'], sigma_smoothing)
-        niot_solver.ctrl_set(['tdens2image','pm','exp_m'], 2) # exponent to get r^4~M
-    
-
-    # optimization
-    niot_solver.ctrl_set('optimization_tol', 1e-2)
-    niot_solver.ctrl_set('constrain_tol', 1e-8)
-    niot_solver.ctrl_set('max_iter', 1)
-    niot_solver.ctrl_set('max_restart', 3)
-    niot_solver.ctrl_set('verbose', 2)  # usign niot_solver method
-    
-    
-    # time discretization
-    method = 'tdens_mirror_descent_explicit'
-    method = 'gfvar_gradient_descent_explicit'
-    method = 'gfvar_gradient_descent_semi_implicit'
-    niot_solver.ctrl_set(['dmk','type'], method)
-    niot_solver.ctrl_set(['dmk','tdens_mirror_descent_explicit','gradient_scaling'], 'dmk')
-    niot_solver.ctrl_set(['dmk','tdens_mirror_descent_semi_implicit','gradient_scaling'], 'dmk')
-
-    # time step
-    deltat_control = {
-        'type': 'adaptive2',
-        'lower_bound': 1e-7,
-        'upper_bound': 1e-2,
-        'expansion': 1.02,
-    }
-    niot_solver.ctrl_set(['dmk',method,'deltat'], deltat_control)
-    
-
-    ierr = niot_solver.solve()
-    
-    if tdens2image == 'identity':
-        test = TestFunction(niot_solver.fems.tdens_space)
-        pot, tdens = niot_solver.sol.subfunctions
-        wd  = niot_solver.ctrl_get("discrepancy_weight")
-        scaling = niot_solver.ctrl_get(["tdens2image","scaling"])
-        exact_gradient = wd * niot_solver.confidence * (niot_solver.img_observed - tdens) * test * scaling * dx        
-        g_exact = assemble(exact_gradient)
-
-        with niot_solver.rhs_ode.dat.vec as g, g_exact.dat.vec as g_reference:
-            niot_solver.print_info(
-            utilities.msg_bounds(g,'gradient'),
-            color='blue')
-            niot_solver.print_info(
-            utilities.msg_bounds(g_reference,'g_reference'),
-            color='green')
-            print(np.linalg.norm(g.array-g_reference.array))
-        
+    assert conv > 1.9, 'taylor test failed'
 
 
-    smooth = Function(niot_solver.fems.tdens_space, name='smooth')
+def image2tdens(nref=1,lower_factor=4,cond_zero=1,exponent_p=3.0, verbose=False, save=False):
+    n0 = 32
+    nx = n0 * 2**nref
+    ny = n0*2 * 2**nref
+    h = 1.0 / nx
+    
+    mesh = RectangleMesh(nx,ny,1,ny*h,quadrilateral=True)
+    space = FunctionSpace(mesh, 'DG', 0)
     x,y = SpatialCoordinate(mesh)
-    net2 = Function(niot_solver.fems.tdens_space)
-    net2.rename('network2')
-    #net2.interpolate(network+1e-6+3*network*conditional(x>0.5,1,0)*conditional(y>0.5,1,0))
-    #img = niot_solver.tdens2image(net2)
-    #smooth.interpolate(img)
-
+    
+    
     # value is small than 1 to have a stronger effect given by r**(1/p)
-    value = 0.1
-    net2.interpolate( conditional(x>0.48,value,0)
-                     * conditional(x<0.52,value,0)
-                     * conditional(y>0.5,1,2))
-    img = niot_solver.tdens2image(net2)
-    smooth.interpolate(img)
+    value = 1
+    line = Function(space)
+    line.rename('line')
+    width = 2*1/n0 # 2 pixels of the coarsest mesh
+    line.interpolate( conditional(x>1/2 -  width/2,1,0)
+                    * conditional(x<1/2 +  width/2,1,0)
+                    * conditional(y>=1,1,0)
+                    +
+                    conditional(x>1/2 - lower_factor  * width/2,1,0)
+                    * conditional(x<1/2 + lower_factor  * width/2,1,0)
+                    * conditional(y<=1,1,0) 
+                    )
+
+    
+    value = 1
+    thickness = Function(space)
+    thickness.rename('thickness')
+    #thickness.interpolate( conditional(x>1/2-h*2**nref,width,0)
+    #                * conditional(x<1/2+h*2**nref,width,0)
+    #                * conditional(y>1,1,2))
+    thickness.interpolate( 
+            conditional(x>1/2-h,1,0)
+            * conditional(x<1/2+h,1,0)
+            * conditional(y>=1,1,0)*width
+            +
+            conditional(x>1/2-h,1,0)
+            * conditional(x<1/2+h,1,0)
+            * conditional(y<=1,1,0)*lower_factor*width
+            )
+    
+    #thickness.interpolate( conditional(x>1/2-h*2**nref,width,0)
+    #                * conditional(x<1/2+h*2**nref,width,0)
+    #                * conditional(y>1,1,2))
+    thickness_dirac = Function(space)
+    thickness_dirac.rename('thickness_dirac')
+    thickness_dirac.interpolate( conditional(x>1/2-h,1,0)
+                    * conditional(x<1/2+h,1,0)
+                    * conditional(y<=1,lower_factor,1)
+                    * width/h)
 
 
+    cond_zero = 1.0
+    exponent_p = 3.0
+    
+    pouiseuille = Function(space)
+    pouiseuille.rename('radius')
+    pouiseuille.interpolate(thickness/2)
 
-    utilities.save2pvd([network,net2,smooth],'skeleton.pvd')
+    pouiseuille = Function(space)
+    pouiseuille.rename('poiseuille')
+    pouiseuille.interpolate(cond_zero*(thickness/2)**exponent_p/h)
+    
+    
+    
+    cond = Function(space)
+    cond.rename('cond')
+    
+
+    d = mesh.geometric_dimension()-1
+    if exponent_p < d:
+        raise ValueError('p<d')
+    exponent_m = (2 + exponent_p - d ) / (exponent_p - d)
+    
+    
+    
+    images = []
+    scaling = 1.0 
+    dim = mesh.geometric_dimension()-1
+    B = conductivity2image.Barenblatt().B(exponent_m,dim)
+    alpha = conductivity2image.Barenblatt().alpha(exponent_m,dim)
+    beta = conductivity2image.Barenblatt().beta(exponent_m,dim)
+    K_md = conductivity2image.Barenblatt().K_md(exponent_m,dim)
+
+    
+
+    # find the time to get 
+    # M = M_0 * (r(\sigma))**p 
+    sigma = (cond_zero**(-1/exponent_p) * K_md ** (-1/2) * B **(1/2))**(1/beta)
+
+    pouiseuille.interpolate(cond_zero*(thickness/2)**exponent_p/h)
+    cond.interpolate(pouiseuille)
+    
+    #cond.vector()[:] = 100*(np.ones(cond.vector().local_size())+rand(cond.vector().local_size()))
+    #test_adjoint(cond, exponent_m, sigma=sigma, scaling=1.0, nsteps=1000)
+
+    # get the max of cond
+    M_max = cond.dat.data.max() * 2 * h 
+    height = conductivity2image.Barenblatt().height(exponent_m,dim,sigma,M_max)
+    if verbose:
+        print(
+        f'p={exponent_p:.1e} d={d} m={exponent_m}'
+        + f'B={B:.1e} alpha={alpha:.1e} beta={beta:.1e} K_md={K_md:.1e} sigma={sigma:.1e} f={sigma**alpha:.1e} img_height={height:.1e} M_max={M_max:.1e}')
+    
+
+    
+
+    #try:
+    pm_map = conductivity2image.PorousMediaMap(
+        space,
+        sigma=sigma, 
+        exponent_m=exponent_m, 
+        scaling=scaling, 
+        nsteps=1000,
+        solver_parameters=solver_parameters)
+    image = pm_map(cond)
+    name = f'img_pm'
+    image.rename(name)
+
+    if save:
+        filename = f'images_img0.pvd'
+        cond.rename('img')
+        print(f'Saving {filename}')      
+        utilities.save2pvd(cond,filename)
+        for i, img in enumerate(pm_map.images):
+            filename = f'images_img{i+1}.pvd'
+            pm_map.images[i].rename('img')
+            print(f'Saving {filename}')      
+            utilities.save2pvd(pm_map.images[i],filename)
+
+
+    max_image = image.dat.data.max()
+    rel_err_height = abs(max_image-height)/height
+    #print(f'max_image={max_image:.1e} height={height:.1e} rel_error={rel_err_height:.1e}')
+
+    #except:
+    #    print(f'failed for cond0={cond_zero:.1e}')
+    image_support = Function(space)
+    image_support.rename('image_support')
+    for threshold in [ 1e-3]:
+        image_support.interpolate(conditional(image>threshold*max_image,1,0))
+
+        upper_width = assemble(conditional(y>=3/2,1,0) * image_support * dx)/(0.5)
+        lower_width = assemble(conditional(y<=1/2,1,0) * image_support * dx)/(0.5)
+
+        rel_err_upper = abs(upper_width-width)/width
+        rel_err_lower = abs(lower_width-width*lower_factor)/(width*lower_factor)
+
+
+        #print(
+        #    f'threshold={threshold:.1e}'
+        #+f' | upper approx={upper_width:.1e} real={width:.1e} err={rel_err_upper:.1e}'
+        #+f' | lower approx={lower_width:.1e} real={width*lower_factor:.1e} err={rel_err_lower:.1e}')
+        if verbose:
+            print(f'{nref=} {lower_factor=} {cond_zero=} {exponent_p=:.1e} {exponent_m=:.1e}')
+            print(f'{rel_err_height=:.1e} {rel_err_upper=:.1e} {rel_err_lower=:.1e}')
+        
+        assert rel_err_height < 0.2, 'height error too large'
+        assert rel_err_upper < 0.6, 'upper width error too large'
+        assert rel_err_lower < 0.2, 'lower width error too large'
+
+    if save:
+        filename = f'pm_line_nref{nref}.pvd'
+        print(f'Saving {filename}')      
+        utilities.save2pvd([line,thickness, thickness_dirac,pouiseuille,image_support, cond, *images],filename)
 
 if (__name__ == '__main__'):    
     parser = argparse.ArgumentParser(description='Corrupt networks with masks and reconstruct via branched transport')
@@ -154,7 +273,19 @@ if (__name__ == '__main__'):
     args = parser.parse_args()
 
     img_network = args.image
-    image2tdens(args.image,args.tdens2image, sigma_smoothing=args.sigma)
+
+    test_adjoint(1,verbose=False)
+
+    for nref in [1,2]:
+        for lower_factor in [4,8]:
+            for cond_zero in [1e1]:
+                for exponent_p in [3.0]:
+                    image2tdens(nref=nref,
+                                lower_factor=lower_factor,
+                                cond_zero=cond_zero,
+                                exponent_p=exponent_p,
+                                verbose=False,
+                                save=False)
     
 
     

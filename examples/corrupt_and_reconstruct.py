@@ -20,7 +20,6 @@ from niot import NiotSolver
 from niot import optimal_transport as ot 
 from niot import image2dat as i2d
 from niot import utilities
-from niot import HeatMap
 
 from ufl import *
 from firedrake import *
