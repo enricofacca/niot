@@ -26,7 +26,7 @@ import time
 from . import utilities
 from . import optimal_transport as ot
 
-from . import conductivity2image as conductivity2image
+#from . import conductivity2image as conductivity2image
 from . import linear_algebra_utilities as linalg
 
 
@@ -308,129 +308,6 @@ def cell2face_map(fun, approach):
         raise ValueError('Wrong approach passed. Only arithmetic_mean or harmonic_mean are implemented')
 
 
-
-class Conductivity2ImageMap:
-    def __init__(self, space, scaling=1.0, **kargs) -> None:
-        raise NotImplementedError('Conductivity2Image is not implemented')
-    def __call__(self, conductivity) -> firedrake.function.Function:
-        raise NotImplementedError('Conductivity2Image is not implemented')
-        
-class HeatMap(Conductivity2ImageMap):
-    def __init__(self, space, scaling=1.0, sigma=1e-2) -> None:
-        self.space = space
-        self.scaling = scaling
-        self.sigma = sigma
-
-        self.image_h = Function(space)
-        self.tdens4transform = Function(space)
-        
-        test = TestFunction(space)  
-        trial = TrialFunction(space)
-        form =  inner(test, trial) * dx # mass matrix
-        if space.ufl_element().degree() > 0:
-            form += sigma * grad(test) * grad(trial) * dx
-        else:
-            form += sigma * jump(test) * jump(trial) / delta_h(space) * dS
-
-        # 1-form for the heat equation
-        self.rhs_heat = self.tdens4transform * test * dx
-        self.heat_problem = LinearVariationalProblem(form, 
-                                                self.rhs_heat,
-                                                self.image_h, 
-                                                constant_jacobian=True)
-                
-        self.heat_solver = LinearVariationalSolver(
-            self.heat_problem,
-            solver_parameters={
-                'ksp_type': 'cg',
-                'ksp_rtol': 1e-10,
-                'ksp_initial_guess_nonzero': True,
-                #'ksp_monitor_true_residual': None,
-                'pc_type': 'hypre',
-                },
-            options_prefix='heat_solver_')
-
-    def __call__(self, conductivity) -> firedrake.function.Function:
-        # image and tdens are expected to be close (up to scaling)
-        self.image_h.interpolate(conductivity / self.scaling)
-                
-        # image = M * tdens
-        self.tdens4transform.interpolate(conductivity)
-                
-        # invoce the solver
-        self.heat_solver.solve()
-                
-        # we scale here so we return a function 
-        # otherwise (scaling * image) is an expression
-        self.image_h *= self.scaling
-
-        return self.image_h
-
-
-class PorousMediaMap(Conductivity2ImageMap):
-    """
-    We I(\mu) as the solution u of the porous media PDE
-    (u-u_0)/sigma - Div u^{m-1} \Grad u = 0
-    with u_0 = \mu 
-    """
-    def __init__(self, space, scaling=1.0, sigma=1e-2, exponent_m=2.0) -> None:
-        self.space = space
-        self.scaling = scaling
-        self.sigma = sigma
-        self.exponent_m = exponent_m
-
-        self.image_h = Function(space)
-        self.tdens4transform = Function(space)
-        
-        approach='arithmetic_mean' # harmoniac mean does not work
-        min_image = 1e-12 # a minimim value for the image
-        
-        # define PDE 
-        test = TestFunction(space)
-        if space.ufl_element().degree() > 0:
-            facet_image = self.image_h ** (self.exponent_m - 1) + min_image
-            pm_Laplacian_PDE = facet_image * inner(grad(test), grad(self.image_h)) * dx  
-        else:
-            facet_image = cell2face_map(self.image_h**(self.exponent_m - 1) + min_image, approach=approach)
-            pm_Laplacian_PDE = facet_image * jump(self.image_h) * jump(test) / delta_h(self.space) * dS
-        self.pm_PDE = ( 
-            (self.image_h - self.tdens4transform) * test * dx 
-            + sigma * pm_Laplacian_PDE )
-
-        self.pm_problem = NonlinearVariationalProblem(
-            self.pm_PDE, self.image_h)
-
-        self.pm_solver = NonlinearVariationalSolver(
-            self.pm_problem,
-            solver_parameters={
-                'snes_type': 'newtonls',
-                'snes_rtol': 1e-20,
-                'snes_atol': 1e-7,
-                'snes_stol': 1e-30,
-                'snes_linesearch_type':'bt',
-                #'snes_monitor': None,
-                'ksp_type': 'gmres',
-                'ksp_rtol': 1e-6,
-                'ksp_atol': 1e-6,
-                #'ksp_monitor': None,
-                'pc_type': 'hypre'
-                },
-            options_prefix='porous_solver_')
-
-    def __call__(self, conductivity) -> firedrake.function.Function:
-        # the image is expected to be close tdens but scaled
-        self.image_h.interpolate(conductivity/self.scaling)
-
-        # this command will inject the fun in the pde 
-        self.tdens4transform.interpolate(conductivity)
-        
-        # invoce the nonlienar solver
-        self.pm_solver.solve(annotate=True)
-        # we scale here so we return a function 
-        # otherwise (scaling * image) is an expression
-        self.image_h *= self.scaling
-
-        return self.image_h
 
 class NiotSolver:
     '''
@@ -794,6 +671,7 @@ class NiotSolver:
         elif tdens2image == 'pm':
             test = TestFunction(self.fems.tdens_space)
             
+            print('pm')
             
             sigma = self.ctrl_get(['tdens2image','pm','sigma'])
             exp_m = self.ctrl_get(['tdens2image','pm','exponent_m'])
@@ -1022,7 +900,7 @@ class NiotSolver:
     def solve(self, callbacks=[]):
         '''
         Args:
-        ctrl: Class with controls  (tol, max_iter, deltat, etc.)
+        ctrl: Class with controls  (tol, 'max_i'ter, deltat, etc.)
         sol: Mixed function [pot,tdens]. It is changed in place.
 
         Returns:
