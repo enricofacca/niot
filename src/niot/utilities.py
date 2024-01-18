@@ -11,6 +11,8 @@ from firedrake import conditional
 from firedrake import File
 from firedrake import solving_utils
 
+from firedrake import interpolate, sqrt, jump, avg, conditional, gt
+
 from pyadjoint import Block
 from pyadjoint.overloaded_function import overload_function
 
@@ -21,6 +23,9 @@ from firedrake import COMM_WORLD, COMM_SELF
 import re
 import os
 import numpy as np
+
+
+
 
 
 """
@@ -409,3 +414,47 @@ def nested_set(dic, keys, value, create_missing=False):
         raise KeyError 
     
     return dic
+
+
+def delta_h(space):
+    # check if mesh is simplex
+    mesh = space.mesh()
+    if mesh.ufl_cell().is_simplex():
+        raise ValueError('implemented for cartesian grids')   
+    
+    if mesh.geometric_dimension() == 2:
+        # try:
+        #     # try to get this information from the mesh 
+        #     hx = mesh.Lx/mesh.nx
+        #     hy = mesh.Ly/mesh.ny
+        #     # check if the values are close numerically with numpy
+        #     if np.isclose(hx,hy):
+        #         delta_h = hx
+        #     else:
+        #         raise ValueError('hx and hy are not close numerically')
+        # except:
+        x,y = mesh.coordinates
+        x_func = interpolate(x, space)
+        y_func = interpolate(y, space)
+        delta_h = sqrt(jump(x_func)**2 + jump(y_func)**2)
+    elif mesh.geometric_dimension() == 3:
+        x,y,z = mesh.coordinates
+        x_func = interpolate(x, space)
+        y_func = interpolate(y, space)
+        z_func = interpolate(z, space)
+        delta_h = sqrt(jump(x_func)**2 
+                            + jump(y_func)**2 
+                            + jump(z_func)**2)
+    return delta_h
+
+def cell2face_map(fun, approach="harmonic_mean"):
+    """
+    Compute a face value from a cell value
+    """
+    if approach == 'arithmetic_mean':
+        return (fun('+') + fun('-')) / 2
+    elif approach == 'harmonic_mean':
+        avg_fun = avg(fun)
+        return conditional( gt(avg_fun, 0.0), fun('+') * fun('-') / avg_fun, 0.0)          
+    else:
+        raise ValueError('Wrong approach passed. Only arithmetic_mean or harmonic_mean are implemented')
