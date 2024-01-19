@@ -64,12 +64,21 @@ def save2pvd(functions,filename):
     if COMM_WORLD.size == 1:
         firedrake_vtu_name = filename+'_0.vtu'
         new_vtu_name = filename+'.vtu'
-        os.rename(firedrake_vtu_name,new_vtu_name)
+        try:
+            os.rename(firedrake_vtu_name,new_vtu_name)
+        except:
+            print(f"Error renaming vtu file{firedrake_vtu_name}")
+            pass
     else:
         if COMM_WORLD.rank == 0:
             firedrake_vtu_name = filename+'_0.pvtu'
             new_vtu_name = filename+'.pvtu'
-            os.rename(firedrake_vtu_name,new_vtu_name)
+            try:
+                os.rename(firedrake_vtu_name,new_vtu_name)
+            except:
+                print(f"Error renaming vtu file{firedrake_vtu_name}")
+            pass
+            
             with open(new_vtu_name, "r") as sources:
                 lines = sources.readlines()
             with open(new_vtu_name,'w') as sources:
@@ -86,7 +95,11 @@ def save2pvd(functions,filename):
         # each processor has a vtu file
         firedrake_vtu_name = f'{filename}_0_{COMM_WORLD.rank}.vtu'
         new_vtu_name = f'{filename}_{COMM_WORLD.rank}.vtu'
-        os.rename(firedrake_vtu_name,new_vtu_name)
+        try:
+            os.rename(firedrake_vtu_name,new_vtu_name)
+        except:
+            print(f"Error renaming vtu file{firedrake_vtu_name}")
+            pass
         
         COMM_WORLD.Barrier()
 
