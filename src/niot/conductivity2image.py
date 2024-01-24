@@ -16,7 +16,7 @@ from firedrake import derivative
 
 from firedrake import LinearVariationalProblem, LinearVariationalSolver
 from firedrake import NonlinearVariationalProblem, NonlinearVariationalSolver
-
+from firedrake import File
 
 from pyadjoint import Block
 from pyadjoint.overloaded_function import overload_function
@@ -30,6 +30,7 @@ from . import linear_algebra_utilities as linalg
 import numpy as np
 from scipy.integrate import quad
 from scipy.special import gamma
+from scipy.optimize import newton
 
 class Conductivity2ImageMap:
     """
@@ -37,7 +38,7 @@ class Conductivity2ImageMap:
     """
     def __init__(self, space, scaling=1.0, **kargs) -> None:
         raise NotImplementedError('Conductivity2Image is not implemented')
-    def __call__(self, conductivity) -> Function:
+    def __call__(self, conductivity, **kargs) -> Function:
         raise NotImplementedError('Conductivity2Image is not implemented')
     
 class IdentityMap(Conductivity2ImageMap):
@@ -48,8 +49,8 @@ class IdentityMap(Conductivity2ImageMap):
         self.space = space
         self.scaling = scaling
         self.image_h = Function(space)
-    def __call__(self, conductivity) -> Function:
-        self.image_h.assign(conductivity * self.scaling)
+    def __call__(self, conductivity, **kargs) -> Function:
+        self.image_h.interpolate(self.scaling * conductivity)
         return self.image_h
         
 class HeatMap(Conductivity2ImageMap):
@@ -98,7 +99,7 @@ class HeatMap(Conductivity2ImageMap):
                 },
             options_prefix='heat_solver_')
 
-    def __call__(self, conductivity) -> Function:
+    def __call__(self, conductivity, **kargs) -> Function:
         # image and tdens are expected to be close (up to scaling)
         self.image_h.interpolate(conductivity / self.scaling)
                 
@@ -253,15 +254,15 @@ class PorousMediaMap(Conductivity2ImageMap):
         if solver_parameters is None:
             solver_parameters={
                 'snes_type': 'newtonls',
-                'snes_rtol': 1e-20,
-                'snes_atol': 1e-20,
-                'snes_stol': 1e-30,
+                'snes_rtol': 1e-10,
+                'snes_atol': 1e-10,
+                'snes_stol': 1e-10,
                 'snes_linesearch_type':'bt',
-                'snes_monitor': None,
+                #'snes_monitor': None,
                 'ksp_type': 'gmres',
                 'ksp_rtol': 1e-6,
                 'ksp_atol': 1e-6,
-                'ksp_monitor': None,
+                #'ksp_monitor': None,
                 'pc_type': 'hypre',
                 }
 
@@ -270,8 +271,19 @@ class PorousMediaMap(Conductivity2ImageMap):
         def lift(image_vec):
             min=image_vec.min()[1]
             if (image_vec.min()[1] < 0):
+                
                 #print(f'Negative image {min}')
-                image_vec.shift(-min)
+                #img = Function(self.space)
+                #with img.dat.vec as out_vec:
+                #    out_vec[:] = image_vec.array
+                #img.rename(f'img_{self.steps_done}')
+                #out_file = File('negative.pvd')
+                #out_file.write(img)
+
+                image_vec.shift(-2*min)
+            
+                print(f'{min=} {image_vec.min()[1]=}')
+
         #lift=None
         self.pm_solver = NonlinearVariationalSolver(
             self.pm_problem,
@@ -287,42 +299,65 @@ class PorousMediaMap(Conductivity2ImageMap):
     def set_sigma(self, sigma):
         self.sigma = sigma
 
-    def __call__(self, conductivity):#-> Function:
-        # the image is expected to be close tdens but scaled
-        self.image_h.interpolate(conductivity/self.scaling)
+    def __call__(self, conductivity, initial_guess=None):#-> Function:
         
-        with conductivity.dat.vec as cond_vec:
+        # this command will inject the fun in the pde 
+        self.tdens4transform.interpolate(conductivity)
+
+        if initial_guess is None:
+            self.image_h.assign(self.tdens4transform / self.scaling, annotate=False)
+        else:
+            self.image_h.assign(initial_guess, annotate=False)
+
+        with self.tdens4transform.dat.vec as cond_vec:
             _, min_cond = cond_vec.min()
             if min_cond < 0:
                 raise ValueError('Negative conductivity')
-            dt0 = 1e-5#min(1e-5 /(max_cond))
+            _, max_cond = cond_vec.max()
+            dt0 = min(1e-5, 1e-0 /(max_cond))
+            
+        
+        # find optimal expansion
+        n = self.nsteps+1
+        def f(r):
+            return self.sigma - dt0 * ( 1 - r ** (n -1) ) / (1 - r)
+        
+        def df(r):
+            value = dt0 * ( (n - 1) * r ** (n -2) / (1 - r) 
+                           + ( 1 - r ** (n -1) ) / (1 - r)**2 )
+            return value
+            
+        
+        #def df(r):
+        #    return -self.sigma + dt0 * (self.nsteps - 1) * r ** (self.nsteps -2)
+        print (f'{self.sigma=} {dt0=} {self.nsteps=} {self.scaling=}')
+        rate = newton(f, 2, fprime=df)
+        print('sigma',self.sigma,'rate=',rate,'steps=',self.nsteps,'dt0=',dt0,'f',f(rate))
 
 
         self.images =[]
-        total_steps = 0.0
+        total_time = 0.0
         self.steps_done = 0
         for i in range(self.nsteps):
-            if i==0:
-                # this command will inject the fun in the pde 
-                self.tdens4transform.interpolate(conductivity)
-            else:
+            if i > 0:
                 self.tdens4transform.assign(self.image_h)
             
 
+         
             # invoce the nonlienar solver
             self.dt.assign(self.compute_dt(i))
-            dt = dt0*1.5**(i)
-            total_steps += dt
-            if total_steps > self.sigma:
-                break
+            dt = dt0*rate**(i)
+            total_time += dt
+            #if total_steps > self.sigma:
+            #    break
             self.dt.assign(dt)
             #with self.dt.dat.vec as dt_vec:
-            #    print(f'{i=} dt={dt_vec.array[0]:.1e} t={total_steps:.1e} {self.image_h.dat.data_ro.min():.1e}<=IMG<={self.image_h.dat.data_ro.max():.1e}')
+            #    print(f'{i=} dt={dt_vec.array[0]:.1e} t={total_time:.1e} {self.image_h.dat.data_ro.min():.1e}<=IMG<={self.image_h.dat.data_ro.max():.1e}')
             
             self.pm_solver.solve()
-            img = self.image_h.copy(deepcopy=True)
-            img.rename(f'img_{i}')
-            self.images.append(img)
+            #img = self.image_h.copy(deepcopy=True)
+            #img.rename(f'img_{i}')
+            #self.images.append(img)
             
             self.steps_done += 1
         
@@ -333,6 +368,7 @@ class PorousMediaMap(Conductivity2ImageMap):
         if min_img < 0:
             self.image_h -= min_img
         self.image_h *= self.scaling
+        print(f'{self.image_h.dat.data_ro.min():.1e}<=IMG<={self.image_h.dat.data_ro.max():.1e}')
 
         return self.image_h
 

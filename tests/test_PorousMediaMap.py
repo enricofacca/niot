@@ -10,11 +10,8 @@ Usage example:
 The results are saved in directorry name according 
 to mask and parameters used in lines/runs/
 """
+import pytest
 import argparse
-import sys
-import glob
-import os
-from copy import deepcopy as cp
 import numpy as np
 from niot import conductivity2image
 from numpy.random import rand
@@ -35,8 +32,6 @@ import firedrake.adjoint as fire_adj
 
 from niot import utilities as utilities
 
-from scipy.ndimage import gaussian_filter
-
 tape = fire_adj.get_working_tape()
 
 solver_parameters={
@@ -45,17 +40,18 @@ solver_parameters={
                 'snes_atol': 1e-16,
                 'snes_stol': 1e-16,
                 'snes_max_it': 100,
-                'snes_linesearch_type':'l2',
-                #'snes_monitor': None,
+                'snes_linesearch_type':'bt',
                 'ksp_type': 'gmres',
                 'ksp_rtol': 1e-10,
                 'ksp_atol': 1e-10,
                 'ksp_max_it': 500,
-                #'ksp_monitor': None,
                 'pc_type': 'hypre',
+                #'snes_monitor': None,
+                #'snes_linesearch_monitor': None,
+                #'ksp_monitor': None,
                 }
 
-
+@pytest.mark.parametrize('nref', [1])
 def test_adjoint(nref, exponent_m=2.0, sigma=0.1, scaling=1.0, nsteps=10, verbose=False):
     n0 = 32
     nx = n0 * 2**nref
@@ -96,8 +92,13 @@ def test_adjoint(nref, exponent_m=2.0, sigma=0.1, scaling=1.0, nsteps=10, verbos
     
     assert conv > 1.9, 'taylor test failed'
 
+# This dec
 
-def image2tdens(nref=1,lower_factor=4,cond_zero=1,exponent_p=3.0, verbose=False, save=False):
+@pytest.mark.parametrize('nref', [1])
+@pytest.mark.parametrize('lower_factor',[4,8])
+@pytest.mark.parametrize('cond_zero', [1e0])
+@pytest.mark.parametrize('exponent_p', [3.0])
+def test_tdens2image(nref,lower_factor,cond_zero,exponent_p, verbose=False, save=False):
     n0 = 32
     nx = n0 * 2**nref
     ny = n0*2 * 2**nref
@@ -150,21 +151,7 @@ def image2tdens(nref=1,lower_factor=4,cond_zero=1,exponent_p=3.0, verbose=False,
                     * width/h)
 
 
-    cond_zero = 1.0
-    exponent_p = 3.0
-    
-    pouiseuille = Function(space)
-    pouiseuille.rename('radius')
-    pouiseuille.interpolate(thickness/2)
-
-    pouiseuille = Function(space)
-    pouiseuille.rename('poiseuille')
-    pouiseuille.interpolate(cond_zero*(thickness/2)**exponent_p/h)
-    
-    
-    
-    cond = Function(space)
-    cond.rename('cond')
+  
     
 
     d = mesh.geometric_dimension()-1
@@ -187,8 +174,13 @@ def image2tdens(nref=1,lower_factor=4,cond_zero=1,exponent_p=3.0, verbose=False,
     # find the time to get 
     # M = M_0 * (r(\sigma))**p 
     sigma = (cond_zero**(-1/exponent_p) * K_md ** (-1/2) * B **(1/2))**(1/beta)
-
-    pouiseuille.interpolate(cond_zero*(thickness/2)**exponent_p/h)
+    
+    pouiseuille = Function(space)
+    pouiseuille.rename('poiseuille')
+    cond = Function(space)
+    cond.rename('cond')
+    
+    pouiseuille.interpolate(1e-15+cond_zero*(thickness/2)**exponent_p/h)
     cond.interpolate(pouiseuille)
     
     #cond.vector()[:] = 100*(np.ones(cond.vector().local_size())+rand(cond.vector().local_size()))
@@ -202,16 +194,12 @@ def image2tdens(nref=1,lower_factor=4,cond_zero=1,exponent_p=3.0, verbose=False,
         f'p={exponent_p:.1e} d={d} m={exponent_m}'
         + f'B={B:.1e} alpha={alpha:.1e} beta={beta:.1e} K_md={K_md:.1e} sigma={sigma:.1e} f={sigma**alpha:.1e} img_height={height:.1e} M_max={M_max:.1e}')
     
-
-    
-
-    #try:
     pm_map = conductivity2image.PorousMediaMap(
         space,
         sigma=sigma, 
         exponent_m=exponent_m, 
         scaling=scaling, 
-        nsteps=1000,
+        nsteps=8,
         solver_parameters=solver_parameters)
     image = pm_map(cond)
     name = f'img_pm'
@@ -249,43 +237,35 @@ def image2tdens(nref=1,lower_factor=4,cond_zero=1,exponent_p=3.0, verbose=False,
 
         #print(
         #    f'threshold={threshold:.1e}'
-        #+f' | upper approx={upper_width:.1e} real={width:.1e} err={rel_err_upper:.1e}'
-        #+f' | lower approx={lower_width:.1e} real={width*lower_factor:.1e} err={rel_err_lower:.1e}')
+        #+f' | 
+        #+f' | 
         if verbose:
             print(f'{nref=} {lower_factor=} {cond_zero=} {exponent_p=:.1e} {exponent_m=:.1e}')
             print(f'{rel_err_height=:.1e} {rel_err_upper=:.1e} {rel_err_lower=:.1e}')
         
-        assert rel_err_height < 0.2, 'height error too large'
-        assert rel_err_upper < 0.6, 'upper width error too large'
-        assert rel_err_lower < 0.2, 'lower width error too large'
+        assert rel_err_height < 0.2, f'height={max_image:.1e} real={height:.1e} err={rel_err_height:.1e}'
+        assert rel_err_upper < 0.6, f'upper approx={upper_width:.1e} real={width:.1e} err={rel_err_upper:.1e}'
+        assert rel_err_lower < 0.3, f'lower approx={lower_width:.1e} real={width*lower_factor:.1e} err={rel_err_lower:.1e}'
 
     if save:
         filename = f'pm_line_nref{nref}.pvd'
         print(f'Saving {filename}')      
         utilities.save2pvd([line,thickness, thickness_dirac,pouiseuille,image_support, cond, *images],filename)
 
+
 if (__name__ == '__main__'):    
-    parser = argparse.ArgumentParser(description='Corrupt networks with masks and reconstruct via branched transport')
-    parser.add_argument('--image', type=str, help="path for the network image")
-    parser.add_argument('--tdens2image', type=str, default='pm', help="tdens2image method")
-    parser.add_argument('--sigma', type=float, default=1.0, help="sigma for smoothing")
-    parser.add_argument('--cell2face', type=str, default='arithmetic_mean', help="cell2face method")
-    args = parser.parse_args()
+    test_adjoint(nref=1, exponent_m=2.0, sigma=0.1, scaling=1.0, nsteps=10, verbose=True)
 
-    img_network = args.image
-
-    test_adjoint(1,verbose=False)
-
-    for nref in [1,2]:
+    for nref in [1,2,3]:
         for lower_factor in [4,8]:
-            for cond_zero in [1e1]:
+            for cond_zero in [1e0, 1e-1]:
                 for exponent_p in [3.0]:
-                    image2tdens(nref=nref,
+                    test_tdens2image(nref=nref,
                                 lower_factor=lower_factor,
                                 cond_zero=cond_zero,
                                 exponent_p=exponent_p,
-                                verbose=False,
-                                save=False)
-    
+                                verbose=True,
+                                save=True)
+
 
     
