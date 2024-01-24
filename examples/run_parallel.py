@@ -17,7 +17,7 @@ except:
     print('skipping')
     
 #examples = ['y_net_thk']
-examples = ['frog_coarse_thk']#[f'y_net_hand_drawing/nref{i}' for i in [0]]#'frog_tongue'] 
+examples = ['frog_thk']#[f'y_net_hand_drawing/nref{i}' for i in [0]]#'frog_tongue'] 
 #examples.append('y_net_hand_drawing/nref3')
 #examples = ['y_net/']
 #examples.append('y_net_hand_drawing/nref2')
@@ -28,10 +28,10 @@ mask=['mask02.png']
 nref=[0]
 fems = ['DG0DG0']
 gamma = [0.5]#, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-wd = [1e4]
-wr = [0]
-ini = [0]
-network_file = ['mup3.0e+00zero1.0e+01.npy']#,'mucnstp3.0e+00zero1.0e+01.npy'
+wd = [1e4,1e5,1e6]
+wr = [0,1e-5]
+ini = [0,1]
+network_file = ['mup3.0e+00zero1.0e+01.npy','mucnstp3.0e+00zero1.0e+01.npy']#,'network.png']
 conf = ['ONE']#,'CORRUPTED','MASK']#,'MASK','CORRUPTED']
 maps = [
 #   {'type':'identity'}, 
@@ -83,11 +83,12 @@ def load_input(example, nref, mask, network_file):
     try:
         img_networks = f'{example}/{network_file}'
         np_network = i2d.image2numpy(img_networks,normalize=True,invert=True,factor=2**nref)
+        print(f'using {img_networks}')
     except: 
         np_network = np.load(f'{example}/{network_file}')
         if nref != 0:
             np_network = zoom(np_network, 2**nref, order=0, mode='nearest')
-    
+        print(f'using {example}/{network_file}')
     np_mask = i2d.image2numpy(f'{example}/{mask}',normalize=True,invert=True,factor=2**nref)  
 
 

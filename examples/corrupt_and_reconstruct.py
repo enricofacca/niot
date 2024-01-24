@@ -268,7 +268,7 @@ def corrupt_and_reconstruct(np_source,
     niot_solver.ctrl_set('constraint_tol', 1e-8)
     niot_solver.ctrl_set('max_iter', 5000)
     niot_solver.ctrl_set('max_restart', 3)
-    niot_solver.ctrl_set('verbose', 2)  
+    niot_solver.ctrl_set('verbose', 0)  
     
     label = '_'.join(labels_problem)
     niot_solver.ctrl_set('log_verbose', 2) 
