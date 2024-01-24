@@ -20,6 +20,7 @@ from niot import NiotSolver
 from niot import optimal_transport as ot 
 from niot import image2dat as i2d
 from niot import utilities
+from niot.conductivity2image import HeatMap
 
 from ufl import *
 from firedrake import *
@@ -36,17 +37,23 @@ from scipy.ndimage import zoom,gaussian_filter
 
 def labels(nref,fem,
            gamma,wd,wr,
+           network_file,
            corrupted_as_initial_guess,
            confidence,
            tdens2image,
            tdens2image_scaling, 
            method):
+    # take filename and remove extension
+    label_network = os.path.basename(network_file)
+    # remove extension
+    label_network = os.path.splitext(label_network)[0]
     label= [
         f'nref{nref}',
         f'fem{fem}',
         f'gamma{gamma:.1e}',
         f'wd{wd:.1e}',
         f'wr{wr:.1e}',
+        f'net{label_network}',
         f'ini{corrupted_as_initial_guess:d}',
         f'conf{confidence}']
     if tdens2image['type'] == 'identity':
@@ -67,6 +74,8 @@ def labels(nref,fem,
             short_method = 'ge'
         elif method == 'gfvar_gradient_descent_semi_implicit':
             short_method = 'gsi'
+        elif method == 'tdens_logarithmic_barrier':
+            short_method = 'tlb'
         else:
             raise ValueError(f'Unknown method {method}')
     label.append(f'method{short_method}')
@@ -89,11 +98,11 @@ def corrupt_and_reconstruct(np_source,
                             tdens2image_scaling=1e0,
                             method='tdens_mirror_descent_explicit'  ,
                             directory='out/',
-                            label='unnamed',
+                            labels_problem=['unnamed'],
                             comm=COMM_WORLD,
                             ):
     
-    save_h5 = False
+    save_h5 = True
 
     # the corrupted image is created adding a mask
     # to the known network
@@ -138,22 +147,15 @@ def corrupt_and_reconstruct(np_source,
     confidence_for_contour = Function(CG1)
     confidence_for_contour.interpolate(confidence_w).rename("confidence_countour","confidence")
 
-    labels_problem = labels(nref,fem,gamma,wd,wr,
-                            corrupted_as_initial_guess,
-                confidence,
-                tdens2image,
-                tdens2image_scaling,
-                method)
-
-
+    
     # save common inputs
     filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.pvd')
     
-    overwrite=True
-    print(filename)
+    overwrite = True
     if (not os.path.exists(filename) or overwrite):
         print(filename)
-        utilities.save2pvd([
+        try:
+            utilities.save2pvd([
             corrupted,
             corrupted_for_contour,
             network,
@@ -161,27 +163,43 @@ def corrupt_and_reconstruct(np_source,
             mask,
             mask_for_contour,
             ],filename)
-        if save_h5:
-            filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.h5')
+        except:
+            print(f'Error writing {filename}. Skipping')
+            pass
+    
+    filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.h5')
+    if ( (not os.path.exists(filename) and save_h5) or overwrite):
+        try:
             with CheckpointFile(filename, 'w') as afile:
-                afile.write(mask, 'mask')
-                afile.write(network, 'network')
-                afile.write(corrupted, 'corrupted')
+                afile.save_function(mask)
+                afile.save_function(network)
+                afile.save_function(corrupted)
+        except:
+            print(f'Error writing {filename}. Skipping')
+            pass
 
         
     filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[6]}.pvd')
     if (not os.path.exists(filename) or overwrite):
         print(filename)
-        utilities.save2pvd([
-            confidence_w,
-            confidence_for_contour,
-            ],filename)
+        try:
+            utilities.save2pvd([
+                confidence_w,
+                confidence_for_contour,
+                ],filename)
+        except:
+            pass
 
-        if save_h5:
-            filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[6]}.h5')
+    filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[6]}.h5')
+    if save_h5 and (not os.path.exists(filename) or overwrite):
+        try:
+            if os.path.exists(filename):
+                os.remove(filename)
             with CheckpointFile(filename, 'w') as afile:
-                afile.write(mask, 'confidence')
-
+                afile.save_function(confidence_w)
+        except:
+            print(f'Error writing {filename}. Skipping')
+            pass
 
     #
     # solve the problem
@@ -203,13 +221,18 @@ def corrupt_and_reconstruct(np_source,
             sink_for_contour,
             ],filename)
 
-        if save_h5:
-            filename = os.path.join(directory, f'{labels_problem[0]}_btp.h5')
+    filename = os.path.join(directory, f'{labels_problem[0]}_btp.h5')
+    if save_h5 and (not os.path.exists(filename) or overwrite):
+        try:
+            if os.path.exists(filename):
+                os.remove(filename)
             with CheckpointFile(filename, 'w') as afile:
                 afile.save_mesh(mesh)  # optional
-                afile.write(source, 'source')
-                afile.write(sink, 'sink')
-
+                afile.save_function(source)
+                afile.save_function(sink)
+        except:
+            print(f'Error writing {filename}. Skipping')
+            pass
     
     niot_solver = NiotSolver(btp, corrupted,  confidence_w, 
                              spaces = fem,
@@ -232,8 +255,7 @@ def corrupt_and_reconstruct(np_source,
         niot_solver.sol.sub(1).assign(img0 / tdens2image_scaling )
     else:
         niot_solver.sol.sub(1).assign(1.0 / tdens2image_scaling )
-    tdens0 = Function(niot_solver.fems.tdens_space)
-    tdens0.interpolate(niot_solver.sol.sub(1))
+    
 
     # inpainting
     niot_solver.ctrl_set('discrepancy_weight', wd)
@@ -242,12 +264,13 @@ def corrupt_and_reconstruct(np_source,
     niot_solver.ctrl_set(['tdens2image'], map_ctrl)
 
     # optimization
-    niot_solver.ctrl_set('optimization_tol', 1e-3)
+    niot_solver.ctrl_set('optimization_tol', 5e-3)
     niot_solver.ctrl_set('constraint_tol', 1e-8)
     niot_solver.ctrl_set('max_iter', 5000)
     niot_solver.ctrl_set('max_restart', 3)
-    niot_solver.ctrl_set('verbose', 0)  
+    niot_solver.ctrl_set('verbose', 2)  
     
+    label = '_'.join(labels_problem)
     niot_solver.ctrl_set('log_verbose', 2) 
     log_file = os.path.join(directory, f'{label}.log')
     niot_solver.ctrl_set('log_file', log_file)
@@ -263,7 +286,10 @@ def corrupt_and_reconstruct(np_source,
     print(f"Using {method}")
     niot_solver.ctrl_set(['dmk','type'], method)
     if 'tdens' in method:
-        niot_solver.ctrl_set(['dmk',method,'gradient_scaling'], 'no')
+        if method == 'tdens_logarithmic_barrier':
+            pass
+        else:
+            niot_solver.ctrl_set(['dmk',method,'gradient_scaling'], 'no')
         
 
     # time step
@@ -287,9 +313,7 @@ def corrupt_and_reconstruct(np_source,
     pot0, tdens0 = sol0.subfunctions
     pot0.rename('pot_0','pot_0')
     tdens0.rename('tdens_0','tdens_0')
-
     niot_solver.ctrl_set('max_iter', max_iter)
-    
 
 
     # solve the problem
@@ -314,11 +338,11 @@ def corrupt_and_reconstruct(np_source,
     print(f"{ierr=} Saving solution to \n"+filename)
     utilities.save2pvd([
         pot, tdens, 
-        #pot0, 
-        tdens0,
+        tdens0, pot0, 
         reconstruction,
         reconstruction_for_contour,
         tdens_for_contour,
+        niot_solver.rhs_ode,
                         ],filename)
     
     filename = os.path.join(directory, f'{label}.h5')
@@ -329,9 +353,10 @@ def corrupt_and_reconstruct(np_source,
     
             with CheckpointFile(filename, 'w') as afile:
                 afile.save_mesh(mesh)  # optional
-                afile.write(pot, 'pot')
-                afile.write(tdens, 'tdens')
-                afile.write(reconstruction, 'reconstruction')
+                afile.save_function(pot)
+                afile.save_function(tdens)
+                afile.save_function(reconstruction)
+            print(f"Saved solution to \n"+filename)
 
     print(f'{ierr=}')
     return ierr

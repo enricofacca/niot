@@ -6,7 +6,7 @@ import sys
 import numpy as np
 from niot import image2dat as i2d
 from scipy.ndimage import zoom
-
+from niot.conductivity2image import Barenblatt
 
 
 try:
@@ -16,33 +16,34 @@ except:
     overwrite=False
     print('skipping')
     
-
+#examples = ['y_net_thk']
 examples = ['frog_coarse_thk']#[f'y_net_hand_drawing/nref{i}' for i in [0]]#'frog_tongue'] 
 #examples.append('y_net_hand_drawing/nref3')
-#examples.append('y_net/')
+#examples = ['y_net/']
 #examples.append('y_net_hand_drawing/nref2')
 #examples.append('y_net_hand_drawing/nref1')
-#mask=['mask_blur.png','mask_large.png','mask_medium.png']
+mask=['mask_large.png']#,'mask_large.png','mask_medium.png']
 mask=['mask02.png']
 
-nref=[0,1]
+nref=[0]
 fems = ['DG0DG0']
 gamma = [0.5]#, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-wd = [0]#,1e-3,1e-2,5e-2,1e-1,1e0]
-wr = [0,1e-6,1e-4]
+wd = [1e4]
+wr = [0]
 ini = [0]
+network_file = ['mup3.0e+00zero1.0e+01.npy']#,'mucnstp3.0e+00zero1.0e+01.npy'
 conf = ['ONE']#,'CORRUPTED','MASK']#,'MASK','CORRUPTED']
 maps = [
-   {'type':'identity'}, 
+#   {'type':'identity'}, 
 #    {'type':'heat', 'sigma': 1e-4},
-#    {'type':'heat', 'sigma': 1e-3},
-#    {'type':'pm', 'sigma': 1e-3, 'exponent_m': 2.0},
+#    {'type':'heat', 'sigma': 0.0005},
+    {'type':'pm', 'sigma': 0.0005, 'exponent_m': 2.0},
 #    {'type':'pm', 'sigma': 1e-2, 'exponent_m': 2.0},
 #    {'type':'pm', 'sigma': 1e-1, 'exponent_m': 2.0},
 #     {'type':'pm', 'sigma': 5e-1, 'exponent_m': 2.0},
 #     {'type':'pm', 'sigma': 1e0, 'exponent_m': 2.0},
 ]
-tdens2image_scaling = [1e2]
+tdens2image_scaling = [1.0]
 method = [
     #'tdens_mirror_descent_explicit',
     #'tdens_mirror_descent_semi_implicit',
@@ -50,11 +51,13 @@ method = [
     'gfvar_gradient_descent_semi_implicit',
 ]
 
-parameters=[examples,nref,fems,mask,gamma,wd,wr,ini,conf,maps,tdens2image_scaling,method]
+
+
+parameters=[examples,nref,fems,mask,gamma,wd,wr,network_file,ini,conf,maps,tdens2image_scaling,method]
 combinations = list(itertools.product(*parameters))
 
 
-def load_input(example, nref, mask):
+def load_input(example, nref, mask, network_file):
     # btp inputs
     img_sources = f'{example}/source.png'
     img_sinks = f'{example}/sink.png'
@@ -75,12 +78,13 @@ def load_input(example, nref, mask):
     if abs(mass_source-mass_sink)>1e-16:
         np_sink *= mass_source/mass_sink 
 
+    
     # load image or numpy array
     try:
-        img_networks = f'{example}/network.png'
+        img_networks = f'{example}/{network_file}'
         np_network = i2d.image2numpy(img_networks,normalize=True,invert=True,factor=2**nref)
     except: 
-        np_network = np.load(f'{example}/network.npy')
+        np_network = np.load(f'{example}/{network_file}')
         if nref != 0:
             np_network = zoom(np_network, 2**nref, order=0, mode='nearest')
     
@@ -91,9 +95,9 @@ def load_input(example, nref, mask):
     
     
 
-def fun(example,nref,fem,mask,gamma,wd,wr,ini,conf,tdens2image,tdens2image_scaling, method):
+def fun(example,nref,fem,mask,gamma,wd,wr,network_file,ini,conf,tdens2image,tdens2image_scaling, method):
     # load input
-    np_source, np_sink, np_network, np_mask = load_input(example, nref, mask)
+    np_source, np_sink, np_network, np_mask = load_input(example, nref, mask, network_file)
     
 
     # create directory
@@ -102,7 +106,8 @@ def fun(example,nref,fem,mask,gamma,wd,wr,ini,conf,tdens2image,tdens2image_scali
         os.makedirs(f'{example}/{mask_name}/')
 
     labels_problem = labels(nref,fem,gamma,wd,wr,
-                            ini,
+                network_file,   
+                ini,
                 conf,
                 tdens2image,
                 tdens2image_scaling,
@@ -130,7 +135,7 @@ def fun(example,nref,fem,mask,gamma,wd,wr,ini,conf,tdens2image,tdens2image_scali
                             tdens2image_scaling = tdens2image_scaling,
                             method=method,
                             directory=f'{example}/{mask_name}/',
-                            label=label,
+                            labels_problem=labels_problem,
                             )
     #print(ierr)
     #print(example,fem,mask,gamma,wd,wr,ini,conf)
