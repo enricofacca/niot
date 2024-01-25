@@ -35,6 +35,30 @@ import firedrake as fire
 
 from scipy.ndimage import zoom,gaussian_filter
 
+def my_rm(filename):
+    if os.path.exists(filename):
+        try:
+            os.remove(filename)
+        except:
+            print(f'Error removing {filename}. Skipping')
+            pass
+
+def my_mkdir(directory):
+    if (not os.path.exists(directory)):
+        try:
+            os.mkdir(directory)
+        except: 
+            print('error creating directory')
+            pass
+
+def my_mv(origin, destination):
+    if os.path.exists(origin):
+        try:
+            os.rename(origin, destination)
+        except:
+            print(f'Error moving {origin} to {destination}. Skipping')
+            pass
+
 def labels(nref,fem,
            gamma,wd,wr,
            network_file,
@@ -193,8 +217,7 @@ def corrupt_and_reconstruct(np_source,
     filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[6]}.h5')
     if save_h5 and (not os.path.exists(filename) or overwrite):
         try:
-            if os.path.exists(filename):
-                os.remove(filename)
+            my_rm(filename)
             with CheckpointFile(filename, 'w') as afile:
                 afile.save_function(confidence_w)
         except:
@@ -224,8 +247,7 @@ def corrupt_and_reconstruct(np_source,
     filename = os.path.join(directory, f'{labels_problem[0]}_btp.h5')
     if save_h5 and (not os.path.exists(filename) or overwrite):
         try:
-            if os.path.exists(filename):
-                os.remove(filename)
+            my_rm(filename)
             with CheckpointFile(filename, 'w') as afile:
                 afile.save_mesh(mesh)  # optional
                 afile.save_function(source)
@@ -276,9 +298,8 @@ def corrupt_and_reconstruct(np_source,
     niot_solver.ctrl_set('log_file', log_file)
     # remove if exists
     if niot_solver.mesh.comm.rank == 0:
-        if os.path.exists(log_file):
-            os.remove(log_file)
-    
+        my_rm(log_file)
+        
 
     # time discretization
     if method is None:
@@ -348,9 +369,7 @@ def corrupt_and_reconstruct(np_source,
     filename = os.path.join(directory, f'{label}.h5')
     if save_h5:
         if niot_solver.mesh.comm.rank == 0:
-            if os.path.exists(filename):
-                os.remove(filename)
-    
+            my_rm(filename)
             with CheckpointFile(filename, 'w') as afile:
                 afile.save_mesh(mesh)  # optional
                 afile.save_function(pot)
@@ -424,14 +443,14 @@ if (__name__ == '__main__'):
     # set weights (default 1.0, 1.0, 0.0)
     weights = np.array([args.wd, args.wp, args.wr])
 
+    
     if (not os.path.exists(args.dir)):
-        os.mkdir(args.dir)
+        my_mkdir(args.dir)
 
     out_dir = os.path.join(args.dir,'runs')
     if (not os.path.exists(out_dir)):
-        os.mkdir(out_dir)
-
-    
+        my_mkdir(out_dir)
+        
         
     corrupt_and_reconstruct(args.source,
                             args.sink,
