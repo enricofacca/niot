@@ -28,11 +28,11 @@ mask=['mask02.png']
 nref=[0]
 fems = ['DG0DG0']
 gamma = [0.5]#, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-wd = [1e4,1e5,1e6]
+wd = [1e5]
 wr = [0,1e-5]
 ini = [0,1]
-network_file = ['mup3.0e+00zero1.0e+01.npy','mucnstp3.0e+00zero1.0e+01.npy']#,'network.png']
-conf = ['ONE']#,'CORRUPTED','MASK']#,'MASK','CORRUPTED']
+network_file = ['mup3.0e+00zero1.0e+01.npy']#,'mucnstp3.0e+00zero1.0e+01.npy']#,'network.png']
+conf = ['CORRUPTED']#,'CORRUPTED','MASK']#,'MASK','CORRUPTED']
 maps = [
 #   {'type':'identity'}, 
 #    {'type':'heat', 'sigma': 1e-4},
