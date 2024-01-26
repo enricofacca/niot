@@ -6,6 +6,8 @@ import sys
 import os
 import itertools
 
+pv.start_xvfb()
+
 def labels(nref,fem,
            gamma,wd,wr,
            network_file,
@@ -154,18 +156,21 @@ def make_matrix(pl,
             #
             if network:
                 try:
-                    pl.add_mesh(vtu,
-                            scalars="network", 
-                            cmap="binary",
-                            opacity = [0,0.1],
-                            show_scalar_bar=False)
+                    net_data = vtu.get_array("network")
+                    net_support= net_data
+                    net_support[net_support>1e-16]=1
+
                 except:
                     mask_vtu = (directory 
                             + labels(*parameters_local)[0]
                             +'_network_mask.vtu')
                     mask_vtu = pv.read(mask_vtu)
-                    pl.add_mesh(mask_vtu,
-                            scalars="network", 
+                    net_data = mask_vtu.get_array("network")
+                    net_support= net_data
+                    net_support[net_support>1e-16]=1
+
+                pl.add_mesh(mask_vtu,
+                            scalars=net_support,
                             cmap="binary",
                             opacity = [0,0.1],
                             show_scalar_bar=False)
@@ -207,7 +212,7 @@ def make_matrix(pl,
                 clim = [1e-5, 1e-1]
                 clim = [1e-8, 1e-4]
             elif variable=='reconstruction':
-                clim = [0, 1]
+                clim = None#[0, 1]
             pl.add_mesh(vtu.copy(),
                     scalars=variable, 
                     #cmap="hot_r",
@@ -277,19 +282,19 @@ def make_matrix(pl,
 
 
 directory="./mask_large/"
-directory="./frog_coarse_thk/mask02/"
+directory="./frog_thk/mask02/"
 
-for x in [0]:
+for x in ['ONE','MASK','CORRUPTED']:
     print(f'{x=}')
     nref=[0]#,2,3]
     fems = ['DG0DG0']
     #gamma = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     #gamma = [0.8, 0.2, 0.5]#, 0.8]
     gamma = [0.5]
-    wd = [1e3]
+    wd = [1e5]
     wr = [0,1e-5]#,5e-4,1e-3,1e-2]#,1e-3,1e-2]#1e-3]#[1e-3]#, 1e-3, 1e-2]
     network_file = ['mup3.0e+00zero1.0e+01.npy']
-    ini = [0]
+    ini = [0,1]
     conf = ['MASK']
     maps = [
         #{'type':'identity'}, 
@@ -321,7 +326,7 @@ for x in [0]:
     interactive = False
     width=500
     height=500
-    #variable='reconstruction'
+    variable='reconstruction'
     variable='tdens'
     plot_mask=False#
     plot_mask=True
@@ -405,5 +410,6 @@ for x in [0]:
         print('saved in')
         print(pdf_filename)
         print(f'{x=}')
+#        pl.screenshot(pdf_filename)
         pl.save_graphic(pdf_filename)
         print(f'{x=}')
