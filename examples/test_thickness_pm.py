@@ -27,6 +27,7 @@ from firedrake import File
 import firedrake as fire
 #from memory_profiler import profile
 import firedrake.adjoint as fire_adj
+from firedrake import COMM_WORLD, Ensemble
 
 
 
@@ -53,8 +54,11 @@ solver_parameters={
 
 
 
-def image2tdens(np_file_thickness, img_skeleton,img_network, exponent_p=4.0, cond_zero=1e-1):
+def image2tdens(np_file_thickness, img_skeleton,img_network, exponent_p=3.0, cond_zero=1e-1):
     
+    my_ensemble = Ensemble(COMM_WORLD,4)
+
+
     np_thickness = np.load(np_file_thickness)
     np_skeleton = i2d.image2numpy(img_skeleton,normalize=True,invert=True)
     np_network = i2d.image2numpy(img_network,normalize=True,invert=True)
@@ -75,7 +79,7 @@ def image2tdens(np_file_thickness, img_skeleton,img_network, exponent_p=4.0, con
     
     pouiseuille = Function(space)
     pouiseuille.rename('poiseuille')
-    pouiseuille.interpolate(0e-10+cond_zero/h *(thickness_skeleton/2)**exponent_p)
+    pouiseuille.interpolate(cond_zero/h *(thickness_skeleton/2)**exponent_p)
 
     pouiseuille_constant = Function(space)
     pouiseuille_constant.rename('poiseuille_constant')
@@ -87,7 +91,6 @@ def image2tdens(np_file_thickness, img_skeleton,img_network, exponent_p=4.0, con
     exponent_m = (2 + exponent_p - d ) / (exponent_p - d)
     
         
-    images = []
     dim = mesh.geometric_dimension()-1
     B = conductivity2image.Barenblatt().B(exponent_m,dim)
     alpha = conductivity2image.Barenblatt().alpha(exponent_m,dim)
@@ -129,11 +132,17 @@ def image2tdens(np_file_thickness, img_skeleton,img_network, exponent_p=4.0, con
     print(f'Saving {filename}')      
     utilities.save2pvd([network, thickness, skeleton, thickness_skeleton, pouiseuille,pouiseuille_constant, image],filename)
 
+
+
+
     mu_pm = i2d.firedrake2numpy(image)
     np.save(f'{directory}/mup{exponent_p:.1e}zero{cond_zero:.1e}.npy',mu_pm)
 
     mu_constant_pm = i2d.firedrake2numpy(pouiseuille_constant)
     np.save(f'{directory}/mucnstp{exponent_p:.1e}zero{cond_zero:.1e}.npy', mu_constant_pm)
+
+    mu_pouiseuille = i2d.firedrake2numpy(pouiseuille)
+    np.save(f'{directory}/mupou{exponent_p:.1e}zero{cond_zero:.1e}.npy',mu_pouiseuille)
 
     
     filename = f'images_img0.pvd'

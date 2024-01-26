@@ -314,7 +314,7 @@ class PorousMediaMap(Conductivity2ImageMap):
             if min_cond < 0:
                 raise ValueError('Negative conductivity')
             _, max_cond = cond_vec.max()
-            dt0 = min(1e-5, 1e-0 /(max_cond))
+            dt0 = min(1e-6, 1e-6 /(max_cond))
             
         
         # find optimal expansion
@@ -473,7 +473,7 @@ class MyHeatMap(Conductivity2ImageMap):
         self.HeatSmoother = linalg.LinSolMatrix(self.HeatMatrix,
                                         self.fems.tdens_space, 
                                         solver_parameters={
-                        #                    'ksp_monitor': None,                
+                                            'ksp_monitor': None,                
                                             'ksp_type': 'cg',
                                             'ksp_rtol': 1e-10,
                                             'pc_type': 'hypre'},

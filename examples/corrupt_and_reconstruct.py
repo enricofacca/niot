@@ -32,6 +32,7 @@ from firedrake import File
 import firedrake as fire
 #from memory_profiler import profile
 
+from firedrake import COMM_WORLD
 
 from scipy.ndimage import zoom,gaussian_filter
 
@@ -262,18 +263,9 @@ def corrupt_and_reconstruct(np_source,
                              setup=False)
     
     if corrupted_as_initial_guess == 1:
-        max_img = np.max(np_corrupted)
-        #avg_img = assemble(corrupted*dx)/asseble(dx)
-        #lift = 1e-5 * max_img
-        #print(f'avg_img = {avg_img}')
+        # we smooth a bit the passed initial data
         heat_map = HeatMap(space=niot_solver.fems.tdens_space, scaling=1.0, sigma=1e-4)
         img0 = heat_map(corrupted)
-        #np_img0 = gaussian_filter(np_corrupted, sigma=5, radius=50)
-        #img0 = i2d.numpy2firedrake(mesh, np_img0, name="tdens0")
-        filename = os.path.join(directory, 'img0.pvd')
-        print(f"Saving solution to \n"+filename)
-        utilities.save2pvd([img0],filename)
-        #niot_solver.sol.sub(1).assign((corrupted+lift) / tdens2image_scaling )
         niot_solver.sol.sub(1).assign(img0 / tdens2image_scaling )
     else:
         niot_solver.sol.sub(1).assign(1.0 / tdens2image_scaling )

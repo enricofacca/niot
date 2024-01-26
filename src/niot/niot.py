@@ -437,7 +437,9 @@ class NiotSolver:
         ###########################
         # SETUP FEM DISCRETIZATION
         ###########################
+        
         self.mesh = btp.mesh
+        self.comm  = self.mesh.comm
         self.spaces = spaces
         self.cell2face = cell2face
         
@@ -530,7 +532,7 @@ class NiotSolver:
 
         log_verbose = self.ctrl_get('log_verbose')
         if log_verbose > 0:
-            self.log_viewer = PETSc.Viewer().createASCII(self.ctrl_get('log_file'), 'w', comm=COMM_WORLD)
+            self.log_viewer = PETSc.Viewer().createASCII(self.ctrl_get('log_file'), 'w', comm=self.comm)
     
         self.print_info(f'Number of cells: {self.mesh.num_cells()}',priority=2,where=['stdout','log'])
 
@@ -581,8 +583,7 @@ class NiotSolver:
         self.pot_h = Function(self.fems.pot_space) # used by pot_solver
         self.pot_h.rename('pot_h')
         self.rhs = (self.btp.source - self.btp.sink) * self.fems.pot_test * dx
-
-        self.pot_PDE = derivative(self.penalization(self.pot_h,self.tdens_h),self.pot_h)
+        self.pot_PDE = derivative(self.joule(self.pot_h,self.tdens_h),self.pot_h)
         
         # the minus sign is to get -\div(\tdens \grad \pot)-f = 0
         self.weighted_Laplacian = derivative(-self.pot_PDE,self.pot_h)
@@ -596,7 +597,7 @@ class NiotSolver:
 
         context ={} # left to pass information to the solver
         if self.btp.Dirichlet is None:
-            nullspace = VectorSpaceBasis(constant=True,comm=COMM_WORLD)
+            nullspace = VectorSpaceBasis(constant=True,comm=self.comm)
         
         #self.pot_solver = NonlPDEinearVariationalSolver(self.u_prob,
         self.pot_solver = LinearVariationalSolver(self.u_prob,
