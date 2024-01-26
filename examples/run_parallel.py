@@ -7,7 +7,7 @@ import numpy as np
 from niot import image2dat as i2d
 from scipy.ndimage import zoom
 from niot.conductivity2image import Barenblatt
-
+from firedrake import COMM_WORLD, Ensemble, RectangleMesh
 
 try:
     overwrite=(int(sys.argv[1])==1)
@@ -16,28 +16,29 @@ except:
     overwrite=False
     print('skipping')
     
-#examples = ['y_net_thk']
+examples = ['y_net']
 examples = ['frog_thk']#[f'y_net_hand_drawing/nref{i}' for i in [0]]#'frog_tongue'] 
 #examples.append('y_net_hand_drawing/nref3')
 #examples = ['y_net/']
 #examples.append('y_net_hand_drawing/nref2')
 #examples.append('y_net_hand_drawing/nref1')
-mask=['mask_large.png']#,'mask_large.png','mask_medium.png']
+#mask=['mask_large.png']#,'mask_large.png','mask_medium.png']
 mask=['mask02.png']
 
 nref=[0]
 fems = ['DG0DG0']
 gamma = [0.5]#, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-wd = [1e4,1e5,1e6]
+wd = [0]
 wr = [0,1e-5]
-ini = [0,1]
-network_file = ['mup3.0e+00zero1.0e+01.npy','mucnstp3.0e+00zero1.0e+01.npy']#,'network.png']
+ini = [0]
+network_file = ['network.png']#,'mucnstp3.0e+00zero1.0e+07.npy','mup3.0e+00zero1.0e+07.npy','mupou3.0e+00zero1.0e+07']#,'mucnstp3.0e+00zero1.0e+01.npy']#,'network.png']
+#network_file = ['network.png']
 conf = ['ONE']#,'CORRUPTED','MASK']#,'MASK','CORRUPTED']
 maps = [
-#   {'type':'identity'}, 
+   {'type':'identity'}, 
 #    {'type':'heat', 'sigma': 1e-4},
 #    {'type':'heat', 'sigma': 0.0005},
-    {'type':'pm', 'sigma': 0.0005, 'exponent_m': 2.0},
+#    {'type':'pm', 'sigma': 0.0005, 'exponent_m': 2.0},
 #    {'type':'pm', 'sigma': 1e-2, 'exponent_m': 2.0},
 #    {'type':'pm', 'sigma': 1e-1, 'exponent_m': 2.0},
 #     {'type':'pm', 'sigma': 5e-1, 'exponent_m': 2.0},
@@ -96,16 +97,7 @@ def load_input(example, nref, mask, network_file):
     
     
 
-def fun(example,nref,fem,mask,gamma,wd,wr,network_file,ini,conf,tdens2image,tdens2image_scaling, method):
-    # load input
-    np_source, np_sink, np_network, np_mask = load_input(example, nref, mask, network_file)
-    
-
-    # create directory
-    mask_name = os.path.splitext(mask)[0]
-    if not os.path.exists(f'{example}/{mask_name}/'):
-        os.makedirs(f'{example}/{mask_name}/')
-
+def fun(example,nref,fem,mask,gamma,wd,wr,network_file,ini,conf,tdens2image,tdens2image_scaling, method, comm=COMM_WORLD):
     labels_problem = labels(nref,fem,gamma,wd,wr,
                 network_file,   
                 ini,
@@ -113,19 +105,25 @@ def fun(example,nref,fem,mask,gamma,wd,wr,network_file,ini,conf,tdens2image,tden
                 tdens2image,
                 tdens2image_scaling,
                 method)
-    
     label = '_'.join(labels_problem)
-    directory=f'{example}/{mask_name}/'
-    filename = os.path.join(directory, f'{label}.pvd')
+    print(f'inside {label=}')
     
-    run = True
-    if os.path.exists(filename):
-        if not overwrite:
-            run = False
-    print(f'{filename} {os.path.exists(filename)=} {run=}')
-    #    run=False
-    if run:
-        ierr = corrupt_and_reconstruct(np_source,np_sink,np_network,np_mask, 
+    
+    # load input    
+    np_source, np_sink, np_network, np_mask = load_input(example, nref, mask, network_file)
+    
+
+    # create directory
+    mask_name = os.path.splitext(mask)[0]
+    if not os.path.exists(f'{example}/{mask_name}/'):
+        try:
+            os.makedirs(f'{example}/{mask_name}/')
+        except:
+            pass
+
+    
+    run = False
+    ierr = corrupt_and_reconstruct(np_source,np_sink,np_network,np_mask, 
                                        nref=nref,
                             fem=fem,
                             gamma=gamma,
@@ -137,11 +135,61 @@ def fun(example,nref,fem,mask,gamma,wd,wr,network_file,ini,conf,tdens2image,tden
                             method=method,
                             directory=f'{example}/{mask_name}/',
                             labels_problem=labels_problem,
-                            )
-    #print(ierr)
-    #print(example,fem,mask,gamma,wd,wr,ini,conf)
+                            comm=comm)   
     
-with mp.Pool(processes = mp.cpu_count()) as p:
-    p.starmap(fun, combinations)
+def is_present(combination):
+    labels_problem = labels(*combination[2:])
+    
+    example = combination[0]
+    mask = combination[3]
+    mask_name = os.path.splitext(mask)[0]
+    label = '_'.join(labels_problem)
+    directory=f'{example}/{mask_name}/'
+    filename = os.path.join(directory, f'{label}.pvd')
+    return os.path.exists(filename)
 
-print(len(combinations))
+for combination in combinations:
+    if is_present(combination) and not overwrite:
+        combinations.remove(combination)
+
+use_ensemble = False
+if use_ensemble:
+    n_processors = COMM_WORLD.size
+    try:
+        n_processors_x_ensemble = int(sys.argv[2])
+    except:
+        if len(combinations)>n_processors:
+            n_processors_x_ensemble = 1
+        else:
+            n_processors_x_ensemble = 4
+
+    my_ensemble = Ensemble(COMM_WORLD, n_processors_x_ensemble)
+    n_ensemble = n_processors//n_processors_x_ensemble
+    ensemble_rank = my_ensemble.ensemble_comm.rank
+    comm = my_ensemble.comm
+    print('ensemble_rank',ensemble_rank, 'comm rank',comm.rank, 'n_ensemble',n_ensemble)
+
+    n_problem_x_ensemble = len(combinations)//n_ensemble
+
+    combinations_per_ensemble = combinations[ensemble_rank*n_problem_x_ensemble:(ensemble_rank+1)*n_problem_x_ensemble]
+    if comm.rank == 0:
+        print(combinations)
+        print(combinations_per_ensemble)
+
+    for combination in combinations_per_ensemble:
+        label='_'.join(labels(*combination[2:]))
+        if comm.rank ==0:
+            print(f'{label=}')
+            print(*combination)
+        example = combination[0]
+        img_sources = f'{example}/source.png'
+        np_source = i2d.image2numpy(img_sources,normalize=True,invert=True)
+        mesh = i2d.build_mesh_from_numpy(np_source, mesh_type='cartesian', comm=my_ensemble.comm)
+        
+        print(comm.rank,'done')
+        ierr = fun(*combination, my_ensemble.comm)
+        if comm.rank ==0:
+            print(f'{label=} ierr={ierr}')
+else:
+    with mp.Pool(processes = mp.cpu_count()) as p:
+        p.starmap(fun, combinations)
