@@ -24,6 +24,8 @@ from pyadjoint.overloaded_function import overload_function
 import firedrake.adjoint as fire_adj
 #fire_adj.continue_annotation()
 
+from firedrake.petsc import PETSc
+
 from . import utilities
 from . import linear_algebra_utilities as linalg
 
@@ -314,7 +316,7 @@ class PorousMediaMap(Conductivity2ImageMap):
             if min_cond < 0:
                 raise ValueError('Negative conductivity')
             _, max_cond = cond_vec.max()
-            dt0 = min(1e-6, 1e-6 /(max_cond))
+            dt0 = min(1e-7, 1e-7 /(max_cond))
             
         
         # find optimal expansion
