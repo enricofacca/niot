@@ -54,11 +54,7 @@ solver_parameters={
 
 
 
-def image2tdens(np_file_thickness, img_skeleton,img_network, exponent_p=3.0, cond_zero=1e-1):
-    
-    my_ensemble = Ensemble(COMM_WORLD,4)
-
-
+def image2tdens(np_file_thickness, img_skeleton,img_network, exponent_p=3.0, cond_zero=1e-1, target=None):
     np_thickness = np.load(np_file_thickness)
     np_skeleton = i2d.image2numpy(img_skeleton,normalize=True,invert=True)
     np_network = i2d.image2numpy(img_network,normalize=True,invert=True)
