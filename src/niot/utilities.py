@@ -61,7 +61,8 @@ def save2pvd(functions,filename):
 
     # get file name without extension
     filename = filename[:-4]
-    if COMM_WORLD.size == 1:
+    comm = functions[0].function_space().mesh().comm
+    if comm.size == 1:
         firedrake_vtu_name = filename+'_0.vtu'
         new_vtu_name = filename+'.vtu'
         try:
@@ -70,7 +71,7 @@ def save2pvd(functions,filename):
             print(f"Error renaming vtu file{firedrake_vtu_name}")
             pass
     else:
-        if COMM_WORLD.rank == 0:
+        if comm.rank == 0:
             firedrake_vtu_name = filename+'_0.pvtu'
             new_vtu_name = filename+'.pvtu'
             try:
@@ -93,15 +94,15 @@ def save2pvd(functions,filename):
 
         
         # each processor has a vtu file
-        firedrake_vtu_name = f'{filename}_0_{COMM_WORLD.rank}.vtu'
-        new_vtu_name = f'{filename}_{COMM_WORLD.rank}.vtu'
+        firedrake_vtu_name = f'{filename}_0_{comm.rank}.vtu'
+        new_vtu_name = f'{filename}_{comm.rank}.vtu'
         try:
             os.rename(firedrake_vtu_name,new_vtu_name)
         except:
             print(f"Error renaming vtu file{firedrake_vtu_name}")
             pass
         
-        COMM_WORLD.Barrier()
+        comm.Barrier()
 
 
 
