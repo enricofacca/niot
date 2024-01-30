@@ -32,7 +32,8 @@ from firedrake import File
 import firedrake as fire
 #from memory_profiler import profile
 
-from firedrake import COMM_WORLD
+from firedrake import COMM_WORLD,COMM_SELF
+from firedrake.petsc import PETSc
 
 from scipy.ndimage import zoom,gaussian_filter
 
@@ -107,6 +108,82 @@ def labels(nref,fem,
     return label
 
 
+def load_input(example, nref, mask, network_file, comm=COMM_WORLD):
+    # btp inputs
+    img_sources = f'{example}/source.png'
+    img_sinks = f'{example}/sink.png'
+    
+    np_source = i2d.image2numpy(img_sources,normalize=True,invert=True,factor=2**nref)
+    np_sink = i2d.image2numpy(img_sinks,normalize=True,invert=True,factor=2**nref)
+    
+    # taking just the support of the sources and sinks
+    np_source[np.where(np_source>0.0)] = 1.0
+    np_sink[np.where(np_sink>0.0)] = 1.0
+
+    # balancing the mass
+    nx, ny = np_source.shape
+    hx, hy = 1.0/nx, 1.0/ny
+    mass_source = np.sum(np_source)*hx*hy
+    mass_sink = np.sum(np_sink)*hx*hy
+    if abs(mass_source-mass_sink)>1e-16:
+        np_sink *= mass_source/mass_sink 
+
+    
+    # load image or numpy array
+    try:
+        img_networks = f'{example}/{network_file}'
+        np_network = i2d.image2numpy(img_networks,normalize=True,invert=True,factor=2**nref)
+        PETSc.Sys.Print(f'using {img_networks}',comm=comm)
+    except: 
+        np_network = np.load(f'{example}/{network_file}')
+        if np_network.ndim == 2 and i2d.convention_2d_flipud:
+            np_network = np.flipud(np_network)
+        if nref != 0:
+            np_network = zoom(np_network, 2**nref, order=0, mode='nearest')
+    np_mask = i2d.image2numpy(f'{example}/{mask}',normalize=True,invert=True,factor=2**nref)  
+
+
+    return np_source, np_sink, np_network, np_mask
+
+
+def fun(example, mask, nref,fem,gamma,wd,wr,network_file,ini,conf,tdens2image,tdens2image_scaling, method, comm=COMM_WORLD, n_ensemble=1):
+    labels_problem = labels(nref,fem,gamma,wd,wr,
+                network_file,   
+                ini,
+                conf,
+                tdens2image,
+                tdens2image_scaling,
+                method)
+    
+    # load input    
+    np_source, np_sink, np_network, np_mask = load_input(example, nref, mask, network_file, comm=comm)
+    
+
+    # create directory
+    mask_name = os.path.splitext(mask)[0]
+    if not os.path.exists(f'{example}/{mask_name}/'):
+        try:
+            os.makedirs(f'{example}/{mask_name}/')
+        except:
+            pass
+    #print(f'{directory=}')
+    ierr = corrupt_and_reconstruct(np_source,np_sink,np_network,np_mask, 
+                                       nref=nref,
+                            fem=fem,
+                            gamma=gamma,
+                            wd=wd,wr=wr,
+                            corrupted_as_initial_guess=ini,
+                            confidence=conf,
+                            tdens2image=tdens2image,
+                            tdens2image_scaling = tdens2image_scaling,
+                            method=method,
+                            directory=f'{example}/{mask_name}/',
+                            labels_problem=labels_problem,
+                            comm=comm,
+                            n_ensemble=n_ensemble) 
+
+
+
 #@profile
 def corrupt_and_reconstruct(np_source,
                             np_sink,
@@ -124,10 +201,13 @@ def corrupt_and_reconstruct(np_source,
                             method='tdens_mirror_descent_explicit'  ,
                             directory='out/',
                             labels_problem=['unnamed'],
-                            comm=COMM_WORLD,
+                            comm=COMM_SELF,
+                            n_ensemble=0,
                             ):
     
-    save_h5 = True
+    save_h5 = False
+    label = '_'.join(labels_problem)
+    #PETSc.Sys.Print(f"{n_ensemble=} {label=}", comm=comm)
 
     # the corrupted image is created adding a mask
     # to the known network
@@ -151,8 +231,8 @@ def corrupt_and_reconstruct(np_source,
         mesh_type = 'simplicial'
     elif fem == 'DG0DG0':
         mesh_type = 'cartesian'
-
     mesh = i2d.build_mesh_from_numpy(np_corrupted, mesh_type=mesh_type, comm=comm)
+    #PETSc.Sys.Print(f"{n_ensemble=} MESH DONE", comm=comm)
 
 
     # save inputs    
@@ -174,23 +254,23 @@ def corrupt_and_reconstruct(np_source,
 
     
     # save common inputs
-    filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.pvd')
+    filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[5]}_network_mask.pvd')
     
     overwrite = True
     if (not os.path.exists(filename) or overwrite):
-        print(filename)
         try:
-            utilities.save2pvd([
-            corrupted,
+            PETSc.Sys.Print(f"{n_ensemble=} open {filename=}", comm=comm)   
+            out_file = File(filename,comm=comm,mode='w')
+            out_file.write(corrupted,
             corrupted_for_contour,
             network,
             network_for_contour,
             mask,
             mask_for_contour,
-            ],filename)
+            )
         except:
-            print(f'Error writing {filename}. Skipping')
-            pass
+            PETSc.Sys.Print(f'Error writing {filename}. Skipping',comm=comm)
+            pass   
     
     filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.h5')
     if ( (not os.path.exists(filename) and save_h5) or overwrite):
@@ -204,18 +284,17 @@ def corrupt_and_reconstruct(np_source,
             pass
 
         
-    filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[6]}.pvd')
-    if (not os.path.exists(filename) or overwrite):
-        print(filename)
-        try:
-            utilities.save2pvd([
-                confidence_w,
-                confidence_for_contour,
-                ],filename)
-        except:
-            pass
-
-    filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[6]}.h5')
+    filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[5]}.pvd')
+    # if (not os.path.exists(filename) or overwrite):
+    #     PETSc.Sys.Print(f"{n_ensemble=} open {filename=}", comm=comm)
+    #     out_file = File(filename,comm=comm,mode='w')
+    #     out_file.write(
+    #             confidence_w,
+    #             confidence_for_contour,
+    #             )#,filename)
+    #         #PETSc.Sys.Print(f"saved {filename} ",comm=comm)
+        
+    filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[5]}.h5')
     if save_h5 and (not os.path.exists(filename) or overwrite):
         try:
             my_rm(filename)
@@ -232,18 +311,20 @@ def corrupt_and_reconstruct(np_source,
     btp = ot.BranchedTransportProblem(source, sink, gamma=gamma)
 
     filename = os.path.join(directory, f'{labels_problem[0]}_btp.pvd')
-    if (not os.path.exists(filename) or overwrite):
-        print(filename)
-        source_for_contour = Function(CG1)
-        source_for_contour.interpolate(source).rename("source_countour","source")
-        sink_for_contour = Function(CG1)
-        sink_for_contour.interpolate(sink).rename("sink_countour","sink")
-        utilities.save2pvd([
-            source,
-            sink,
-            source_for_contour,
-            sink_for_contour,
-            ],filename)
+    # if (not os.path.exists(filename) or overwrite):
+    #     source_for_contour = Function(CG1)
+    #     source_for_contour.interpolate(source).rename("source_countour","source")
+    #     sink_for_contour = Function(CG1)
+    #     sink_for_contour.interpolate(sink).rename("sink_countour","sink")
+    #     PETSc.Sys.Print(f"{n_ensemble=} open {filename=}", comm=comm)
+    #     out_file = File(filename,comm=comm,mode='w')
+    #     out_file.write(
+    #         source,
+    #         sink,
+    #         source_for_contour,
+    #         sink_for_contour,
+    #         )#,filename)
+    #     PETSc.Sys.Print(f"saved {filename} ",comm=comm)
 
     filename = os.path.join(directory, f'{labels_problem[0]}_btp.h5')
     if save_h5 and (not os.path.exists(filename) or overwrite):
@@ -256,16 +337,20 @@ def corrupt_and_reconstruct(np_source,
         except:
             print(f'Error writing {filename}. Skipping')
             pass
-    
+
+    #PETSc.Sys.Print(f"niot_solver for {label=} ",comm = mesh.comm)
     niot_solver = NiotSolver(btp, corrupted,  confidence_w, 
                              spaces = fem,
                              cell2face = 'harmonic_mean',
                              setup=False)
     
+    
+    
     if corrupted_as_initial_guess == 1:
         # we smooth a bit the passed initial data
         heat_map = HeatMap(space=niot_solver.fems.tdens_space, scaling=1.0, sigma=1e-4)
-        img0 = heat_map(corrupted)
+        max_corrupted = corrupted.dat.data.max()
+        img0 = heat_map(corrupted+1e-6*max_corrupted)
         niot_solver.sol.sub(1).assign(img0 / tdens2image_scaling )
     else:
         niot_solver.sol.sub(1).assign(1.0 / tdens2image_scaling )
@@ -284,7 +369,7 @@ def corrupt_and_reconstruct(np_source,
     niot_solver.ctrl_set('max_restart', 3)
     niot_solver.ctrl_set('verbose', 0)  
     
-    label = '_'.join(labels_problem)
+    
     niot_solver.ctrl_set('log_verbose', 2) 
     log_file = os.path.join(directory, f'{label}.log')
     niot_solver.ctrl_set('log_file', log_file)
@@ -296,7 +381,6 @@ def corrupt_and_reconstruct(np_source,
     # time discretization
     if method is None:
         method = 'tdens_mirror_descent_explicit'
-    print(f"Using {method}")
     niot_solver.ctrl_set(['dmk','type'], method)
     if 'tdens' in method:
         if method == 'tdens_logarithmic_barrier':
@@ -309,67 +393,74 @@ def corrupt_and_reconstruct(np_source,
     deltat_control = {
         'type': 'adaptive2',
         'lower_bound': 1e-13,
-        'upper_bound': 1e-2,
+        'upper_bound': 5e-2,
         'expansion': 1.02,
         'contraction': 0.5,
     }
     niot_solver.ctrl_set(['dmk',method,'deltat'], deltat_control)
     
     
+    #PETSc.Sys.Print(f"niot_solver starting {label=}",comm=comm)
     
     
     # solve the potential PDE
     max_iter = niot_solver.ctrl_get('max_iter')
     niot_solver.ctrl_set('max_iter', 0)
+    #PETSc.Sys.Print(f"niot_solver starting {label=}",comm=comm)
     ierr = niot_solver.solve()
+    
     sol0 = cp(niot_solver.sol)
     pot0, tdens0 = sol0.subfunctions
     pot0.rename('pot_0','pot_0')
     tdens0.rename('tdens_0','tdens_0')
     niot_solver.ctrl_set('max_iter', max_iter)
+    
 
 
     # solve the problem
-    ierr = niot_solver.solve()
+    def callback(self):
+        PETSc.Sys.Print(f'{n_ensemble=} {self.iteration=}',comm=self.comm)
+    ierr = niot_solver.solve()#callbacks=[callback])
+    #PETSc.Sys.Print(f'{ierr=}. DONE {label=}', comm=niot_solver.comm)
     
     # save solution
     pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
     
-   
     reconstruction = Function(niot_solver.fems.tdens_space)
     reconstruction.interpolate(niot_solver.tdens2image(tdens) )
     reconstruction.rename('reconstruction','Reconstruction')
+    
 
     reconstruction_for_contour = Function(CG1)
     reconstruction_for_contour.interpolate(reconstruction).rename("reconstruction_countour","reconstruction_countour")
 
     tdens_for_contour = Function(CG1)
     tdens_for_contour.interpolate(tdens).rename("tdens_countour","tdens_countour")
-
+    
 
     filename = os.path.join(directory, f'{label}.pvd')
-    print(f"{ierr=} Saving solution to \n"+filename)
-    utilities.save2pvd([
-        pot, tdens, 
-        tdens0, pot0, 
-        reconstruction,
-        reconstruction_for_contour,
-        tdens_for_contour,
-        niot_solver.rhs_ode,
-                        ],filename)
+    #PETSc.Sys.Print(f"{ierr=}. {n_ensemble=} {comm.size} Open "+filename, comm=comm)
+    out_file = File(filename,comm=comm,mode='w')
+    #PETSc.Sys.Print(f"{ierr=}. {n_ensemble=} Saving solution to "+filename, comm=comm)
+    out_file.write(pot, tdens, 
+       tdens0, pot0, 
+       reconstruction,
+      reconstruction_for_contour,
+       tdens_for_contour)
+    PETSc.Sys.Print(f"{ierr=}. {n_ensemble=} Saved solution to "+filename, comm=comm)
     
-    filename = os.path.join(directory, f'{label}.h5')
-    if save_h5:
-        if niot_solver.mesh.comm.rank == 0:
-            my_rm(filename)
-            with CheckpointFile(filename, 'w') as afile:
-                afile.save_mesh(mesh)  # optional
-                afile.save_function(pot)
-                afile.save_function(tdens)
-                afile.save_function(reconstruction)
-            print(f"Saved solution to \n"+filename)
+    
+    # filename = os.path.join(directory, f'{label}.h5')
+    # if save_h5:
+    #     if niot_solver.mesh.comm.rank == 0:
+    #         my_rm(filename)
+    #         with CheckpointFile(filename, 'w') as afile:
+    #             afile.save_mesh(mesh)  # optional
+    #             afile.save_function(pot)
+    #             afile.save_function(tdens)
+    #             afile.save_function(reconstruction)
+    #         print(f"Saved solution to \n"+filename)
 
-    print(f'{ierr=}')
     return ierr
     
     
