@@ -32,6 +32,8 @@ from . import linear_algebra_utilities as linalg
 
 # function operations
 from firedrake import *
+from firedrake.__future__ import interpolate
+
 #from firedrake_adjoint import ReducedFunctional, Control
 #from pyadjoint.reduced_functional import  ReducedFunctional
 #from pyadjoint.control import Control
@@ -615,7 +617,7 @@ class NiotSolver:
 
         self.increment_h = Function(self.fems.tdens_space)
         self.increment_h.rename('increment_h')
-        
+        #PETSc.Sys.Print(f"niot_solver inside solve increment",comm=self.comm)
         self.IncrementMatrix = assemble(form).M.handle
         self.IncrementSolver = linalg.LinSolMatrix(self.IncrementMatrix,
                                                     self.fems.tdens_space, 
@@ -626,6 +628,8 @@ class NiotSolver:
                                         'ksp_atol': 1e-13,
                                         'pc_type': 'hypre'},
                                         options_prefix='increment_solver_')
+        #PETSc.Sys.Print(f"niot_solve setup done",comm=self.comm)
+
 
                
     def print_info(self, msg, priority=0, where=['stdout'], color='black'):
@@ -641,11 +645,11 @@ class NiotSolver:
                         stdout_msg = utilities.color(color, msg)
                     else:
                         stdout_msg = msg
-                    PETSc.Sys.Print('   '*(priority-1) + stdout_msg)
+                    PETSc.Sys.Print('   '*(priority-1) + stdout_msg, comm=self.comm)
 
             if mode == 'log':
                 log_verbose = self.ctrl_get('log_verbose')
-                if log_verbose >= priority:
+                if log_verbose >0 and log_verbose >= priority:
                     self.log_viewer.pushASCIISynchronized()
                     self.log_viewer.printfASCIISynchronized('   '*(priority-1)+msg+'\n')
 
@@ -687,7 +691,12 @@ class NiotSolver:
                 lagrangian_fun_reduced = fire_adj.ReducedFunctional(L, fire_adj.Control(gfvar))
                 self.gradient_discrepancy = lagrangian_fun_reduced.derivative()
                 with self.gradient_discrepancy.dat.vec_ro as gD:
-                    print(utilities.msg_bounds(gD,'grad discrepancy   '))
+                    msg = utilities.msg_bounds(gD,'grad discrepancy   ')
+                    self.print_info(
+                        msg=msg,
+                        priority=1, 
+                        where=['stdout','log']
+                        )
             else:
                 self.gradient_discrepancy = 0.0
 
@@ -696,7 +705,12 @@ class NiotSolver:
                 lagrangian_fun_reduced = fire_adj.ReducedFunctional(L, fire_adj.Control(gfvar))
                 self.gradient_penalization = lagrangian_fun_reduced.derivative()
                 with self.gradient_penalization.dat.vec_ro as gP:
-                    print(utilities.msg_bounds(gP,'grad penalty       '))
+                    msg = utilities.msg_bounds(gP,'grad penalty       ')
+                    self.print_info(
+                        msg=msg,
+                        priority=1, 
+                        where=['stdout','log']
+                        )
             else:
                 self.gradient_penalization = 0.0
 
@@ -705,7 +719,12 @@ class NiotSolver:
                 self.regularization_fun_reduced = fire_adj.ReducedFunctional(L, fire_adj.Control(gfvar))
                 self.gradient_regularization = self.regularization_fun_reduced.derivative()
                 with self.gradient_regularization.dat.vec_ro as gR:
-                    print(utilities.msg_bounds(gR,'grad regularization'))
+                    msg = utilities.msg_bounds(gR,'grad regularization')
+                    self.print_info(
+                        msg=msg,
+                        priority=1, 
+                        where=['stdout','log']
+                        )
             else:
                 self.gradient_regularization = 0.0
 
@@ -820,7 +839,7 @@ class NiotSolver:
     
             ierr = self.iterate(self.sol)
             # clean memory every 10 iterations
-            if self.iteration%10 == 0:
+            if self.iteration%5 == 0:
                 # Clear tape is required to avoid memory accumalation
                 # It works but I don't know why
                 # see also https://github.com/firedrakeproject/firedrake/issues/3133
@@ -1271,7 +1290,7 @@ class NiotSolver:
         #eps = eps0 * (0.99)**self.iteration
         with self.tdens_h.dat.vec_ro as tdens_vec:
             eps = max(1e-4, tdens_vec.min()[1])
-        print(f'{eps=}')
+        
 
         self.lagrangian_fun = assemble(
             wd * self.discrepancy(pot, tdens)
@@ -1452,6 +1471,7 @@ class NiotSolver:
 
             # compute gradient of energy w.r.t. gfvar
             # see tdens_mirror_descent for more details on the implementation
+            #PETSc.Sys.Print(f"niot_solver starting gradient",comm=self.comm)
             if self.gradient_computed:
                 # this is done to avoid recomputing the gradient 
                 self.rhs_ode = self.gradient_D_P
@@ -1470,12 +1490,12 @@ class NiotSolver:
                 self.rhs_ode = reduced_functional.derivative()
                 self.rhs_ode *= -1.0
             
-
+            #PETSc.Sys.Print(f"niot_solver starting update",comm=self.comm)
             update = Function(self.fems.tdens_space)
             with self.rhs_ode.dat.vec as rhs, gfvar.dat.vec_ro as gfvar_vec, update.dat.vec as d:
                 # scale by the inverse mass matrix
                 self.fems.inv_tdens_mass_matrix.solve(rhs, d)
-                
+                #PETSc.Sys.Print(f"niot_solver increment",comm=self.comm)
                 # estimate the step lenght
                 ctrl_step = self.ctrl_get(['dmk','gfvar_gradient_descent_semi_implicit','deltat'])
                 if self.restart == 0:
@@ -1485,6 +1505,7 @@ class NiotSolver:
                     self.deltat = step
                 else:
                     self.deltat /= ctrl_step['contraction']
+                #PETSc.Sys.Print(f"niot_solver deltat",comm=self.comm)
                 self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}', priority=2, color='blue')
                 
                 
@@ -1498,6 +1519,7 @@ class NiotSolver:
                 self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), priority=3, where=['stdout','log'], color='blue')
                 wr = self.ctrl_get('regularization_weight')
                 self.setup_increment_solver(shift=step*wr)
+                #PETSc.Sys.Print(f"niot_solver setup solve increment",comm=self.comm)
                 
                 test = TestFunction(self.fems.tdens_space)
                 gf0 = assemble(gfvar*test*dx)
@@ -1506,6 +1528,7 @@ class NiotSolver:
                     rhs.axpy(1.0, g0_vec)
                 
                 self.IncrementSolver.solve(rhs, gfvar_vec) 
+                #PETSc.Sys.Print(f"niot_solver solve increment",comm=self.comm)
                 self.print_info(
                 msg=self.IncrementSolver.info(),
                 priority=2,
@@ -1516,10 +1539,14 @@ class NiotSolver:
             # convert gfvar to tdens
             utilities.threshold_from_below(gfvar, 0)
             self.tdens_h.interpolate(self.tdens_of_gfvar(gfvar))
+            #PETSc.Sys.Print(f"niot_solver tdens",comm=self.comm)
             sol.sub(1).assign(self.tdens_h)
             with self.tdens_h.dat.vec_ro as tdens_vec:
                 self.print_info(utilities.msg_bounds(tdens_vec,'tdens'), priority=2, color='blue')   
+            
 
+
+            #PETSc.Sys.Print(f"niot_solver solve pot",comm=self.comm)
             # compute pot associated to new tdens
             tol = self.ctrl_get('constraint_tol')
             ierr = self.solve_pot_PDE(sol, tol=tol)
