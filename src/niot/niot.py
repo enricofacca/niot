@@ -254,7 +254,7 @@ def set_step(increment,
             step = max(min(1.0 / d_max, upper_bound), lower_bound)
     elif (type == 'adaptive2'):
         order_down = -0.2
-        order_up = 1
+        order_up = 0.5
         r = increment / state
         r_np = r.array
         if np.min(r_np) < 0:
@@ -353,7 +353,7 @@ class NiotSolver:
         },
         'pot_solver':{
             'ksp': {
-                'type' : 'cg',
+                'type' : 'minres',
                 'max_iter' : 1000,
                 },
             'pc': {
@@ -518,9 +518,9 @@ class NiotSolver:
         petsc_controls ={
             # krylov solver controls
             'ksp_type': 'cg',
-            'ksp_atol': 1e-12,
-            'ksp_rtol': self.ctrl_get('constraint_tol'),
-            'ksp_divtol': 1e6,
+            'ksp_atol': self.ctrl_get('constraint_tol'),
+            'ksp_rtol': 1e-14,
+            'ksp_divtol': 1e10,
             'ksp_max_it' : 1000,
             'ksp_initial_guess_nonzero': True, 
             'ksp_norm_type': 'unpreconditioned',
@@ -589,17 +589,23 @@ class NiotSolver:
         
         # the minus sign is to get -\div(\tdens \grad \pot)-f = 0
         self.weighted_Laplacian = derivative(-self.pot_PDE,self.pot_h)
-        
 
+        min_tdens = self.ctrl_get('min_tdens')
+        self.pot_PDE_relaxed = derivative(self.joule(self.pot_h,self.tdens_h+10*min_tdens),self.pot_h)
+        self.weighted_Laplacian_relaxed = derivative(-self.pot_PDE_relaxed,self.pot_h)
+
+        
         #test = TestFunction(self.fems.pot_space)
+        
         #pot_PDE = self.forcing * test * dx + tdens * inner(grad(pot_unknown), grad(test)) * dx 
         # Define the Nonlinear variational problem (it is linear in this case)
         #self.u_prob = NonlinearVariationalProblem(self.pot_PDE, self.pot_h)#, bcs=pot_bcs)
-        self.u_prob = LinearVariationalProblem(self.weighted_Laplacian, self.rhs, self.pot_h)#, bcs=pot_bcs)
+        self.u_prob = LinearVariationalProblem(self.weighted_Laplacian, self.rhs, self.pot_h, aP=self.weighted_Laplacian_relaxed)#, bcs=pot_bcs)
 
         context ={} # left to pass information to the solver
         if self.btp.Dirichlet is None:
             nullspace = VectorSpaceBasis(constant=True,comm=self.comm)
+            print('neumann')
         
         #self.pot_solver = NonlPDEinearVariationalSolver(self.u_prob,
         self.pot_solver = LinearVariationalSolver(self.u_prob,
@@ -995,16 +1001,30 @@ class NiotSolver:
         pot, tdens = sol.subfunctions
         self.pot_h.assign(pot)
         self.tdens_h.assign(tdens)
+        with self.tdens_h.dat.vec as td:
+            self.print_info(
+                msg=utilities.msg_bounds(td,'tdens'),
+                priority=3, 
+                where=['stdout','log'],
+                color='black')
+        with self.pot_h.dat.vec as p:
+            self.print_info(
+                msg=utilities.msg_bounds(p,'pot0'),
+                priority=3, 
+                where=['stdout','log'],
+                color='black')
 
+        
         # solve the problem
         try:
             # explicitly set the tolerance
-            if tol is not None:
-                self.pot_solver.parameters['ksp_rtol'] = tol
+            #if tol is not None:
+            #    self.pot_solver.parameters['ksp_rtol'] = tol
             self.pot_solver.solve()
         except:
             pass
         ierr = self.pot_solver.snes.getConvergedReason()
+        #self.pot_solver.snes.ksp.view()
         
         msg =  linalg.info_ksp(self.pot_solver.snes.ksp)
         self.print_info(
@@ -1504,9 +1524,9 @@ class NiotSolver:
                                 **ctrl_step)
                     self.deltat = step
                 else:
-                    self.deltat /= ctrl_step['contraction']
+                    self.deltat *= ctrl_step['contraction']
                 #PETSc.Sys.Print(f"niot_solver deltat",comm=self.comm)
-                self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={step:.2e}', priority=2, color='blue')
+                self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={self.deltat:.2e}', priority=2, color='blue')
                 
                 
                 # 

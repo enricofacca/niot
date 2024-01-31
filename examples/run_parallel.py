@@ -15,28 +15,28 @@ except:
     overwrite=False
     #print('skipping')
     
-examples = ['y_net_thk']
-#examples = ['frog_thk']#[f'y_net_hand_drawing/nref{i}' for i in [0]]#'frog_tongue'] 
+#examples = ['y_net_thk']
+examples = ['frog_thk']
 #examples.append('y_net_hand_drawing/nref3')
 #examples = ['y_net/']
 #examples.append('y_net_hand_drawing/nref2')
 #examples.append('y_net_hand_drawing/nref1')
-mask=['mask_large.png']#,'mask_large.png','mask_medium.png']
-#mask=['mask02.png']
+#mask=['mask_large.png']#,'mask_large.png','mask_medium.png']
+mask=['mask02.png']
 
 nref=[0]
 fems = ['DG0DG0']
-gamma = [0.5,0.3]#, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-wd = [1e-2,1e-1,1e0]
+gamma = [0.5]#, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+wd = [0]
 wr = [0]
-ini = [0,1e4,1e5]
-network_file = ['network.png','thickness.npy']#,'mucnstp3.0e+00zero1.0e+07.npy',
+ini = [0,1e2,1e3,1e4,1e5]
+network_file = ['mup3.0e+00zero5.0e+07.npy']
 #network_file = ['mup3.0e+00zero1.0e+07.npy']#,'mupou3.0e+00zero1.0e+07']#,'mucnstp3.0e+00zero1.0e+01.npy']#,'network.png']
 #network_file = ['network.png']
 conf = ['MASK']#,'CORRUPTED','MASK']#,'MASK','CORRUPTED']
 maps = [
    {'type':'identity'}, 
-    {'type':'heat', 'sigma': 1e-4},
+#    {'type':'heat', 'sigma': 1e-4},
 #    {'type':'heat', 'sigma': 0.0005},
     #{'type':'pm', 'sigma': 0.0005, 'exponent_m': 2.0},
 #    {'type':'pm', 'sigma': 1e-2, 'exponent_m': 2.0},
@@ -150,7 +150,7 @@ for combination in combinations:
     if is_present(combination) and not overwrite:
         combinations.remove(combination)
 
-use_ensemble = True#
+use_ensemble = False#
 use_mpi = False
 if use_mpi:
     fun(*combination, comm=COMM_WORLD)
@@ -197,6 +197,7 @@ if use_ensemble:
         COMM_WORLD.barrier()
 
     for i, combination in enumerate(combinations_per_ensemble):
+        PETSc.Sys.Print(f'ENSEMBLE {my_ensemble.ensemble_comm.rank} will do {i+1} over {len(combinations_per_ensemble)}: job={label}',comm=comm)
         fun(*combination, comm=my_ensemble.comm,n_ensemble=ensemble_rank)
         label = '_'.join(labels(*combination[2:]))
         PETSc.Sys.Print(f'ENSEMBLE {my_ensemble.ensemble_comm.rank} completed {i+1} over {len(combinations_per_ensemble)}: job={label}',comm=comm)
