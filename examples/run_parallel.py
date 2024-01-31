@@ -29,7 +29,7 @@ fems = ['DG0DG0']
 gamma = [0.5]#, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 wd = [0]
 wr = [0]
-ini = [0,1e2,1e3,1e4,1e5]
+ini = [1e5]#,1e2,1e3,1e4,1e5]
 network_file = ['mup3.0e+00zero5.0e+07.npy']
 #network_file = ['mup3.0e+00zero1.0e+07.npy']#,'mupou3.0e+00zero1.0e+07']#,'mucnstp3.0e+00zero1.0e+01.npy']#,'network.png']
 #network_file = ['network.png']
@@ -151,9 +151,11 @@ for combination in combinations:
         combinations.remove(combination)
 
 use_ensemble = False#
-use_mpi = False
+use_mpi = True
 if use_mpi:
-    fun(*combination, comm=COMM_WORLD)
+    if len(combinations)>1:
+        raise ValueError('use_mpi=True is not compatible with len(combinations)>1')
+    fun(*combinations[0], comm=COMM_WORLD)
 
 
 
