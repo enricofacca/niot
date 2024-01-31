@@ -518,12 +518,13 @@ class NiotSolver:
         petsc_controls ={
             # krylov solver controls
             'ksp_type': 'cg',
-            'ksp_atol': self.ctrl_get('constraint_tol'),
-            'ksp_rtol': 1e-14,
+            'ksp_atol': 1e-16,
+            'ksp_rtol': self.ctrl_get('constraint_tol'),
             'ksp_divtol': 1e10,
             'ksp_max_it' : 1000,
             'ksp_initial_guess_nonzero': True, 
             'ksp_norm_type': 'unpreconditioned',
+            'ksp_monitor_true_residual' : None, 
             'pc_type': 'hypre'
         }
         if self.ctrl_get('verbose') >= 3:
@@ -592,7 +593,7 @@ class NiotSolver:
 
         min_tdens = self.ctrl_get('min_tdens')
         self.pot_PDE_relaxed = derivative(self.joule(self.pot_h,self.tdens_h+10*min_tdens),self.pot_h)
-        self.weighted_Laplacian_relaxed = derivative(-self.pot_PDE_relaxed,self.pot_h)
+        self.weighted_Laplacian_relaxed = self.weighted_Laplacian + 10*min_tdens * self.fems.Laplacian_form(self.fems.pot_space)
 
         
         #test = TestFunction(self.fems.pot_space)
@@ -605,7 +606,7 @@ class NiotSolver:
         context ={} # left to pass information to the solver
         if self.btp.Dirichlet is None:
             nullspace = VectorSpaceBasis(constant=True,comm=self.comm)
-            print('neumann')
+            
         
         #self.pot_solver = NonlPDEinearVariationalSolver(self.u_prob,
         self.pot_solver = LinearVariationalSolver(self.u_prob,
