@@ -80,7 +80,7 @@ def labels(nref,fem,
         f'wd{wd:.1e}',
         f'wr{wr:.1e}',
         f'net{label_network}',
-        f'ini{corrupted_as_initial_guess:d}',
+        f'ini{corrupted_as_initial_guess:.1e}',
         f'conf{confidence}']
     if tdens2image['type'] == 'identity':
         label.append(f'mu2iidentity')
@@ -346,14 +346,16 @@ def corrupt_and_reconstruct(np_source,
     
     
     
-    if corrupted_as_initial_guess == 1:
+    if abs(corrupted_as_initial_guess) < 1e-16:
+        niot_solver.sol.sub(1).assign(1.0 / tdens2image_scaling )
+    else:
         # we smooth a bit the passed initial data
-        heat_map = HeatMap(space=niot_solver.fems.tdens_space, scaling=1.0, sigma=1e-4)
+        heat_map = HeatMap(space=niot_solver.fems.tdens_space, scaling=1.0, sigma = 1.0/corrupted_as_initial_guess)
         max_corrupted = corrupted.dat.data.max()
         img0 = heat_map(corrupted+1e-6*max_corrupted)
         niot_solver.sol.sub(1).assign(img0 / tdens2image_scaling )
-    else:
-        niot_solver.sol.sub(1).assign(1.0 / tdens2image_scaling )
+    
+        
     
 
     # inpainting
@@ -365,7 +367,7 @@ def corrupt_and_reconstruct(np_source,
     # optimization
     niot_solver.ctrl_set('optimization_tol', 5e-3)
     niot_solver.ctrl_set('constraint_tol', 1e-8)
-    niot_solver.ctrl_set('max_iter', 5000)
+    niot_solver.ctrl_set('max_iter', 10)
     niot_solver.ctrl_set('max_restart', 3)
     niot_solver.ctrl_set('verbose', 0)  
     
