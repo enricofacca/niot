@@ -256,7 +256,7 @@ def corrupt_and_reconstruct(np_source,
     # save common inputs
     filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[5]}_network_mask.pvd')
     
-    overwrite = True
+    overwrite = False
     if (not os.path.exists(filename) or overwrite):
         try:
             PETSc.Sys.Print(f"{n_ensemble=} open {filename=}", comm=comm)   
@@ -273,7 +273,7 @@ def corrupt_and_reconstruct(np_source,
             pass   
     
     filename = os.path.join(directory, f'{labels_problem[0]}_network_mask.h5')
-    if ( (not os.path.exists(filename) and save_h5) or overwrite):
+    if save_h5 and ( not os.path.exists(filename) or overwrite):
         try:
             with CheckpointFile(filename, 'w') as afile:
                 afile.save_function(mask)
@@ -352,7 +352,8 @@ def corrupt_and_reconstruct(np_source,
         # we smooth a bit the passed initial data
         heat_map = HeatMap(space=niot_solver.fems.tdens_space, scaling=1.0, sigma = 1.0/corrupted_as_initial_guess)
         max_corrupted = corrupted.dat.data.max()
-        img0 = heat_map(corrupted+1e-6*max_corrupted)
+        print(f'{heat_map.sigma=}')
+        img0 = heat_map(corrupted+1e-5*max_corrupted)
         niot_solver.sol.sub(1).assign(img0 / tdens2image_scaling )
     
         
@@ -366,9 +367,9 @@ def corrupt_and_reconstruct(np_source,
 
     # optimization
     niot_solver.ctrl_set('optimization_tol', 5e-3)
-    niot_solver.ctrl_set('constraint_tol', 1e-8)
-    niot_solver.ctrl_set('max_iter', 10)
-    niot_solver.ctrl_set('max_restart', 3)
+    niot_solver.ctrl_set('constraint_tol', 1e-5)
+    niot_solver.ctrl_set('max_iter', 5000)
+    niot_solver.ctrl_set('max_restart', 4)
     niot_solver.ctrl_set('verbose', 0)  
     
     
@@ -395,7 +396,7 @@ def corrupt_and_reconstruct(np_source,
     deltat_control = {
         'type': 'adaptive2',
         'lower_bound': 1e-13,
-        'upper_bound': 5e-2,
+        'upper_bound': 1e-2,
         'expansion': 1.02,
         'contraction': 0.5,
     }
