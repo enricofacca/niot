@@ -253,8 +253,8 @@ def set_step(increment,
         else:
             step = max(min(1.0 / d_max, upper_bound), lower_bound)
     elif (type == 'adaptive2'):
-        order_down = -0.2
-        order_up = 0.5
+        order_down = -1
+        order_up = 1
         r = increment / state
         r_np = r.array
         if np.min(r_np) < 0:
@@ -276,7 +276,7 @@ def set_step(increment,
     elif (type == 'expansive'):
         step = deltat * expansion
         step = min(step, upper_bound)
-        step = max(lower_bound)
+        step = max(step, lower_bound)
     elif (type == 'fixed'):
         step = deltat
     else:
@@ -524,7 +524,7 @@ class NiotSolver:
             'ksp_max_it' : 1000,
             'ksp_initial_guess_nonzero': True, 
             'ksp_norm_type': 'unpreconditioned',
-            'ksp_monitor_true_residual' : None, 
+            #'ksp_monitor_true_residual' : None, 
             'pc_type': 'hypre'
         }
         if self.ctrl_get('verbose') >= 3:
@@ -704,6 +704,7 @@ class NiotSolver:
                         priority=1, 
                         where=['stdout','log']
                         )
+                self.gradient_discrepancy.rename('gradient_discrepancy')
             else:
                 self.gradient_discrepancy = 0.0
 
@@ -718,6 +719,7 @@ class NiotSolver:
                         priority=1, 
                         where=['stdout','log']
                         )
+                self.gradient_penalization.rename('gradient_penalization')
             else:
                 self.gradient_penalization = 0.0
 
@@ -916,8 +918,8 @@ class NiotSolver:
         #else:
         #initial_guess = self.tdens2image_map.image_h
         
-        image_h = self.tdens2image_map(tdens,initial_guess=initial_guess)
-        dis = self.confidence * 0.5 * ( self.img_observed - image_h)**2 * dx
+        image_h = self.tdens2image_map(tdens)
+        dis = self.confidence * 0.5 * (image_h - self.img_observed)**2 * dx
         return dis
     
     def joule(self, pot, tdens):

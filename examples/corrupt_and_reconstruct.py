@@ -256,7 +256,7 @@ def corrupt_and_reconstruct(np_source,
     # save common inputs
     filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[5]}_network_mask.pvd')
     
-    overwrite = False
+    overwrite = True
     if (not os.path.exists(filename) or overwrite):
         try:
             PETSc.Sys.Print(f"{n_ensemble=} open {filename=}", comm=comm)   
@@ -284,15 +284,18 @@ def corrupt_and_reconstruct(np_source,
             pass
 
         
-    filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[5]}.pvd')
-    # if (not os.path.exists(filename) or overwrite):
-    #     PETSc.Sys.Print(f"{n_ensemble=} open {filename=}", comm=comm)
-    #     out_file = File(filename,comm=comm,mode='w')
-    #     out_file.write(
-    #             confidence_w,
-    #             confidence_for_contour,
-    #             )#,filename)
-    #         #PETSc.Sys.Print(f"saved {filename} ",comm=comm)
+    filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[7]}.pvd')
+    if (not os.path.exists(filename) or overwrite):
+        try:
+            PETSc.Sys.Print(f"{n_ensemble=} open {filename=}", comm=comm)
+            out_file = File(filename,comm=comm,mode='w')
+            out_file.write(
+                confidence_w,
+                confidence_for_contour,
+                )#,filename)
+        except:
+            PETSc.Sys.Print(f'Error writing {filename}. Skipping',comm=comm)
+            pass
         
     filename = os.path.join(directory, f'{labels_problem[0]}_{labels_problem[5]}.h5')
     if save_h5 and (not os.path.exists(filename) or overwrite):
@@ -351,8 +354,8 @@ def corrupt_and_reconstruct(np_source,
     else:
         # we smooth a bit the passed initial data
         heat_map = HeatMap(space=niot_solver.fems.tdens_space, scaling=1.0, sigma = 1.0/corrupted_as_initial_guess)
-        max_corrupted = corrupted.dat.data.max()
-        print(f'{heat_map.sigma=}')
+        with corrupted.dat.vec_ro as v:
+            max_corrupted = max(v.max()[1],niot_solver.ctrl_get("min_tdens"))
         img0 = heat_map(corrupted+1e-5*max_corrupted)
         niot_solver.sol.sub(1).assign(img0 / tdens2image_scaling )
     
@@ -370,7 +373,7 @@ def corrupt_and_reconstruct(np_source,
     niot_solver.ctrl_set('constraint_tol', 1e-5)
     niot_solver.ctrl_set('max_iter', 5000)
     niot_solver.ctrl_set('max_restart', 4)
-    niot_solver.ctrl_set('verbose', 0)  
+    niot_solver.ctrl_set('verbose', 2)  
     
     
     niot_solver.ctrl_set('log_verbose', 2) 
@@ -397,7 +400,7 @@ def corrupt_and_reconstruct(np_source,
         'type': 'adaptive2',
         'lower_bound': 1e-13,
         'upper_bound': 1e-2,
-        'expansion': 1.02,
+        'expansion': 1.1,
         'contraction': 0.5,
     }
     niot_solver.ctrl_set(['dmk',method,'deltat'], deltat_control)
@@ -411,6 +414,16 @@ def corrupt_and_reconstruct(np_source,
     niot_solver.ctrl_set('max_iter', 0)
     #PETSc.Sys.Print(f"niot_solver starting {label=}",comm=comm)
     ierr = niot_solver.solve()
+
+    filename = os.path.join(directory, f'{label}_discrepancy.pvd')
+    if (not os.path.exists(filename) or overwrite):
+        try:
+            PETSc.Sys.Print(f"{n_ensemble=} open {filename=}", comm=comm)
+            out_file = File(filename,comm=comm,mode='w')
+            out_file.write(niot_solver.confidence,niot_solver.img_observed)
+        except:
+            PETSc.Sys.Print(f'Error writing {filename}. Skipping',comm=comm)
+            pass
     
     sol0 = cp(niot_solver.sol)
     pot0, tdens0 = sol0.subfunctions
@@ -421,11 +434,27 @@ def corrupt_and_reconstruct(np_source,
 
 
     # solve the problem
-    def callback(self):
-        PETSc.Sys.Print(f'{n_ensemble=} {self.iteration=}',comm=self.comm)
+    def callback(solver):
+        if solver.iteration % 100 != 0:
+            return
+            
+        PETSc.Sys.Print(f'{n_ensemble=} {solver.iteration=}',comm=solver.comm)
+        filename = os.path.join(directory,'runs',f'{label}_{solver.iteration:03d}.pvd')
+        #PETSc.Sys.Print(f"{ierr=}. {n_ensemble=} {comm.size} Open "+filename, comm=comm)
+        out_file = File(filename,comm=comm,mode='w')
+        pot, tdens, vel = solver.get_otp_solution(solver.sol)
+        out_file.write(pot, tdens, 
+                       solver.gradient_discrepancy, 
+                       solver.gradient_penalization
+        )
+        PETSc.Sys.Print(f"{ierr=}. {n_ensemble=} Saved solution to "+filename, comm=comm)
+    
     ierr = niot_solver.solve()#callbacks=[callback])
     #PETSc.Sys.Print(f'{ierr=}. DONE {label=}', comm=niot_solver.comm)
     
+   
+
+
     # save solution
     pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
     
