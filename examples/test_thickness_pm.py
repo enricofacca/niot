@@ -119,14 +119,15 @@ def image2tdens(np_file_thickness, img_skeleton,img_network, exponent_p=3.0, con
         nsteps=20,
         solver_parameters=solver_parameters)
     image = pm_map(pouiseuille)
-    name = f'img_pm'
+    name = f'pm_map'
     image.rename(name)
 
     directory = os.path.dirname(np_file_thickness)
 
     filename = f'{directory}/pm_thickness.pvd'
-    print(f'Saving {filename}')      
-    utilities.save2pvd([network, thickness, skeleton, thickness_skeleton, pouiseuille,pouiseuille_constant, image],filename)
+    print(f'Saving {filename}') 
+    out_file=File(filename)     
+    out_file.write(network, thickness, skeleton, thickness_skeleton, pouiseuille,pouiseuille_constant, image)
 
 
 
@@ -155,11 +156,11 @@ def image2tdens(np_file_thickness, img_skeleton,img_network, exponent_p=3.0, con
 
 if (__name__ == '__main__'):    
     parser = argparse.ArgumentParser(description='Corrupt networks with masks and reconstruct via branched transport')
-    parser.add_argument('--thk', type=str, help="path for the network image")
+    parser.add_argument('--thk', type=str, help="numpy thickness file")
     parser.add_argument('--s', type=str, help="skeleton image")
     parser.add_argument('--n', type=str, help="network image")
-    parser.add_argument('--p', type=float, default=1.0, help="sigma for smoothing")
-    parser.add_argument('--c', type=float, default='arithmetic_mean', help="cell2face method")
+    parser.add_argument('--p', type=float, default=3, help="power")
+    parser.add_argument('--c', type=float, default=1.0, help="condzero")
     args = parser.parse_args()
 
     image2tdens(args.thk, args.s, args.n, args.p, args.c)

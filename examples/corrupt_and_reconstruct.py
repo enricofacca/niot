@@ -352,6 +352,7 @@ def corrupt_and_reconstruct(np_source,
     if abs(corrupted_as_initial_guess) < 1e-16:
         niot_solver.sol.sub(1).assign(1.0 / tdens2image_scaling )
     else:
+        #np_confidence = gaussian_filter(np_corrupted, sigma=2)
         # we smooth a bit the passed initial data
         heat_map = HeatMap(space=niot_solver.fems.tdens_space, scaling=1.0, sigma = 1.0/corrupted_as_initial_guess)
         with corrupted.dat.vec_ro as v:
@@ -449,6 +450,21 @@ def corrupt_and_reconstruct(np_source,
         )
         PETSc.Sys.Print(f"{ierr=}. {n_ensemble=} Saved solution to "+filename, comm=comm)
     
+    def range_on_sink(solver):
+        _, tdens = solver.sol.subfunctions
+        solver.tdens_h.interpolate(tdens*conditional(solver.btp.sink>0.0,1.0,1e30),annotate=False)
+        min_on_sink = solver.tdens_h.dat.data_ro.min()
+
+        solver.tdens_h.interpolate(tdens*conditional(solver.btp.sink>0.0,1.0,0),annotate=False)
+        max_on_sink = solver.tdens_h.dat.data_ro.max()
+
+        solver.print_info(f'{solver.iteration=}. {min_on_sink:.1e}<=TDENS ON SINK<={max_on_sink:.1e}',
+                        priority=2,
+                        where=['stdout','log'],
+                        color='yellow')
+        
+
+
     ierr = niot_solver.solve()#callbacks=[callback])
     #PETSc.Sys.Print(f'{ierr=}. DONE {label=}', comm=niot_solver.comm)
     

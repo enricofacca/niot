@@ -218,7 +218,7 @@ class PorousMediaMap(Conductivity2ImageMap):
         
         # define PDE 
         test = TestFunction(space)
-        permeability = self.exponent_m * (self.image_h ) ** (self.exponent_m - 1) + min_image
+        permeability = self.exponent_m * (self.image_h ) ** (self.exponent_m - 1) #+ min_image
         if space.ufl_element().degree() > 0:
             pm_Laplacian_PDE = permeability * inner(grad(self.image_h) ,grad(test)) * dx  
         else:
@@ -316,7 +316,7 @@ class PorousMediaMap(Conductivity2ImageMap):
             if min_cond < 0:
                 raise ValueError('Negative conductivity')
             _, max_cond = cond_vec.max()
-            dt0 = min(1e-7, 1e-7 /(max_cond))
+            dt0 = min(1e-6, 1e-6 /(max_cond))
             
         
         # find optimal expansion

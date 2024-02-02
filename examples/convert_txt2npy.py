@@ -2,6 +2,7 @@ import numpy as np
 import sys
 from niot import image2dat as i2d
 from niot.utilities import save2pvd
+from firedrake import File
 
 # read file path
 file_path = sys.argv[1]
@@ -15,6 +16,7 @@ thickness = np.nan_to_num(thickness)
 print(thickness.shape)
 pixel_h = 1.0 / thickness.shape[1]
 thickness *= pixel_h
+thickness = np.flip(thickness, axis=0)
 
 # save as npy file
 np.save('thickness.npy', thickness)
@@ -39,13 +41,13 @@ thickness_skeleton_fire = i2d.numpy2firedrake(mesh, thickness_skeleton, name="th
 pouseille_fire = i2d.numpy2firedrake(mesh, pouseille, name="pouseille")
 
 # save inputs
-save2pvd([
+filename = 'thickness.pvd'
+out_file = File(filename,mode='w')
+out_file.write(
     thickness_fire,
     np_skeleton_fire,
     thickness_skeleton_fire,
     pouseille_fire
-    ], 
-    'thickness.pvd'
     )
 
 

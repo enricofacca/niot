@@ -253,8 +253,8 @@ def set_step(increment,
         else:
             step = max(min(1.0 / d_max, upper_bound), lower_bound)
     elif (type == 'adaptive2'):
-        order_down = -1
-        order_up = 1
+        order_down = -0.5
+        order_up = 0.5
         r = increment / state
         r_np = r.array
         if np.min(r_np) < 0:
@@ -1529,7 +1529,7 @@ class NiotSolver:
                 else:
                     self.deltat *= ctrl_step['contraction']
                 #PETSc.Sys.Print(f"niot_solver deltat",comm=self.comm)
-                self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={self.deltat:.2e}', priority=2, color='blue')
+                self.print_info(utilities.msg_bounds(d,'gfvar increment')+f' dt={self.deltat:.2e}', priority=2, where=['stdout','log'], color='blue')
                 
                 
                 # 
@@ -1537,7 +1537,7 @@ class NiotSolver:
                 # ~ semi_implicit 
                 # M(gf-gf_0)/step + grad P+D(gf_0) + wr (-L) gf = 0
                 #
-                # (M+step*wr*Laplacian) gf = M gf_0 + step*rhs
+                # (M+step*wr*L) gf = M gf_0 + step*rhs
                 #
                 self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), priority=3, where=['stdout','log'], color='blue')
                 wr = self.ctrl_get('regularization_weight')
@@ -1557,7 +1557,7 @@ class NiotSolver:
                 priority=2,
                 where=['stdout','log'])
 
-                self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), priority=2, color='blue')
+                self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), priority=2, where=['stdout','log'], color='blue')
             
             # convert gfvar to tdens
             utilities.threshold_from_below(gfvar, 0)
@@ -1565,7 +1565,7 @@ class NiotSolver:
             #PETSc.Sys.Print(f"niot_solver tdens",comm=self.comm)
             sol.sub(1).assign(self.tdens_h)
             with self.tdens_h.dat.vec_ro as tdens_vec:
-                self.print_info(utilities.msg_bounds(tdens_vec,'tdens'), priority=2, color='blue')   
+                self.print_info(utilities.msg_bounds(tdens_vec,'tdens'), priority=2, where=['stdout','log'], color='blue')   
             
 
 
@@ -1578,7 +1578,7 @@ class NiotSolver:
                 sol.assign(self.sol_old)
                 fire_adj.stop_annotating()
                 self.restart += 1
-                self.print_info(f'Restart {self.restart} failed with {ierr}.', priority=0, color='red')
+                self.print_info(f'Restart {self.restart} failed with {ierr}.', priority=0, where=['stdout','log'], color='red')
             
         
 

@@ -15,8 +15,9 @@ except:
     overwrite=False
     #print('skipping')
     
-#examples = ['y_net_thk']
-examples = ['frog_thk']
+examples = ['y_net_thk']
+#examples = ['frog_thk']
+examples = ['medium']
 #examples.append('y_net_hand_drawing/nref3')
 #examples = ['y_net/']
 #examples.append('y_net_hand_drawing/nref2')
@@ -27,13 +28,13 @@ mask=['mask02.png']
 nref=[0]
 fems = ['DG0DG0']
 gamma = [0.5]#, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-wd = [0]
-wr = [0]
-ini = [1e5]#,1e2,1e3,1e4,1e5]
-network_file = ['mup3.0e+00zero5.0e+07.npy']
+wd = [0,1e-3,1e-4,1e-2,1e1]#,1e-5,1e-3,1e-1
+wr = [0, 1e-4,1e-2]
+ini = [0,1e3,1e5]
+network_file = ['network.png','mup3.0e+00zero5.0e+05.npy','mupou3.0e+00zero5.0e+05.npy','mucnstp3.0e+00zero5.0e+05.npy','thickness.npy']
 #network_file = ['mup3.0e+00zero1.0e+07.npy']#,'mupou3.0e+00zero1.0e+07']#,'mucnstp3.0e+00zero1.0e+01.npy']#,'network.png']
-#network_file = ['network.png']
-conf = ['MASK']#,'CORRUPTED','MASK']#,'MASK','CORRUPTED']
+#network_file = ['network.png']#,'thickness.npy']
+conf = ['MASK','ONE']#,'CORRUPTED','MASK']#,'MASK','CORRUPTED']
 maps = [
    {'type':'identity'}, 
 #    {'type':'heat', 'sigma': 1e-4},
@@ -151,11 +152,12 @@ for combination in combinations:
         combinations.remove(combination)
 
 use_ensemble = False#
-use_mpi = True
+use_mpi = False
 if use_mpi:
     if len(combinations)>1:
         raise ValueError('use_mpi=True is not compatible with len(combinations)>1')
     fun(*combinations[0], comm=COMM_WORLD)
+    exit()
 
 
 
