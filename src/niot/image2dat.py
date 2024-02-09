@@ -312,7 +312,7 @@ def firedrake2numpy(function):
          return value
 
 
-def image2numpy(img_name, normalize=True, invert=True, factor=1):
+def image2numpy(img_name, normalize=True, invert=True):
    """
    Given a path to an image, return a numpy matrix.
    The image is converted to greyscale, and it can be normalized ([0,255] to [0,1])
@@ -322,11 +322,6 @@ def image2numpy(img_name, normalize=True, invert=True, factor=1):
    #open file in fileList:
    img_file = Image.open(img_name)
 
-   if (factor <1):
-      # resize image
-      width, height = img_file.size
-      img_file = img_file.resize((int(width*factor),int(height*factor)), Image.ANTIALIAS)
-   
    # get original image parameters...
    width, height = img_file.size
 

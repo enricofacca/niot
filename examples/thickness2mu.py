@@ -35,12 +35,17 @@ from niot import utilities as utilities
 tape = fire_adj.get_working_tape()
 
 solver_parameters={
-                'snes_type': 'newtonls',
+                #'snes_type': 'anderson',
+                'snes_type' : 'newtonls',
+                #'snes_type': 'qn',
+                'snes_qn_m': 20,
+                'snes_anderson_m': 20,
+                # 
                 'snes_rtol': 1e-16,
                 'snes_atol': 1e-16,
                 'snes_stol': 1e-16,
                 'snes_max_it': 100,
-                'snes_linesearch_type':'bt',
+                'snes_linesearch_type':'l2',
                 'ksp_type': 'gmres',
                 'ksp_rtol': 1e-10,
                 'ksp_atol': 1e-10,
