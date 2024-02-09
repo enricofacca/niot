@@ -21,14 +21,13 @@ from ufl import *
 from firedrake import *
 from firedrake import norm
 from firedrake import Function
-from firedrake import interpolate
+from firedrake.__future__ import interpolate
 # for writing to file
 from firedrake import File
 import firedrake as fire
 #from memory_profiler import profile
 import firedrake.adjoint as fire_adj
 from firedrake import COMM_WORLD, Ensemble
-
 
 
 from niot import utilities as utilities
@@ -54,32 +53,42 @@ solver_parameters={
 
 
 
-def image2tdens(np_file_thickness, img_skeleton,img_network, exponent_p=3.0, cond_zero=1e-1, target=None):
-    np_thickness = np.load(np_file_thickness)
+def image2tdens(txt_file_thickness, img_skeleton,img_network, exponent_p=3.0, cond_zero=1e-1):
+    np_thickness = np.loadtxt(txt_file_thickness, dtype=np.float32, delimiter='\t', skiprows=0)
+    # replace Nan with 0 in data
+    np_thickness = np.nan_to_num(np_thickness)
+    print(np_thickness.shape)
+    pixel_h = 1.0 / np_thickness.shape[1]
+    np_thickness *= pixel_h
+    np_thickness = np.flip(np_thickness, axis=0)
+    
+    
     np_skeleton = i2d.image2numpy(img_skeleton,normalize=True,invert=True)
     np_network = i2d.image2numpy(img_network,normalize=True,invert=True)
+    
 
     h = 1.0 / np_skeleton.shape[1]
-    print(f'{np_skeleton.shape=} {h=}')
+    print(f'{np_thickness.shape=} {np_skeleton.shape=} {h=}')
 
-    mesh = i2d.build_mesh_from_numpy(np_thickness,mesh_type='cartesian')
+    mesh = i2d.build_mesh_from_numpy(np_thickness,mesh_type='cartesian',lengths=[1.0,np_thickness.shape[0]*h])
 
     thickness = i2d.numpy2firedrake(mesh,np_thickness, name='thickness')
     skeleton = i2d.numpy2firedrake(mesh,np_skeleton, name='skeleton')
     network = i2d.numpy2firedrake(mesh, np_network, name='network')
 
-    space = thickness.function_space()
-    thickness_skeleton = Function(space)
+    space = FunctionSpace(mesh, 'DG', 0)
+    thickness_skeleton = assemble(interpolate(skeleton * thickness,space))
     thickness_skeleton.rename('thickness_skeleton')
-    thickness_skeleton.interpolate(skeleton * thickness)
-    
+
     pouiseuille = Function(space)
+    pouiseuille = assemble(interpolate(cond_zero/h *(thickness_skeleton/2)**exponent_p,space))
     pouiseuille.rename('poiseuille')
-    pouiseuille.interpolate(cond_zero/h *(thickness_skeleton/2)**exponent_p)
+    
 
     pouiseuille_constant = Function(space)
+    pouiseuille_constant = assemble(interpolate(h*cond_zero * (thickness/2)**(exponent_p-1)/2,space))
     pouiseuille_constant.rename('poiseuille_constant')
-    pouiseuille_constant.interpolate(h*cond_zero * (thickness/2)**(exponent_p-1)/2)
+    
 
     d = mesh.geometric_dimension()-1
     if exponent_p < d:
@@ -106,11 +115,7 @@ def image2tdens(np_file_thickness, img_skeleton,img_network, exponent_p=3.0, con
     f'p={exponent_p:.1e} d={d} m={exponent_m}'
     + f'B={B:.1e} alpha={alpha:.1e} beta={beta:.1e} K_md={K_md:.1e} sigma={sigma:.1e} f={sigma**alpha:.1e} img_height={height:.1e} M_max={M_max:.1e}')
     
-    filename = f'pm_thickness.pvd'
-    print(f'Saving {filename}')      
-    utilities.save2pvd([network, thickness, skeleton, thickness_skeleton, pouiseuille],filename)
-
-
+    
     pm_map = conductivity2image.PorousMediaMap(
         space,
         sigma=sigma, 
@@ -122,7 +127,7 @@ def image2tdens(np_file_thickness, img_skeleton,img_network, exponent_p=3.0, con
     name = f'pm_map'
     image.rename(name)
 
-    directory = os.path.dirname(np_file_thickness)
+    directory = os.path.dirname(txt_file_thickness)
 
     filename = f'{directory}/pm_thickness.pvd'
     print(f'Saving {filename}') 
