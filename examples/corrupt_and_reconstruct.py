@@ -232,10 +232,11 @@ def corrupt_and_reconstruct(np_source,
         mesh_type = 'simplicial'
     elif fem == 'DG0DG0':
         mesh_type = 'cartesian'
-    mesh = i2d.build_mesh_from_numpy(np_corrupted, mesh_type=mesh_type, comm=comm)
-    #PETSc.Sys.Print(f"{n_ensemble=} MESH DONE", comm=comm)
 
 
+    h = 1.0 / np_corrupted.shape[1]
+    mesh = i2d.build_mesh_from_numpy(np_corrupted, mesh_type=mesh_type, lengths=[1.0,np_corrupted.shape[0]*h], comm=comm)
+    
     # save inputs    
     source = i2d.numpy2firedrake(mesh, np_source, name="source")
     sink = i2d.numpy2firedrake(mesh, np_sink, name="sink")
