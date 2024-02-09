@@ -906,6 +906,16 @@ class NiotSolver:
         #if self.ctrl_get('log_verbose') > 0:
         #    f_log.close()
 
+        tape.clear_tape()
+                    
+        # other clean up taken from 
+        # https://github.com/LLNL/pyMMAopt/commit/e2f83bd932207a8adbd60ae793b3e5a3058daecf
+        TSFCKernel._cache.clear()
+        GlobalKernel._cache.clear()
+        gc.collect()
+        petsc4py.PETSc.garbage_cleanup(self.mesh._comm)
+        petsc4py.PETSc.garbage_cleanup(self.mesh.comm)
+
         return ierr_dmk
               
     def discrepancy(self, pot, tdens ):
