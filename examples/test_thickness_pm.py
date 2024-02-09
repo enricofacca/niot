@@ -141,7 +141,10 @@ def image2tdens(np_file_thickness, img_skeleton,img_network, exponent_p=3.0, con
     mu_pouiseuille = i2d.firedrake2numpy(pouiseuille)
     np.save(f'{directory}/mupou{exponent_p:.1e}zero{cond_zero:.1e}.npy',mu_pouiseuille)
 
-    
+    mu_constant_pm = i2d.firedrake2numpy(thickness)
+    np.save(f'{directory}/muthickness.npy', mu_constant_pm)
+
+
     filename = f'images_img0.pvd'
     pouiseuille.rename('img')
     print(f'Saving {filename}')      
