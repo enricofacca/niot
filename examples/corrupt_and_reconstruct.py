@@ -137,7 +137,8 @@ def load_input(example, nref, mask, network_file, comm=COMM_WORLD):
     except: 
         np_network = np.load(f'{example}/{network_file}')
         #if np_network.ndim == 2 and i2d.convention_2d_flipud:
-        #    np_network = np.flipud(np_network)
+        print(f'load npy')
+        #np_network = np.flipud(np_network)
         if nref != 0:
             np_network = zoom(np_network, 2**nref, order=0, mode='nearest')
     np_mask = i2d.image2numpy(f'{example}/{mask}',normalize=True,invert=True,factor=2**nref)  
@@ -372,9 +373,9 @@ def corrupt_and_reconstruct(np_source,
     # optimization
     niot_solver.ctrl_set('optimization_tol', 5e-3)
     niot_solver.ctrl_set('constraint_tol', 1e-5)
-    niot_solver.ctrl_set('max_iter', 1)
+    niot_solver.ctrl_set('max_iter', 5000)
     niot_solver.ctrl_set('max_restart', 4)
-    niot_solver.ctrl_set('verbose', 2)  
+    niot_solver.ctrl_set('verbose', 0)  
     
     
     niot_solver.ctrl_set('log_verbose', 2) 
