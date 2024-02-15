@@ -108,82 +108,6 @@ def labels(nref,fem,
     return label
 
 
-def load_input(example, nref, mask, network_file, comm=COMM_WORLD):
-    # btp inputs
-    img_sources = f'{example}/source.png'
-    img_sinks = f'{example}/sink.png'
-    
-    np_source = i2d.image2numpy(img_sources,normalize=True,invert=True,factor=2**nref)
-    np_sink = i2d.image2numpy(img_sinks,normalize=True,invert=True,factor=2**nref)
-    
-    # taking just the support of the sources and sinks
-    np_source[np.where(np_source>0.0)] = 1.0
-    np_sink[np.where(np_sink>0.0)] = 1.0
-
-    # balancing the mass
-    nx, ny = np_source.shape
-    hx, hy = 1.0/nx, 1.0/ny
-    mass_source = np.sum(np_source)*hx*hy
-    mass_sink = np.sum(np_sink)*hx*hy
-    if abs(mass_source-mass_sink)>1e-16:
-        np_sink *= mass_source/mass_sink 
-
-    
-    # load image or numpy array
-    try:
-        img_networks = f'{example}/{network_file}'
-        np_network = i2d.image2numpy(img_networks,normalize=True,invert=True,factor=2**nref)
-        PETSc.Sys.Print(f'using {img_networks}',comm=comm)
-    except: 
-        np_network = np.load(f'{example}/{network_file}')
-        #if np_network.ndim == 2 and i2d.convention_2d_flipud:
-        print(f'load npy')
-        #np_network = np.flipud(np_network)
-        if nref != 0:
-            np_network = zoom(np_network, 2**nref, order=0, mode='nearest')
-    np_mask = i2d.image2numpy(f'{example}/{mask}',normalize=True,invert=True,factor=2**nref)  
-
-
-    return np_source, np_sink, np_network, np_mask
-
-
-def fun(example, mask, nref,fem,gamma,wd,wr,network_file,ini,conf,tdens2image,tdens2image_scaling, method, comm=COMM_WORLD, n_ensemble=1):
-    labels_problem = labels(nref,fem,gamma,wd,wr,
-                network_file,   
-                ini,
-                conf,
-                tdens2image,
-                tdens2image_scaling,
-                method)
-    
-    # load input    
-    np_source, np_sink, np_network, np_mask = load_input(example, nref, mask, network_file, comm=comm)
-    
-
-    # create directory
-    mask_name = os.path.splitext(mask)[0]
-    if not os.path.exists(f'{example}/{mask_name}/'):
-        try:
-            os.makedirs(f'{example}/{mask_name}/')
-        except:
-            pass
-    #print(f'{directory=}')
-    ierr = corrupt_and_reconstruct(np_source,np_sink,np_network,np_mask, 
-                                       nref=nref,
-                            fem=fem,
-                            gamma=gamma,
-                            wd=wd,wr=wr,
-                            corrupted_as_initial_guess=ini,
-                            confidence=conf,
-                            tdens2image=tdens2image,
-                            tdens2image_scaling = tdens2image_scaling,
-                            method=method,
-                            directory=f'{example}/{mask_name}/',
-                            labels_problem=labels_problem,
-                            comm=comm,
-                            n_ensemble=n_ensemble) 
-
-
 
 #@profile
 def corrupt_and_reconstruct(np_source,
@@ -197,7 +121,7 @@ def corrupt_and_reconstruct(np_source,
                             wr=1e-4, 
                             corrupted_as_initial_guess=0,
                             confidence='ONE',
-                            tdens2image='identity',
+                            tdens2image={'type':'identity'},
                             tdens2image_scaling=1e0,
                             method='tdens_mirror_descent_explicit'  ,
                             directory='out/',
@@ -309,27 +233,24 @@ def corrupt_and_reconstruct(np_source,
             print(f'Error writing {filename}. Skipping')
             pass
 
-    #
-    # solve the problem
-    #
     ot.balance(source, sink)
     btp = ot.BranchedTransportProblem(source, sink, gamma=gamma)
 
     filename = os.path.join(directory, f'{labels_problem[0]}_btp.pvd')
-    # if (not os.path.exists(filename) or overwrite):
-    #     source_for_contour = Function(CG1)
-    #     source_for_contour.interpolate(source).rename("source_countour","source")
-    #     sink_for_contour = Function(CG1)
-    #     sink_for_contour.interpolate(sink).rename("sink_countour","sink")
-    #     PETSc.Sys.Print(f"{n_ensemble=} open {filename=}", comm=comm)
-    #     out_file = File(filename,comm=comm,mode='w')
-    #     out_file.write(
-    #         source,
-    #         sink,
-    #         source_for_contour,
-    #         sink_for_contour,
-    #         )#,filename)
-    #     PETSc.Sys.Print(f"saved {filename} ",comm=comm)
+    if (not os.path.exists(filename) or overwrite):
+        source_for_contour = Function(CG1)
+        source_for_contour.interpolate(source).rename("source_countour","source")
+        sink_for_contour = Function(CG1)
+        sink_for_contour.interpolate(sink).rename("sink_countour","sink")
+        PETSc.Sys.Print(f"{n_ensemble=} open {filename=}", comm=comm)
+        out_file = File(filename,comm=comm,mode='w')
+        out_file.write(
+            source,
+            sink,
+            source_for_contour,
+            sink_for_contour,
+            )#,filename)
+        PETSc.Sys.Print(f"saved {filename} ",comm=comm)
 
     filename = os.path.join(directory, f'{labels_problem[0]}_btp.h5')
     if save_h5 and (not os.path.exists(filename) or overwrite):
@@ -343,7 +264,6 @@ def corrupt_and_reconstruct(np_source,
             print(f'Error writing {filename}. Skipping')
             pass
 
-    #PETSc.Sys.Print(f"niot_solver for {label=} ",comm = mesh.comm)
     niot_solver = NiotSolver(btp, corrupted,  confidence_w, 
                              spaces = fem,
                              cell2face = 'harmonic_mean',
@@ -372,11 +292,11 @@ def corrupt_and_reconstruct(np_source,
     niot_solver.ctrl_set(['tdens2image'], map_ctrl)
 
     # optimization
-    niot_solver.ctrl_set('optimization_tol', 5e-3)
+    niot_solver.ctrl_set('optimization_tol', 5e-4)
     niot_solver.ctrl_set('constraint_tol', 1e-5)
     niot_solver.ctrl_set('max_iter', 5000)
     niot_solver.ctrl_set('max_restart', 4)
-    niot_solver.ctrl_set('verbose', 0)  
+    niot_solver.ctrl_set('verbose', 2)  
     
     
     niot_solver.ctrl_set('log_verbose', 2) 
@@ -395,7 +315,7 @@ def corrupt_and_reconstruct(np_source,
         if method == 'tdens_logarithmic_barrier':
             pass
         else:
-            niot_solver.ctrl_set(['dmk',method,'gradient_scaling'], 'no')
+            niot_solver.ctrl_set(['dmk',method,'gradient_scaling'], 'dmk')
         
 
     # time step
@@ -526,6 +446,83 @@ def get_image_path(directory_example, name):
         exit(1)
     else:       
         return matches[0]
+    
+
+def load_input(example, nref, mask, network_file, comm=COMM_WORLD):
+    # btp inputs
+    img_sources = f'{example}/source.png'
+    img_sinks = f'{example}/sink.png'
+    
+    np_source = i2d.image2numpy(img_sources,normalize=True,invert=True)
+    np_sink = i2d.image2numpy(img_sinks,normalize=True,invert=True)
+    
+    # taking just the support of the sources and sinks
+    np_source[np.where(np_source>0.0)] = 1.0
+    np_sink[np.where(np_sink>0.0)] = 1.0
+
+    # balancing the mass
+    nx, ny = np_source.shape
+    hx, hy = 1.0/nx, 1.0/ny
+    mass_source = np.sum(np_source)*hx*hy
+    mass_sink = np.sum(np_sink)*hx*hy
+    if abs(mass_source-mass_sink)>1e-16:
+        np_sink *= mass_source/mass_sink 
+
+    
+    # load image or numpy array
+    try:
+        img_networks = f'{example}/{network_file}'
+        np_network = i2d.image2numpy(img_networks,normalize=True,invert=True)
+        PETSc.Sys.Print(f'using {img_networks}',comm=comm)
+    except: 
+        np_network = np.load(f'{example}/{network_file}')
+        #if np_network.ndim == 2 and i2d.convention_2d_flipud:
+        #np_network = np.flipud(np_network)
+        if nref != 0:
+            np_network = zoom(np_network, 2**nref, order=0, mode='nearest')
+    np_mask = i2d.image2numpy(f'{example}/{mask}',normalize=True,invert=True)
+
+
+    return np_source, np_sink, np_network, np_mask
+
+
+    
+def fun(example, mask, nref,fem,gamma,wd,wr,network_file,ini,conf,tdens2image,tdens2image_scaling, method, comm=COMM_WORLD, n_ensemble=1):
+    labels_problem = labels(nref,fem,gamma,wd,wr,
+                network_file,   
+                ini,
+                conf,
+                tdens2image,
+                tdens2image_scaling,
+                method)
+    
+    # load input    
+    np_source, np_sink, np_network, np_mask = load_input(example, nref, mask, network_file, comm=comm)
+    
+
+    # create directory
+    mask_name = os.path.splitext(mask)[0]
+    if not os.path.exists(f'{example}/{mask_name}/'):
+        try:
+            os.makedirs(f'{example}/{mask_name}/')
+        except:
+            pass
+    ierr = corrupt_and_reconstruct(np_source,np_sink,np_network,np_mask, 
+                                       nref=nref,
+                            fem=fem,
+                            gamma=gamma,
+                            wd=wd,wr=wr,
+                            corrupted_as_initial_guess=ini,
+                            confidence=conf,
+                            tdens2image=tdens2image,
+                            tdens2image_scaling = tdens2image_scaling,
+                            method=method,
+                            directory=f'{example}/{mask_name}/',
+                            labels_problem=labels_problem,
+                            comm=comm,
+                            n_ensemble=n_ensemble)
+    return ierr 
+
 
 
 if (__name__ == '__main__'):
@@ -544,74 +541,57 @@ if (__name__ == '__main__'):
     # results are stored in example_mask/runs
     
     parser = argparse.ArgumentParser(description='Corrupt networks with masks and reconstruct via branched transport')
-    parser.add_argument('--network', type=str, help="path for the network image")
-    parser.add_argument('--mask', type=str, help="path to mask image")
-    parser.add_argument('--source', type=str, help="path for source")
-    parser.add_argument('--sink', type=str, help="path for sink")
-    parser.add_argument('--scale', type=float, default=1.0, help="scaling (between 0 and 1) of the mask image")
-    parser.add_argument('--fem', type=str, default='CR1DG0', help='CR1DG0,DG0DG0')
+    parser.add_argument('--example', type=str, help="path to the example directory")
+    parser.add_argument('--mask', type=str, help="mask name in the example directory")
+    parser.add_argument('--nref', type=int, default=0, help="scaling (between 0 and 1) of the mask image")
+    parser.add_argument('--fem', type=str, default='DG0DG0', help='CR1DG0,DG0DG0')
+    parser.add_argument('--gamma', type=float, default=0.5, help="branch exponent")
     parser.add_argument('--wd', type=float, default=1.0, help="weight discrepancy")
     parser.add_argument('--wp', type=float, default=1.0, help="weight penalty")
     parser.add_argument('--wr', type=float, default=0.0, help="weight regularation")
-    parser.add_argument('--gamma', type=float, default=0.5, help="branch exponent")
+    parser.add_argument('--network', type=str, help="network name in the example directory")
     parser.add_argument('--ini', type=int, default=0, help="0/1 use corrupted image as initial guess")
     parser.add_argument('--conf', type=str, default='MASK', help="MASK(=opposite to mask),CORRUPTED(=gaussian filter of corrupted)")
     parser.add_argument('--t2i', type=str, default='identity', help="identity,heat")
+    parser.add_argument('--t2i_sigma', type=float, default=1e-3, help="sigma for heat and pm")
+    parser.add_argument('--t2i_m', type=float, default=2.0, help="pm exponent m")
+    parser.add_argument('--scale', type=float, default=1.0, help="scaling of the corrupted image")
     parser.add_argument('--dir', type=str, default='niot_recostruction', help="directory storing results")
 
     args = parser.parse_args()
 
+    if args.tdi == 'identity':
+        tdi={'type': args.tdi}
+    elif args.tdi == 'heat':
+        tdi={'type': args.tdi, 'sigma':args.t2i_sigma}
+    else:
+        tdi={'type': args.tdi, 'sigma':args.t2i_sigma, 'exponent_m':args.t2i_m}
 
-    print ("network = ",args.network)
-    print ("mask = ",args.mask)
-    print ("source = ",args.source)
-    print ("sink = ",args.sink)
-    print ("gamma = ",args.gamma)
-    print ("dicrepancy_weight = ",args.wd)
-    print ("regularization_weight = ",args.wr)
-    print ("directory = ",args.dir)
-    print ("curropted_as_initial_guess = ",args.ini)
-    print ("scaling_size = ",args.scale)
-    
-    # set weights (default 1.0, 1.0, 0.0)
-    weights = np.array([args.wd, args.wp, args.wr])
 
+    ierr = fun(example=args.example,
+        mask=args.mask,
+        nref=args.nref,
+        fem=args.fem,
+        gamma=args.gamma,
+        wd=args.wd,
+        wr=args.wr,
+        network_file=args.network,
+        ini=args.ini,
+        conf=args.conf,
+        tdens2image=t2i,
+        tdens2image_scaling=args.scale,
+        method='gfvar_gradient_descent_semi_explicit')
     
-    if (not os.path.exists(args.dir)):
-        my_mkdir(args.dir)
+    label = '_'.join(labels(
+        args.nref,args.fem,args.gamma,args.wd,args.wr,
+                args.network,   
+                args.ini,
+                args.conf,
+                t2i,
+                args.scale,
+                'gfvar_gradient_descent_semi_explicit'))
+    
+    print(f'{ierr=}. {label=}')
 
-    out_dir = os.path.join(args.dir,'runs')
-    if (not os.path.exists(out_dir)):
-        my_mkdir(out_dir)
-        
-        
-    corrupt_and_reconstruct(args.source,
-                            args.sink,
-                            args.network,
-                            args.mask,
-                            nref=args.scale,
-                            fem=args.fem,
-                            gamma=args.gamma,
-                            wd=args.wd,
-                            wr=args.wr,
-                            corrupted_as_initial_guess=args,
-                            confidence=args.conf,
-                            tdens2image=args.t2i,
-                            tdens2image_scaling=10,
-                            method='tdens_mirror_descent_explicit'  ,
-                            out_dir=out_dir)
-    
-    
-    print ("network = ",args.network)
-    print ("mask = ",args.mask)
-    print ("source = ",args.source)
-    print ("sink = ",args.sink)
-    print ("fem= ",args.fem)
-    print ("gamma = ",args.gamma)
-    print ("dicrepancy_weight = ",args.wd)
-    print ("regularization_weight = ",args.wr)
-    print ("directory = ",args.dir)
-    print ("curropted_as_initial_guess = ",args.ini)
-    print ("scaling_size = ",args.scale)
 
     
