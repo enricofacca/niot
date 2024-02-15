@@ -487,7 +487,7 @@ def load_input(example, nref, mask, network_file, comm=COMM_WORLD):
 
 
     
-def fun(example, mask, nref,fem,gamma,wd,wr,network_file,ini,conf,tdens2image,tdens2image_scaling, method, comm=COMM_WORLD, n_ensemble=1):
+def run(example, mask, nref,fem,gamma,wd,wr,network_file,ini,conf,tdens2image,tdens2image_scaling, method, comm=COMM_WORLD, n_ensemble=1):
     labels_problem = labels(nref,fem,gamma,wd,wr,
                 network_file,   
                 ini,
@@ -561,14 +561,14 @@ if (__name__ == '__main__'):
     args = parser.parse_args()
 
     if args.tdi == 'identity':
-        tdi={'type': args.tdi}
+        t2i={'type': args.tdi}
     elif args.tdi == 'heat':
-        tdi={'type': args.tdi, 'sigma':args.t2i_sigma}
+        t2i={'type': args.tdi, 'sigma':args.t2i_sigma}
     else:
-        tdi={'type': args.tdi, 'sigma':args.t2i_sigma, 'exponent_m':args.t2i_m}
+        t2i={'type': args.tdi, 'sigma':args.t2i_sigma, 'exponent_m':args.t2i_m}
 
 
-    ierr = fun(example=args.example,
+    ierr = run(example=args.example,
         mask=args.mask,
         nref=args.nref,
         fem=args.fem,
