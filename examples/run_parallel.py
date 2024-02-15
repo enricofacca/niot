@@ -1,6 +1,6 @@
 import itertools
 import os
-from corrupt_and_reconstruct import corrupt_and_reconstruct,labels,fun,load_inputs
+from corrupt_and_reconstruct import corrupt_and_reconstruct,labels,run
 import sys
 import numpy as np
 from niot import image2dat as i2d
@@ -30,7 +30,7 @@ mask=['mask_large.png']#,'mask_large.png','mask_medium.png']
 nref=[0]
 fems = ['DG0DG0']
 gamma = [0.5]#, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-wd = [1e4]#0,1e0,1e4]#,1e-5,1e-3,1e-1
+wd = [1e-4,1e-2,1e0,1e2]#0,1e0,1e4]#,1e-5,1e-3,1e-1
 wr = [0]
 ini = [0,1e5]
 network_file = ['mup3.0e+00zero1.0e+01.npy']#,'mupou3.0e+00zero1.0e+01.npy']#,'mucnstp3.0e+00zero5.0e+05.npy','muthickness.npy']
@@ -42,7 +42,7 @@ maps = [
 #    {'type':'heat', 'sigma': 1e-4},
 #    {'type':'heat', 'sigma': 0.0005},
     {'type':'pm', 'sigma': 1e-3, 'exponent_m': 2.0},
-#    {'type':'pm', 'sigma': 1e-2, 'exponent_m': 2.0},
+    {'type':'pm', 'sigma': 1e-2, 'exponent_m': 2.0},
 #    {'type':'pm', 'sigma': 1e-1, 'exponent_m': 2.0},
 #     {'type':'pm', 'sigma': 5e-1, 'exponent_m': 2.0},
 #     {'type':'pm', 'sigma': 1e0, 'exponent_m': 2.0},
@@ -105,7 +105,7 @@ use_mpi = False
 if use_mpi:
     if len(combinations)>1:
         raise ValueError('use_mpi=True is not compatible with len(combinations)>1')
-    fun(*combinations[0], comm=COMM_WORLD)
+    run(*combinations[0], comm=COMM_WORLD)
     exit()
 
 
@@ -151,7 +151,7 @@ if use_ensemble:
 
     for i, combination in enumerate(combinations_per_ensemble):
         PETSc.Sys.Print(f'ENSEMBLE {my_ensemble.ensemble_comm.rank} will do {i+1} over {len(combinations_per_ensemble)}: job={label}',comm=comm)
-        fun(*combination, comm=my_ensemble.comm,n_ensemble=ensemble_rank)
+        run(*combination, comm=my_ensemble.comm,n_ensemble=ensemble_rank)
         label = '_'.join(labels(*combination[2:]))
         PETSc.Sys.Print(f'ENSEMBLE {my_ensemble.ensemble_comm.rank} completed {i+1} over {len(combinations_per_ensemble)}: job={label}',comm=comm)
 
@@ -159,4 +159,4 @@ if use_ensemble:
 else:
     import multiprocessing as mp
     with mp.Pool(processes = 6) as p:
-        p.starmap(fun, combinations)
+        p.starmap(run, combinations)
