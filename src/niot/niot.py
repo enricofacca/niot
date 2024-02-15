@@ -453,7 +453,10 @@ class NiotSolver:
             self.fems = SpaceDiscretization(self.mesh,'DG',0,'DG',0, cell2face)
         else:
             raise ValueError('Wrong spaces only (pot,tdens) in (CR1,DG0) or (DG0,DG0) implemented')
-        
+        self.ConstansSpace = FunctionSpace(self.mesh, 'R', 0)
+
+
+
         # initialize the solution
         self.sol = self.create_solution()
         self.sol_old = self.sol.copy(deepcopy=True)
@@ -480,7 +483,7 @@ class NiotSolver:
         self.outer_iterations = 0
         self.nonlinear_iterations = 0
         self.nonlinear_res = 0.0
-        self.gradient_computed = False
+        self.gradients_computed = False
 
         # set to initial state
         self.deltat = 0.0
@@ -488,6 +491,7 @@ class NiotSolver:
 
         self.gradient_D_P = Function(self.fems.tdens_space)
         self.rhs_ode = Function(self.fems.tdens_space)
+        self.residuum = Function(self.fems.tdens_space)
 
         if setup:
             self.setup()
@@ -537,6 +541,31 @@ class NiotSolver:
         if log_verbose > 0:
             self.log_viewer = PETSc.Viewer().createASCII(self.ctrl_get('log_file'), 'w', comm=self.comm)
     
+        # we need to initialize the increment solver
+        self.shift_semi_implicit = Function(self.ConstansSpace)
+        self.shift_semi_implicit.assign(0.1)
+        test = TestFunction(self.fems.tdens_space)  
+        trial = TrialFunction(self.fems.tdens_space)
+        self.increment_form =  inner(test, trial)*dx
+        self.increment_form += self.shift_semi_implicit * self.fems.Laplacian_form(self.fems.tdens_space)
+        self.increment_h = Function(self.fems.tdens_space)
+        self.increment_h.rename('increment_h')
+
+        # self.rhs_semi_implicit = Function(self.fems.tdens_space)
+        # self.increment_problem = LinearVariationalProblem(
+        #     self.increment_form,
+        #     self.rhs_semi_implicit,
+        #     self.increment_h)
+        
+        # self.increment_solver = LinearVariationalSolver(
+        #     self.increment_problem,
+        #     solver_parameters={'ksp_type': 'cg',
+        #                         'ksp_rtol': 1e-10,
+        #                         'ksp_atol': 1e-13,
+        #                         'pc_type': 'hypre'},
+        #                         options_prefix='increment_solver_')
+
+
         self.print_info(f'Number of cells: {self.mesh.num_cells()}',priority=2,where=['stdout','log'])
 
     def setup_tdensimage(self):
@@ -662,7 +691,7 @@ class NiotSolver:
 
     
 
-    def residual(self, sol):
+    def compute_residuum(self, sol):
         """
         Return the residual of the minimization problem
         w.r.t to tdens
@@ -674,18 +703,56 @@ class NiotSolver:
         
         method = self.ctrl_get(['dmk','type'])
         if "tdens" in method:
-            self.lagrangian_fun = assemble(self.Lagrangian(pot,self.tdens_h))   
-            self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
-            self.rhs_ode = self.lagrangian_fun_reduced.derivative()
-            self.rhs_ode.rename('rhs_ode')
+            dw = self.ctrl_get('discrepancy_weight')
+            pw = self.ctrl_get('penalization_weight')
+            rw = self.ctrl_get('regularization_weight')
+            if dw > 0:
+                self.lagrangian_fun = assemble(dw*self.discrepancy(pot,self.tdens_h))   
+                self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
+                self.gradient_discrepancy = self.lagrangian_fun_reduced.derivative()
+                with self.gradient_discrepancy.dat.vec_ro as gD:
+                    msg = utilities.msg_bounds(gD,'grad discrepancy   ')
+                    self.print_info(
+                        msg=msg,
+                        priority=1, 
+                        where=['stdout','log']
+                        )
+            else:
+                self.gradient_discrepancy = 0.0
+
+            if pw > 0:
+                self.lagrangian_fun = assemble(pw*self.penalization(pot,self.tdens_h))
+                self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
+                self.gradient_penalization = self.lagrangian_fun_reduced.derivative()
+                with self.gradient_penalization.dat.vec_ro as gP:
+                    msg = utilities.msg_bounds(gP,'grad penalty       ')
+                    self.print_info(
+                        msg=msg,
+                        priority=1, 
+                        where=['stdout','log']
+                        )
+            else:
+                self.gradient_penalization = 0.0
+
+            if rw > 0:
+                self.lagrangian_fun = assemble(rw*self.regularization(pot,self.tdens_h))
+                self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
+                self.gradient_regularization = self.lagrangian_fun_reduced.derivative()
+            else:
+                self.gradient_regularization = 0.0
+
+            self.gradient_D_P.assign(self.gradient_discrepancy + self.gradient_penalization)
+            self.rhs_ode.assign(self.gradient_discrepancy + self.gradient_penalization + self.gradient_regularization)
             
-            d = self.fems.tdens_mass_matrix.createVecLeft()
-            
-            with self.rhs_ode.dat.vec_ro as f_vec, self.tdens_h.dat.vec as tdens_vec:
-                self.fems.inv_tdens_mass_matrix.solve(f_vec,d)
-                d *= tdens_vec
-                residuum = d.norm()#PETSc.NormType.NORM_INFINITY)
-            return residuum
+            #d = self.fems.tdens_mass_matrix.createVecLeft()
+            self.residuum.assign(self.rhs_ode)
+            with self.residuum.dat.vec as res, self.tdens_h.dat.vec as tdens_vec:
+                res *= tdens_vec
+
+            # marks the gradient as computed    
+            self.gradients_computed = True
+
+
         elif "gfvar" in method:
             gfvar = self.gfvar 
             gfvar.interpolate(self.gfvar_of_tdens(tdens))
@@ -739,13 +806,14 @@ class NiotSolver:
 
             self.gradient_D_P.assign(self.gradient_discrepancy + self.gradient_penalization)
             self.rhs_ode.assign(self.gradient_discrepancy + self.gradient_penalization + self.gradient_regularization)
-            self.gradient_computed = True
+            self.gradients_computed = True
 
-            with self.rhs_ode.dat.vec_ro as rhs_vec:
+            self.residuum.assign(self.rhs_ode)
+            #with self.rhs_ode.dat.vec_ro as rhs_vec:
                 # the derivative contains the mass matrix, 
                 # we just sum to get the L1 norm of the residuum
-                residuum = rhs_vec.norm(PETSc.NormType.NORM_1)
-            return residuum
+            #    residuum = rhs_vec.norm(PETSc.NormType.NORM_1)
+            #return residuum
 
         else:
             raise ValueError(f'Wrong optimization type {method=}')
@@ -872,7 +940,11 @@ class NiotSolver:
             if self.iteration == max_iter:
                 ierr_dmk = 1
             
-            residual_opt = self.residual(self.sol)
+            # compute residuum
+            self.compute_residuum(self.sol)
+            with self.residuum.dat.vec_ro as res_vec:
+                residual_opt = res_vec.norm(PETSc.NormType.NORM_1)
+            
             avg_outer = self.outer_iterations / max(self.nonlinear_iterations,1)
 
             msg = (f'It: {self.iteration} '
@@ -1073,32 +1145,13 @@ class NiotSolver:
         
 
         # We compute the gradient w.r.t to tdens of the Lagrangian
-        # Since the Lagrangian contains the map tdens2image, 
-        # we need to use the adjoint method, where the Jacobian-vector product
-        # of tdens2image is computed automatically.
-        #     
-        # We follow the example in 
-        # see also https://www.dolfin-adjoint.org/en/latest/documentation/custom_functions.html
-        # Note how we need to write 
-        #   L=assemble(functional)
-        #   reduced_functional = ReducedFunctional(functional, Control(tdens))
-        #   compute gradient
+        if not self.gradients_computed:
+            print('gradient precomputed')
+            self.compute_residuum(sol)
         
-        wd = self.ctrl_get('discrepancy_weight')
-        wp = self.ctrl_get('penalization_weight')
-        wr = self.ctrl_get('regularization_weight')
-        L = wp * self.penalization(self.pot_h,tdens)#self.tdens_h)
-        if abs(wd) > 1e-16:
-            L += wd * self.discrepancy(self.pot_h,tdens)#self.tdens_h)
-        if abs(wr) > 1e-16:
-            L += wr * self.regularization(self.pot_h,tdens)#self.tdens_h)
-        
-        self.lagrangian_fun = assemble(L)
-        control_var = fire_adj.Control(tdens)#self.tdens_h)
-        self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, control_var)
-        self.rhs_ode = self.lagrangian_fun_reduced.derivative()
-        self.rhs_ode *= -1.0 # minus gradient
-
+        self.rhs_ode.assign(-(self.gradient_discrepancy 
+                                + self.gradient_penalization 
+                                  + self.gradient_regularization))
         with self.rhs_ode.dat.vec as rhs:
             self.print_info(
                 msg=utilities.msg_bounds(rhs,'gradient'),
@@ -1112,6 +1165,7 @@ class NiotSolver:
         self.increment_h = Function(self.fems.tdens_space)
         
         gradient_scaling = self.ctrl_get(['dmk','tdens_mirror_descent_explicit','gradient_scaling'])
+        print(f'{gradient_scaling=}')
         if gradient_scaling == 'dmk':            
             tdens_power = 2 - self.btp.gamma
         elif gradient_scaling == 'mirror_descent':
@@ -1252,6 +1306,7 @@ class NiotSolver:
                 color='blue')
             wr = self.ctrl_get('regularization_weight')
             shift = step * wr
+            #self.shift_semi_implicit.assign(shift) # this change the form
             self.setup_increment_solver(shift=shift)
                 
             test = TestFunction(self.fems.tdens_space)
@@ -1365,6 +1420,7 @@ class NiotSolver:
                 color='blue')
             wr = self.ctrl_get('regularization_weight')
             shift = step * wr
+            self.shift_semi_implicit.assign(shift) # this change the form
             self.setup_increment_solver(shift=shift)
                 
             test = TestFunction(self.fems.tdens_space)
@@ -1505,7 +1561,7 @@ class NiotSolver:
             # compute gradient of energy w.r.t. gfvar
             # see tdens_mirror_descent for more details on the implementation
             #PETSc.Sys.Print(f"niot_solver starting gradient",comm=self.comm)
-            if self.gradient_computed:
+            if self.gradients_computed:
                 # this is done to avoid recomputing the gradient 
                 self.rhs_ode = self.gradient_D_P
                 self.rhs_ode *= -1.0
@@ -1551,6 +1607,8 @@ class NiotSolver:
                 #
                 self.print_info(utilities.msg_bounds(gfvar_vec,'gfvar'), priority=3, where=['stdout','log'], color='blue')
                 wr = self.ctrl_get('regularization_weight')
+                shift=step*wr
+                self.shift_semi_implicit.assign(shift) # this change the form
                 self.setup_increment_solver(shift=step*wr)
                 #PETSc.Sys.Print(f"niot_solver setup solve increment",comm=self.comm)
                 
