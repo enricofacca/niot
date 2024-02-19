@@ -129,23 +129,33 @@ class Barenblatt():
         publisher={Springer}
     }
     """
-    def alpha(self,exponent_m, dim):
-        return self.beta(exponent_m, dim) * dim
+    def __init__(self,exponent_m, dim) -> None:
+        self.exponent_m = exponent_m
+        self.dim = dim
 
-    def beta(self, exponent_m, dim):
+        self.beta = self.eval_beta(self.exponent_m, self.dim)
+        self.alpha = self.eval_alpha(self.exponent_m, self.dim)
+        self.B = self.eval_B(self.exponent_m, self.dim)
+        self.K_md = self.eval_K_md(self.exponent_m, self.dim)
+
+
+    def eval_alpha(self,exponent_m, dim):
+        return self.eval_beta(exponent_m, dim) * dim
+
+    def eval_beta(self, exponent_m, dim):
         return 1 / (2 + (exponent_m - 1 ) * dim)
 
-    def B(self, exponent_m, dim):
-        return self.beta(exponent_m, dim) * (exponent_m - 1 )/ (2 * exponent_m)
+    def eval_B(self, exponent_m, dim):
+        return self.eval_beta(exponent_m, dim) * (exponent_m - 1 )/ (2 * exponent_m)
     
-    def K_md(self, exponent_m, dim):
+    def eval_K_md(self, exponent_m, dim):
         """+
         Constant depending on m and d only in eq .5 pag.3 such that
         K_md A^{1/(2\beta(m-1))} = M
         with M the mass of the initial condition u(x,0)=M \delta(x)
         """
-        beta = self.beta(exponent_m, dim)
-        B = self.B(exponent_m, dim)
+        beta = self.eval_beta(exponent_m, dim)
+        B = self.eval_B(exponent_m, dim)
         # sphere volume
         wd_d = np.pi**(dim/2)/gamma(dim/2 + 1)
         
@@ -159,24 +169,24 @@ class Barenblatt():
         return (wd_d * ( B ** (-dim/2) )  * integral) ** (-beta*(exponent_m-1))
     
     
-    def radius(self, t, exponent_m, dim, M):
+    def radius(self, t, M):
         """
         Radius of the support of the solution at time t
         """
-        beta = self.beta(exponent_m, dim)
-        B = self.B(exponent_m, dim)
-        K_md = self.K_md(exponent_m, dim)
-        return t**(1/beta) * K_md**(1/2) * B**(1/2) * M**(beta*(exponent_m-1))
+        return t**(1/self.beta) * self.K_md**(1/2) * self.B**(1/2) * M**(self.beta*(self.exponent_m-1))
     
-    def height(self, exponent_m, dim, t, M):
+    def height(self, t, M):
         """
         Radius of the support of the solution at time t
         """
-        alpha = self.alpha(exponent_m, dim)
-        beta = self.beta(exponent_m, dim)
-        K_md = self.K_md(exponent_m, dim)
-        return t**(-alpha) * K_md**(2/(exponent_m-1)) * M**(2*beta)
+        return t**(-self.alpha) * self.K_md**(2/(self.exponent_m-1)) * M**(2*self.beta)
 
+    def sigma(self, k, exponent_p):
+        """
+        find sigma such that
+        M = (Dirac value at t=0) ~ k * (r(\sigma))**p 
+        """
+        return (k**(-1/exponent_p) * self.K_md ** (-1/2) * self.B **(1/2))**(1/self.beta)
 
 
 class PorousMediaMap(Conductivity2ImageMap):
