@@ -272,7 +272,7 @@ def corrupt_and_reconstruct(np_source,
     
     
     if abs(corrupted_as_initial_guess) < 1e-16:
-        niot_solver.sol.sub(1).assign(1.0 / tdens2image_scaling )
+        niot_solver.sol.sub(1).assign(1.0)
     else:
         #np_confidence = gaussian_filter(np_corrupted, sigma=2)
         # we smooth a bit the passed initial data
