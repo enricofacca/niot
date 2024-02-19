@@ -9,6 +9,9 @@ import matplotlib.pyplot as plt
 from firedrake.petsc import PETSc
 from firedrake import COMM_WORLD, COMM_SELF
 
+import localthickness
+from skimage.morphology import skeletonize
+
 import time
 
 ###############################
@@ -343,6 +346,7 @@ def image2numpy(img_name, normalize=True, invert=True):
    
    return value
 
+
 def numpy2image(numpy_matrix, image_path, normalized=True, inverted=True):
    """ Given a (numpy) matrix,
    save a grayscale image to file. Grayscale can be inverted.
@@ -411,3 +415,25 @@ def function2image(function,image_path,colorbar=True,vmin=None,vmax=None):
    
    
    plt.savefig(image_path)#,bbox_inches='tight',transparent=True, pad_inches=0)
+
+
+
+def thickness(network, pixel_h=None):
+   """
+   Given a binary network, return the local thickness.
+   """
+   fd.Citations().register('dahl2023fast')
+   # they define thickness as radius
+   np_local_thickness = localthickness.local_thickness(network) * 2 
+   if pixel_h is not None:
+      np_local_thickness *= pixel_h
+   return np_local_thickness 
+
+def skeleton(network):
+   """
+   Return a skeleton of the network
+   """
+   fd.Citations().register('van2014scikit')
+   skeleton = skeletonize(network)
+   return skeleton
+
