@@ -253,7 +253,7 @@ def set_step(increment,
         else:
             step = max(min(1.0 / d_max, upper_bound), lower_bound)
     elif (type == 'adaptive2'):
-        order_down = -0.5
+        order_down = -0.25
         order_up = 0.5
         r = increment / state
         r_np = r.array

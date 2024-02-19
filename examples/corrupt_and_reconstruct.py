@@ -322,7 +322,7 @@ def corrupt_and_reconstruct(np_source,
     deltat_control = {
         'type': 'adaptive2',
         'lower_bound': 1e-13,
-        'upper_bound': 5e-2,
+        'upper_bound': 2e-2,
         'expansion': 1.1,
         'contraction': 0.5,
     }
