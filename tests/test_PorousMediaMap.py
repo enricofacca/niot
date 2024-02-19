@@ -164,17 +164,19 @@ def test_tdens2image(nref,lower_factor,cond_zero,exponent_p, verbose=False, save
     images = []
     scaling = 1.0 
     dim = mesh.geometric_dimension()-1
-    B = conductivity2image.Barenblatt().B(exponent_m,dim)
-    alpha = conductivity2image.Barenblatt().alpha(exponent_m,dim)
-    beta = conductivity2image.Barenblatt().beta(exponent_m,dim)
-    K_md = conductivity2image.Barenblatt().K_md(exponent_m,dim)
+    Bar = conductivity2image.Barenblatt(exponent_m,dim)
+    B = Bar.B# = conductivity2image.Barenblatt().B(exponent_m,dim)
+    alpha = Bar.alpha#conductivity2image.Barenblatt().alpha(exponent_m,dim)
+    beta = Bar.beta# conductivity2image.Barenblatt().beta(exponent_m,dim)
+    K_md = Bar.K_md#conductivity2image.Barenblatt().K_md(exponent_m,dim)
 
     
 
     # find the time to get 
     # M = M_0 * (r(\sigma))**p 
-    sigma = (cond_zero**(-1/exponent_p) * K_md ** (-1/2) * B **(1/2))**(1/beta)
-    
+    #sigma = (cond_zero**(-1/exponent_p) * K_md ** (-1/2) * B **(1/2))**(1/beta)
+    sigma = Bar.sigma(cond_zero,exponent_p)
+
     pouiseuille = Function(space)
     pouiseuille.rename('poiseuille')
     cond = Function(space)
@@ -188,7 +190,8 @@ def test_tdens2image(nref,lower_factor,cond_zero,exponent_p, verbose=False, save
 
     # get the max of cond
     M_max = cond.dat.data.max() * 2 * h 
-    height = conductivity2image.Barenblatt().height(exponent_m,dim,sigma,M_max)
+    #height = conductivity2image.Barenblatt().height(exponent_m,dim,sigma,M_max)
+    height = Bar.height(sigma,M_max)
     if verbose:
         print(
         f'p={exponent_p:.1e} d={d} m={exponent_m}'
