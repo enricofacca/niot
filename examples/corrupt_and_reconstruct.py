@@ -66,8 +66,7 @@ def labels(nref,fem,
            network_file,
            corrupted_as_initial_guess,
            confidence,
-           tdens2image,
-           tdens2image_scaling, 
+           tdens2image, 
            method):
     # take filename and remove extension
     label_network = os.path.basename(network_file)
@@ -90,7 +89,7 @@ def labels(nref,fem,
         label.append(f"mu2ipm{tdens2image['sigma']:.1e}")
     else:
         raise ValueError(f'Unknown tdens2image {tdens2image}')
-    label.append(f'scaling{tdens2image_scaling:.1e}')  
+    label.append(f"scaling{tdens2image['scaling']:.1e}")  
     if method is not None:
         if method == 'tdens_mirror_descent_explicit':
             short_method = 'te'
@@ -121,8 +120,10 @@ def corrupt_and_reconstruct(np_source,
                             wr=1e-4, 
                             corrupted_as_initial_guess=0,
                             confidence='ONE',
-                            tdens2image={'type':'identity'},
-                            tdens2image_scaling=1e0,
+                            tdens2image={
+                                'type':'identity',
+                                'scaling':1e0
+                                },
                             method='tdens_mirror_descent_explicit'  ,
                             directory='out/',
                             labels_problem=['unnamed'],
@@ -280,7 +281,7 @@ def corrupt_and_reconstruct(np_source,
         with corrupted.dat.vec_ro as v:
             max_corrupted = max(v.max()[1],niot_solver.ctrl_get("min_tdens"))
         img0 = heat_map(corrupted+1e-5*max_corrupted)
-        niot_solver.sol.sub(1).assign(img0 / tdens2image_scaling )
+        niot_solver.sol.sub(1).assign(img0 / tdens2image['scaling'] )
     
         
     
@@ -288,8 +289,8 @@ def corrupt_and_reconstruct(np_source,
     # inpainting
     niot_solver.ctrl_set('discrepancy_weight', wd)
     niot_solver.ctrl_set('regularization_weight', wr)
-    map_ctrl={**tdens2image, **{'scaling': tdens2image_scaling}}
-    niot_solver.ctrl_set(['tdens2image'], map_ctrl)
+    #map_ctrl={**tdens2image, **{'scaling': tdens2image_scaling}}
+    niot_solver.ctrl_set(['tdens2image'], tdens2image)
 
     # optimization
     niot_solver.ctrl_set('optimization_tol', 5e-5)
@@ -500,13 +501,12 @@ def load_input(example, nref, mask, network_file, comm=COMM_WORLD):
 
 
     
-def run(example, mask, nref,fem,gamma,wd,wr,network_file,ini,conf,tdens2image,tdens2image_scaling, method, comm=COMM_WORLD, n_ensemble=1):
+def run(example, mask, nref,fem,gamma,wd,wr,network_file,ini,conf,tdens2image, method, comm=COMM_WORLD, n_ensemble=1):
     labels_problem = labels(nref,fem,gamma,wd,wr,
                 network_file,   
                 ini,
                 conf,
                 tdens2image,
-                tdens2image_scaling,
                 method)
     
     # load input    
@@ -528,7 +528,6 @@ def run(example, mask, nref,fem,gamma,wd,wr,network_file,ini,conf,tdens2image,td
                             corrupted_as_initial_guess=ini,
                             confidence=conf,
                             tdens2image=tdens2image,
-                            tdens2image_scaling = tdens2image_scaling,
                             method=method,
                             directory=f'{example}/{mask_name}/',
                             labels_problem=labels_problem,
@@ -574,11 +573,11 @@ if (__name__ == '__main__'):
     args = parser.parse_args()
 
     if args.tdi == 'identity':
-        t2i={'type': args.tdi}
+        t2i={'type': args.tdi, 'scaling':args.scale}
     elif args.tdi == 'heat':
-        t2i={'type': args.tdi, 'sigma':args.t2i_sigma}
+        t2i={'type': args.tdi, 'sigma':args.t2i_sigma, 'scaling':args.scale}
     else:
-        t2i={'type': args.tdi, 'sigma':args.t2i_sigma, 'exponent_m':args.t2i_m}
+        t2i={'type': args.tdi, 'sigma':args.t2i_sigma, 'exponent_m':args.t2i_m, 'scaling':args.scale}
 
 
     ierr = run(example=args.example,
@@ -592,7 +591,6 @@ if (__name__ == '__main__'):
         ini=args.ini,
         conf=args.conf,
         tdens2image=t2i,
-        tdens2image_scaling=args.scale,
         method='gfvar_gradient_descent_semi_explicit')
     
     label = '_'.join(labels(
