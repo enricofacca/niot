@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 from firedrake.petsc import PETSc
 from firedrake import COMM_WORLD, COMM_SELF
 
-import localthickness
-from skimage.morphology import skeletonize
+#import localthickness
+#from skimage.morphology import skeletonize
 
 import time
 
