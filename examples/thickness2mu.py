@@ -106,12 +106,15 @@ def binary2mu(img_network, exponent_p=3.0, cond_zero=1e-1):
     sigma = Barenblatt.sigma(cond_zero, exponent_p)
     M_max = pouiseuille.dat.data.max() * 2 * pixel_h
     height = Barenblatt.height(sigma,M_max)
+    height_net = Barenblatt.height(sigma,1e-1* pixel_h)
+
     print(
         f'p={exponent_p:.1e} d={d} m={exponent_m}'
         + f'B={Barenblatt.B:.1e} alpha={Barenblatt.alpha:.1e}'
         + f' beta={Barenblatt.beta:.1e} K_md={Barenblatt.K_md:.1e}'
         + f' sigma={sigma:.1e} f={sigma**Barenblatt.alpha:.1e}'
-        + f' img_height={height:.1e} M_max={M_max:.1e}')
+        + f' img_height={height:.1e} M_max={M_max:.1e}'
+        + f' img_height_net={height_net:.1e}')
     
 
     # define Porous Media Map
@@ -121,14 +124,15 @@ def binary2mu(img_network, exponent_p=3.0, cond_zero=1e-1):
         sigma=sigma, 
         exponent_m=exponent_m, 
         scaling=1.0, 
-        nsteps=20,
+        nsteps=5,
         solver_parameters=solver_parameters)
+    
+
+
 
     image = pm_map(pouiseuille)
     name = f'pm_map'
     image.rename(name)
-
-    
 
     filename = f'{directory}/{prefix}_pm_thickness.pvd'
     print(f'Saving {filename}') 
@@ -147,6 +151,17 @@ def binary2mu(img_network, exponent_p=3.0, cond_zero=1e-1):
 
     mu_constant_pm = i2d.firedrake2numpy(thickness)
     np.save(f'{directory}/{prefix}_muthickness.npy', mu_constant_pm)
+
+    filename = f'images_img0.pvd'
+    pouiseuille.rename('img')
+    print(f'Saving {filename}')      
+    utilities.save2pvd(pouiseuille,filename)
+    for i, img in enumerate(pm_map.images):
+        filename = f'images_img{i+1}.pvd'
+        pm_map.images[i].rename('img')
+        print(f'Saving {filename}')      
+        utilities.save2pvd(pm_map.images[i],filename)
+
 
 
 
