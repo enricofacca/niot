@@ -295,7 +295,7 @@ def corrupt_and_reconstruct(np_source,
     # optimization
     niot_solver.ctrl_set('optimization_tol', 5e-5)
     niot_solver.ctrl_set('constraint_tol', 1e-5)
-    niot_solver.ctrl_set('max_iter', 6000)
+    niot_solver.ctrl_set('max_iter', 5000)
     niot_solver.ctrl_set('max_restart', 4)
     niot_solver.ctrl_set('verbose', 0)  
     
@@ -323,7 +323,7 @@ def corrupt_and_reconstruct(np_source,
     deltat_control = {
         'type': 'adaptive2',
         'lower_bound': 1e-13,
-        'upper_bound': 1e-2,
+        'upper_bound': 5e-2,
         'expansion': 1.1,
         'contraction': 0.5,
     }
@@ -401,16 +401,16 @@ def corrupt_and_reconstruct(np_source,
     reconstruction.interpolate(niot_solver.tdens2image(tdens) )
     reconstruction.rename('reconstruction','Reconstruction')
 
-    gradient_penalty = Function(niot_solver.fems.tdens_space)
-    gradient_penalty.rename('grad_penalty')
-    with niot_solver.gradient_penalization.dat.vec as gd, gradient_penalty.dat.vec as gfd:
-        niot_solver.fems.inv_tdens_mass_matrix.solve(gd, gfd) 
+    # gradient_penalty = Function(niot_solver.fems.tdens_space)
+    # gradient_penalty.rename('grad_penalty')
+    # with niot_solver.gradient_penalization.dat.vec as gd, gradient_penalty.dat.vec as gfd:
+    #     niot_solver.fems.inv_tdens_mass_matrix.solve(gd, gfd) 
 
 
-    gradient_discrepancy = Function(niot_solver.fems.tdens_space)
-    gradient_discrepancy.rename('discrepancy')
-    with niot_solver.gradient_discrepancy.dat.vec as gd, gradient_discrepancy.dat.vec as gfd:
-        niot_solver.fems.inv_tdens_mass_matrix.solve(gd, gfd) 
+    # gradient_discrepancy = Function(niot_solver.fems.tdens_space)
+    # gradient_discrepancy.rename('discrepancy')
+    # with niot_solver.gradient_discrepancy.dat.vec as gd, gradient_discrepancy.dat.vec as gfd:
+    #     niot_solver.fems.inv_tdens_mass_matrix.solve(gd, gfd) 
 
 
         
@@ -429,7 +429,7 @@ def corrupt_and_reconstruct(np_source,
        tdens0, pot0, 
        reconstruction,
       reconstruction_for_contour,
-                   gradient_discrepancy,gradient_penalty,       
+         #           gradient_discrepancy,gradient_penalty,       
        tdens_for_contour)
     PETSc.Sys.Print(f"{ierr=}. {n_ensemble=} Saved solution to "+filename, comm=comm)
     
