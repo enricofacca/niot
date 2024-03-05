@@ -295,7 +295,7 @@ def corrupt_and_reconstruct(np_source,
     # optimization
     niot_solver.ctrl_set('optimization_tol', 5e-5)
     niot_solver.ctrl_set('constraint_tol', 1e-5)
-    niot_solver.ctrl_set('max_iter', 5000)
+    niot_solver.ctrl_set('max_iter', 6000)
     niot_solver.ctrl_set('max_restart', 4)
     niot_solver.ctrl_set('verbose', 0)  
     
@@ -323,7 +323,7 @@ def corrupt_and_reconstruct(np_source,
     deltat_control = {
         'type': 'adaptive2',
         'lower_bound': 1e-13,
-        'upper_bound': 2e-2,
+        'upper_bound': 1e-2,
         'expansion': 1.1,
         'contraction': 0.5,
     }
