@@ -178,7 +178,7 @@ def image2tdens(txt_file_thickness, img_skeleton,img_network, exponent_p=3.0, co
     
     
     directory = os.path.dirname(txt_file_thickness)
-    data2mu(np_thickness, np_skeleton, np_network, directory, p=exponent_p, cond_zero=cond_zero)
+    data2mu(np_thickness, np_skeleton, np_network, directory, exponent_p, cond_zero=cond_zero)
 
     
 
@@ -209,31 +209,21 @@ def data2mu(np_thickness, np_skeleton, np_network, directory, exponent_p=3.0, co
     pouiseuille_constant.rename('poiseuille_constant')
     
 
+     # set Barenblatt constanst
     d = mesh.geometric_dimension()-1
     if exponent_p < d:
         raise ValueError('p<d')
     exponent_m = (2 + exponent_p - d ) / (exponent_p - d)
-    
-        
     dim = mesh.geometric_dimension()-1
-    B = conductivity2image.Barenblatt().B(exponent_m,dim)
-    alpha = conductivity2image.Barenblatt().alpha(exponent_m,dim)
-    beta = conductivity2image.Barenblatt().beta(exponent_m,dim)
-    K_md = conductivity2image.Barenblatt().K_md(exponent_m,dim)
 
+    Barenblatt = conductivity2image.Barenblatt(exponent_m, dim)
+    # get the time to get M = M_0 * (r(\sigma))**p
+    sigma = Barenblatt.sigma(cond_zero, exponent_p)
+    M_max = pouiseuille.dat.data.max() * 2 * h
+    height = Barenblatt.height(sigma,M_max)
+    
     
 
-    # find the time to get 
-    # M = M_0 * (r(\sigma))**p 
-    sigma = (cond_zero**(-1/exponent_p) * K_md ** (-1/2) * B **(1/2))**(1/beta)
-    
-    
-    M_max = pouiseuille.dat.data.max() * 2 * h 
-    height = conductivity2image.Barenblatt().height(exponent_m,dim,sigma,M_max)
-    print(
-    f'p={exponent_p:.1e} d={d} m={exponent_m}'
-    + f'B={B:.1e} alpha={alpha:.1e} beta={beta:.1e} K_md={K_md:.1e} sigma={sigma:.1e} f={sigma**alpha:.1e} img_height={height:.1e} M_max={M_max:.1e}')
-    
     
     pm_map = conductivity2image.PorousMediaMap(
         space,
@@ -283,15 +273,15 @@ def data2mu(np_thickness, np_skeleton, np_network, directory, exponent_p=3.0, co
 
 if (__name__ == '__main__'):    
     parser = argparse.ArgumentParser(description='Corrupt networks with masks and reconstruct via branched transport')
-    #parser.add_argument('--thk', type=str, help="numpy thickness file")
-    #parser.add_argument('--s', type=str, help="skeleton image")
+    parser.add_argument('--thk', type=str, help="numpy thickness file")
+    parser.add_argument('--s', type=str, help="skeleton image")
     parser.add_argument('--n', type=str, help="network image")
     parser.add_argument('--p', type=float, default=3, help="power")
     parser.add_argument('--c', type=float, default=1.0, help="condzero")
     args = parser.parse_args()
 
-    #image2tdens(args.thk, args.s, args.n, args.p, args.c)
-    binary2mu(args.n, args.p, args.c)
+    image2tdens(args.thk, args.s, args.n, args.p, args.c)
+    #binary2mu(args.n, args.p, args.c)
     
     
 
