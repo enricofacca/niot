@@ -59,12 +59,17 @@ def save2pvd(functions,filename):
     out_file = File(filename)
     out_file.write(*functions)
 
-    # get file name without extension
+    # get directory 
+    directory = os.path.dirname(os.path.abspath(filename))
+    filename = os.path.basename(filename)
     filename = filename[:-4]
+
+
     comm = functions[0].function_space().mesh().comm
     if comm.size == 1:
-        firedrake_vtu_name = filename+'_0.vtu'
-        new_vtu_name = filename+'.vtu'
+        firedrake_vtu_name = f'{directory}/{filename}/{filename}_0.vtu'
+        new_vtu_name = f'{directory}/{filename}.vtu'
+        print(new_vtu_name)
         try:
             os.rename(firedrake_vtu_name,new_vtu_name)
         except:
