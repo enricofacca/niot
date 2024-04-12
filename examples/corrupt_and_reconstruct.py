@@ -492,9 +492,13 @@ def load_input(example, nref, mask, network_file, comm=COMM_WORLD):
         np_network = np.load(f'{example}/{network_file}')
         #if np_network.ndim == 2 and i2d.convention_2d_flipud:
         #np_network = np.flipud(np_network)
-        if nref != 0:
-            np_network = zoom(np_network, 2**nref, order=0, mode='nearest')
     np_mask = i2d.image2numpy(f'{example}/{mask}',normalize=True,invert=True)
+
+    if nref != 0:
+        np_source = zoom(np_source, 2**nref, order=0, mode='nearest')
+        np_sink = zoom(np_sink, 2**nref, order=0, mode='nearest')
+        np_network = zoom(np_network, 2**nref, order=0, mode='nearest')
+        np_mask = zoom(np_mask, 2**nref, order=0, mode='nearest')
 
 
     return np_source, np_sink, np_network, np_mask

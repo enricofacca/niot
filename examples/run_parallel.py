@@ -21,28 +21,34 @@ except:
 #examples = ['frog_thk']
 examples = ['medium']
 #examples.append('y_net_hand_drawing/nref3')
-#examples = ['y_net_nref2/']
+examples = ['y_net_nref2/']
+#examples = ['y_net/']
 #examples.append('y_net_hand_drawing/nref2')
 #examples.append('y_net_hand_drawing/nref1')
-#mask=['mask_medium.png']#,'mask_small.png']
-mask=['mask02.png']
+mask=['mask_medium.png']#,'mask_large.png']
+#mask=['mask02.png']
 
 nref=[0]
 fems = ['DG0DG0']
-gamma = [0.5]#, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-wd = [0]#, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2, 1e3, 1e4]#,1e-1,1e0,1e1]#, 5e5, 1e3, 5e3, 1e4]#0,1e0,1e4]#,1e-5,1e-3,1e-1
+gamma = [0.5]#,0.5,0.2]#, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+wd = [1e-3, 1e-2, 5e-2, 1e-1, 5e-1, 1e0]#, 1e2, 1e3, 1e4]#,1e-1,1e0,1e1]#, 5e5, 1e3, 5e3, 1e4]#0,1e0,1e4]#,1e-5,1e-3,1e-1
 wr = [0]
-ini = [0,1e5]
+ini = [0]#,1e5]
+network_file = ['network.png']
 #network_file = ['network_thick.png']
 #network_file = ['network_artifacts.png']
-network_file = ['mup3.0e+00zero5.0e+05.npy']#,'mupou3.0e+00zero5.0e+05.npy']
+#network_file = ['mup3.0e+00zero1.0e+03.npy','mup3.0e+00zero5.0e+02.npy']#,'mupou3.0e+00zero5.0e+05.npy']
 #network_file = ['mup3.0e+00zero1.0e+07.npy']#,'mupou3.0e+00zero1.0e+07']#,'mucnstp3.0e+00zero1.0e+01.npy']#,'network.png']
-#network_file = ['network.png']#,'thickness.npy']
-conf = ['MASK']#,'ONE']#,'CORRUPTED']
+#network_file = ['network_shifted_inside.png','network_shifted_inside2.png']#,'thickness.npy']
+conf = ['ONE']#,'CORRUPTED']
 maps = [
-    {'type':'identity','scaling': 1}, 
-#    {'type':'pm', 'sigma': 1e-3, 'exponent_m': 2.0, 'scaling': 10},
-#    {'type':'pm', 'sigma': 1e-4, 'exponent_m': 2.0, 'scaling': 10},
+#    {'type':'identity','scaling': 100}, 
+#    {'type':'identity','scaling': 50},
+#    {'type':'identity','scaling': 10}, 
+#        {'type':'identity','scaling': 1},
+#        {'type':'pm', 'sigma': 1e-3, 'exponent_m': 2.0, 'scaling': 1.0},
+        {'type':'pm', 'sigma': 1e-3, 'exponent_m': 2.0, 'scaling': 50},
+    #    {'type':'pm', 'sigma': 1e-4, 'exponent_m': 2.0, 'scaling': 10},
 ]
 
     #    {'type':'heat', 'sigma': 1e-4, 'scaling': 100},
