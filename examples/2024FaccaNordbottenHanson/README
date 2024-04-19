@@ -1,0 +1,20 @@
+This directory contains the data and the scripts used in the manuscript:
+"Network Inpainting via Optimal Transport" 
+
+The command to reproduce all experiments is
+```
+python run_parallel.py
+```
+It runs in parallel all experiments shown in the paper. One processor for experiment (consider that it may require a lot of memory).
+
+The directories 
+./y_net/ 
+./y_nret_nref2/
+./frog_tounge/
+
+contains the inputs images and the results of the reconstructed images, stored in pvd/vtu format.
+
+The directory ./plot_tools/ contains a series of scripts genereating the images shown in the manuscripts.
+
+The directory ./classical_inpaiting/ contains two MATLAB scripts based on the thi code and adapted to the experiments in the paper.
+
