@@ -258,7 +258,7 @@ def corrupt_and_reconstruct(np_source,
     # optimization
     niot_solver.ctrl_set('optimization_tol', 1e-5)
     niot_solver.ctrl_set('constraint_tol', 1e-5)
-    niot_solver.ctrl_set('max_iter', 1)
+    niot_solver.ctrl_set('max_iter', 5000)
     niot_solver.ctrl_set('max_restart', 4)
     niot_solver.ctrl_set('verbose', 0)  
     
@@ -341,7 +341,7 @@ def corrupt_and_reconstruct(np_source,
        reconstruction,
         reconstruction_for_contour,
        tdens_for_contour)
-    #PETSc.Sys.Print(f"{ierr=}. {n_ensemble=} Saved solution to "+filename, comm=comm)
+    PETSc.Sys.Print(f"{ierr=}. {n_ensemble=} Saved solution to "+filename, comm=comm)
     
     return ierr
     
