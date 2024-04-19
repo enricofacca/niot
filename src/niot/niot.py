@@ -60,6 +60,9 @@ utilities.include_citations(
 
 
 def msg_bounds(vec,label):
+    """
+    Generate a message with the bounds of the vector
+    """
     min = vec.min()[1]
     max = vec.max()[1]
     return ''.join([f'{min:2.1e}','<=',label,'<=',f'{max:2.1e}'])
@@ -109,14 +112,14 @@ class SpaceDiscretization:
         if (pot_space=='DG') and (pot_deg == 0):
             if mesh.geometric_dimension() == 2:
                 x,y = mesh.coordinates
-                x_func = interpolate(x, self.pot_space)
-                y_func = interpolate(y, self.pot_space)
+                x_func = assemble(interpolate(x, self.pot_space))
+                y_func = assemble(interpolate(y, self.pot_space))
                 self.delta_h = sqrt(jump(x_func)**2 + jump(y_func)**2)
             elif mesh.geometric_dimension() == 3:
                 x,y,z = mesh.coordinates
-                x_func = interpolate(x, self.pot_space)
-                y_func = interpolate(y, self.pot_space)
-                z_func = interpolate(z, self.pot_space)
+                x_func = assemble(interpolate(x, self.pot_space))
+                y_func = assemble(interpolate(y, self.pot_space))
+                z_func = assemble(interpolate(z, self.pot_space))
                 self.delta_h = sqrt(jump(x_func)**2 
                                     + jump(y_func)**2 
                                     + jump(z_func)**2)
@@ -287,14 +290,14 @@ def delta_h(space):
     mesh = space.mesh()
     if mesh.geometric_dimension() == 2:
         x,y = mesh.coordinates
-        x_func = interpolate(x, space)
-        y_func = interpolate(y, space)
+        x_func = assemble(interpolate(x, space))
+        y_func = assemble(interpolate(y, space))
         delta_h = sqrt(jump(x_func)**2 + jump(y_func)**2)
     elif mesh.geometric_dimension() == 3:
         x,y,z = mesh.coordinates
-        x_func = interpolate(x, pot_space)
-        y_func = interpolate(y, pot_space)
-        z_func = interpolate(z, pot_space)
+        x_func = assemble(interpolate(x, pot_space))
+        y_func = assemble(interpolate(y, pot_space))
+        z_func = assemble(interpolate(z, pot_space))
         delta_h = sqrt(jump(x_func)**2 
                             + jump(y_func)**2 
                             + jump(z_func)**2)
@@ -471,10 +474,7 @@ class NiotSolver:
     
         # confidence 
         self.confidence = Function(self.fems.tdens_space)
-        if isinstance(confidence, float):
-            self.confidence.assign(confidence)
-        else:
-            self.confidence.interpolate(confidence)
+        assemble(interpolate(confidence,self.fems.tdens_space), tensor=self.confidence)
         self.confidence.rename('confidence','confidence')
 
         # init infos
@@ -755,7 +755,7 @@ class NiotSolver:
 
         elif "gfvar" in method:
             gfvar = self.gfvar 
-            gfvar.interpolate(self.gfvar_of_tdens(tdens))
+            assemble(interpolate(self.gfvar_of_tdens(tdens),gfvar))
             dw = self.ctrl_get('discrepancy_weight')
             pw = self.ctrl_get('penalization_weight')
             rw = self.ctrl_get('regularization_weight')
@@ -839,9 +839,9 @@ class NiotSolver:
         Intialize solution
         """
         if pot is not None:
-            self.sol.sub(0).interpolate(pot)
+            self.sol.sub(0).assign(pot)
         if tdens is not None:
-            self.sol.sub(1).interpolate(tdens)
+            self.sol.sub(1).assign(tdens)
     
     def get_otp_solution(self, sol):
         """
@@ -859,7 +859,7 @@ class NiotSolver:
 
         DG0_vec = VectorFunctionSpace(self.mesh,'DG',0)
         vel = Function(DG0_vec)
-        vel.interpolate(- tdens * grad(pot))
+        assemble(interpolate(- tdens * grad(pot), DG0_vec), tensor = vel)
         vel.rename('vel','Velocity')
         
         return pot, tdens, vel
@@ -995,13 +995,8 @@ class NiotSolver:
         Measure the discrepancy between I(tdens) and the observed data.
         '''
         # print min and max of tdens
-        #if self.iteration == 0:
-        initial_guess = None
-        #else:
-        #initial_guess = self.tdens2image_map.image_h
-        
-        image_h = self.tdens2image_map(tdens)
-        dis = self.confidence * 0.5 * (image_h - self.img_observed)**2 * dx
+        self.image_h = self.tdens2image_map(tdens)
+        dis = self.confidence * 0.5 * (self.image_h - self.img_observed)**2 * dx
         return dis
     
     def joule(self, pot, tdens):
@@ -1146,7 +1141,6 @@ class NiotSolver:
 
         # We compute the gradient w.r.t to tdens of the Lagrangian
         if not self.gradients_computed:
-            print('gradient precomputed')
             self.compute_residuum(sol)
         
         self.rhs_ode.assign(-(self.gradient_discrepancy 
@@ -1165,7 +1159,6 @@ class NiotSolver:
         self.increment_h = Function(self.fems.tdens_space)
         
         gradient_scaling = self.ctrl_get(['dmk','tdens_mirror_descent_explicit','gradient_scaling'])
-        print(f'{gradient_scaling=}')
         if gradient_scaling == 'dmk':            
             tdens_power = 2 - self.btp.gamma
         elif gradient_scaling == 'mirror_descent':
@@ -1174,7 +1167,7 @@ class NiotSolver:
             tdens_power = 0.0     
         else:
             raise ValueError(f'Wrong scaling method {gradient_scaling=}')
-        scaling.interpolate(self.tdens_h**tdens_power)
+        scaling = assemble(interpolate(self.tdens_h**tdens_power,self.fems.tdens_space))
 
         with self.rhs_ode.dat.vec as rhs, scaling.dat.vec_ro as scaling_vec, self.increment_h.dat.vec as d, self.tdens_h.dat.vec_ro as tdens_vec:
             #
@@ -1276,7 +1269,7 @@ class NiotSolver:
             tdens_power = 0.0     
         else:
             raise ValueError(f'Wrong scaling method {gradient_scaling=}')
-        scaling.interpolate(self.tdens_h**tdens_power)
+        scaling = assemble(interpolate(self.tdens_h**tdens_power,self.fems.tdens_space))
 
         with self.rhs_ode.dat.vec as rhs, scaling.dat.vec_ro as scaling_vec, self.increment_h.dat.vec as d, self.tdens_h.dat.vec_ro as tdens_vec:
             #
@@ -1484,7 +1477,7 @@ class NiotSolver:
         # convert tdens to gfvar
         pot , tdens = sol.subfunctions
         gfvar = self.gfvar
-        gfvar.interpolate(self.gfvar_of_tdens(tdens))
+        assemble(interpolate(self.gfvar_of_tdens(tdens),tensor= gfvar))
 
         # compute gradient of energy w.r.t. gfvar
         # see tdens_mirror_descent for more details on the implementation
@@ -1525,7 +1518,7 @@ class NiotSolver:
         
         # convert gfvar to tdens
         utilities.threshold_from_below(gfvar, 0)
-        self.tdens_h.interpolate(self.tdens_of_gfvar(gfvar))
+        assemble(interpolate(self.tdens_of_gfvar(gfvar),tensor=self.tdens_h))
         sol.sub(1).assign(self.tdens_h)
         with self.tdens_h.dat.vec_ro as tdens_vec:
             self.print_info(utilities.msg_bounds(tdens_vec,'tdens'), priority=2,color='blue')   
@@ -1555,7 +1548,7 @@ class NiotSolver:
             pot , tdens = sol.subfunctions
             self.tdens_h.assign(tdens)
             gfvar = self.gfvar
-            gfvar.interpolate(self.gfvar_of_tdens(tdens))
+            assemble(interpolate(self.gfvar_of_tdens(tdens),tensor=gfvar))
 
 
             # compute gradient of energy w.r.t. gfvar
@@ -1629,7 +1622,7 @@ class NiotSolver:
             
             # convert gfvar to tdens
             utilities.threshold_from_below(gfvar, 0)
-            self.tdens_h.interpolate(self.tdens_of_gfvar(gfvar))
+            assemble(interpolate(self.tdens_of_gfvar(gfvar),tensor = self.tdens_h))
             #PETSc.Sys.Print(f"niot_solver tdens",comm=self.comm)
             sol.sub(1).assign(self.tdens_h)
             with self.tdens_h.dat.vec_ro as tdens_vec:
@@ -1671,7 +1664,13 @@ class NiotSolver:
             return ierr
         
         if method == 'tdens_mirror_descent_semi_implicit':
-            ierr = self.tdens_mirror_descent_semi_implicit(sol)
+            self.sol_old.assign(sol)
+            ierr = -1
+            while self.restart < self.ctrl_get('max_restart') and ierr != 0:
+                ierr = self.tdens_mirror_descent_semi_implicit(sol)
+                if ierr != 0:
+                    sol.assign(self.sol_old)
+                    self.restart += 1                    
             return ierr
         
         elif method == 'gfvar_gradient_descent_explicit':
@@ -1742,7 +1741,7 @@ def callback_record_algorithm(self, save_solution, save_directory, save_solution
         self.save_solution(sol,filename)
     elif (save_solution == 'some') and (current_iteration % save_solution_every == 0):
         pot, tdens = sol.subfunctions          
-        self.image_h.interpolate(self.tdens2image(tdens))
+        assemble(interpolate(self.tdens2image(tdens),tensor= self.image_h))
 
         filename = os.path.join(save_directory,f'sol{current_iteration:06d}.pvd')
         utilities.save2pvd([pot, tdens, self.image_h],filename)
