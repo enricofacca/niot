@@ -11,12 +11,15 @@ from firedrake import conditional
 from firedrake import File
 from firedrake import solving_utils
 
-from firedrake import interpolate, sqrt, jump, avg, conditional, gt
+from firedrake import sqrt, jump, avg, conditional, gt
 
 from pyadjoint import Block
 from pyadjoint.overloaded_function import overload_function
 
 import firedrake.adjoint as fire_adj
+
+from firedrake.__future__ import interpolate
+
 
 from firedrake import COMM_WORLD, COMM_SELF
 
@@ -190,7 +193,7 @@ def threshold_from_below(func, lower_bound):
         lower_bound (float): lower bound
     """
     temp = Function(func.function_space())
-    temp.interpolate(conditional(func>lower_bound,func,lower_bound))
+    temp = assemble(interpolate(conditional(func>lower_bound,func,lower_bound),func.function_space()))
     func.assign(temp)
 
 
@@ -453,14 +456,14 @@ def delta_h(space):
         #         raise ValueError('hx and hy are not close numerically')
         # except:
         x,y = mesh.coordinates
-        x_func = interpolate(x, space)
-        y_func = interpolate(y, space)
+        x_func = assemble(interpolate(x, space))
+        y_func = assemble(interpolate(y, space))
         delta_h = sqrt(jump(x_func)**2 + jump(y_func)**2)
     elif mesh.geometric_dimension() == 3:
         x,y,z = mesh.coordinates
-        x_func = interpolate(x, space)
-        y_func = interpolate(y, space)
-        z_func = interpolate(z, space)
+        x_func = assemble(interpolate(x, space))
+        y_func = assemble(interpolate(y, space))
+        z_func = assemble(interpolate(z, space))
         delta_h = sqrt(jump(x_func)**2 
                             + jump(y_func)**2 
                             + jump(z_func)**2)

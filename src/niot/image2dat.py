@@ -11,6 +11,7 @@ from firedrake import COMM_WORLD, COMM_SELF
 
 #import localthickness
 #from skimage.morphology import skeletonize
+from firedrake.__future__ import interpolate
 
 import time
 
@@ -45,7 +46,7 @@ def build_mesh_from_numpy(np_image, mesh_type='simplicial',lengths=None,comm=COM
       if lengths is None:
          lengths = (width,height)
 
-      PETSc.Sys.Print(f'npixel = {width*height} {comm.size=}', comm=comm)
+      #PETSc.Sys.Print(f'npixel = {width*height} {comm.size=}', comm=comm)
       # create mesh
       mesh = fd.RectangleMesh(
             nx=width,
@@ -262,7 +263,7 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
    
    # Get current coordinates
    W = fd.VectorFunctionSpace(DG0.ufl_domain(), DG0.ufl_element())
-   coordinates = fd.interpolate(DG0.ufl_domain().coordinates, W)
+   coordinates = fd.assemble(interpolate(DG0.ufl_domain().coordinates, W))
    img_function = fd.Function(DG0,name=name)
    img_function.dat.data[:] = my_data(coordinates.dat.data)
 
