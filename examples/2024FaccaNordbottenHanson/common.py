@@ -82,16 +82,16 @@ def figure2():
     # Combinations producting the data for Figure 2
     #
     examples = ['y_net/']
-    mask = ['mask_medium.png']
+    mask = ['mask_medium.png'] # not used in the figure
     nref=[0,1,2]
     gamma = [0.2,0.5,0.8]
     wd = [0] # set the discrepancy to zero
     ini = [0]
     # the following are not influent since wd=weight discrepancy is zero
     network_file = ['network.png'] #
-    conf = ['ONE']
+    conf = ['MASK']
     maps = [
-        {'type':'identity','scaling': 1.0}, 
+        {'type':'identity','scaling': 10}, 
     ]
     parameters=[examples,mask,nref,fems,gamma,wd,wr,network_file,ini,conf,maps,method]
     combinations = list(itertools.product(*parameters))
@@ -153,8 +153,8 @@ def figure5():
     #
     # combination for Figure 5 b
     #
-    examples = ['frog_tongue/']
-    mask = ['mask.png']
+    examples = ['medium']#'frog_tongue/']
+    mask = ['mask02.png']
     nref=[0]
     gamma = [0.5]
     wd = [0] # set the discrepancy to zero
@@ -174,8 +174,8 @@ def figure6():
     #
     # combination for Figure 6
     #
-    examples = ['frog_tongue']
-    mask = ['mask.png']
+    examples = ["medium"]#'frog_tongue']
+    mask = ["mask02.png"]
     nref=[0]
     gamma = [0.5]
     wd = [1e-3,1e-1,1e0]
@@ -198,6 +198,8 @@ def figure7():
     #
     examples = ['frog_tongue/']
     mask = ['mask.png']
+    examples = ["medium"]#'frog_tongue']
+    mask = ["mask02.png"]
     nref=[0]
     gamma = [0.5]
     wd = [1e-2,1e-1,1e0]
@@ -219,6 +221,8 @@ def figure8():
     #
     examples = ['frog_tongue/']
     mask = ['mask.png']
+    examples = ["medium"]#'frog_tongue']
+    mask = ["mask02.png"]
     nref=[0]
     gamma = [0.5]
     wd = [1e1,1e3,1e4] # set the discrepancy to zero
