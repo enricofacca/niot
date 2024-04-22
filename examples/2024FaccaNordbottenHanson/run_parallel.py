@@ -14,7 +14,7 @@ from common import figure2, figure3, figure4, figure5, figure6, figure7, figure8
 from firedrake import COMM_WORLD
 
 
-def is_present(combination):
+def is_present(dir_vtu,combination):
     """
     Check if pvd file already exists.
     """
@@ -23,8 +23,9 @@ def is_present(combination):
     mask = combination[1]
     mask_name = os.path.splitext(mask)[0]
     label = '_'.join(labels_problem)
-    directory=f'{example}/{mask_name}/'
+    directory = f'{dir_vtu}/{example}/{mask_name}/'
     filename = os.path.join(directory, f'{label}.pvd')    
+#    print(os.path.exists(filename),filename)
     return os.path.exists(filename)
 
 
@@ -35,7 +36,8 @@ def run_single_experiment(example, mask, nref,fem,gamma,wd,wr,network_file,ini,c
     and the method to solve it.
     """
 
-    # set a list of labels 
+    # set a list of labels
+    mask_name = os.path.splitext(mask)[0]    
     labels_problem = labels(nref,fem,gamma,wd,wr,
                 network_file,   
                 ini,
@@ -49,14 +51,16 @@ def run_single_experiment(example, mask, nref,fem,gamma,wd,wr,network_file,ini,c
     
 
     # check if the directory exists
-    for directory in ['results',f'result/{example}',f'result/{example}/{mask_name}']:
+    for directory in ['results',f'results/{example}',f'results/{example}/{mask_name}']:
         if not os.path.exists(directory):
             try:
                 os.mkdir(directory)
             except:
                 pass # directory already exists
 
-    
+
+    out_dir = f'results/{example}/{mask_name}/'
+            
     # run the experiment
     ierr = corrupt_and_reconstruct(np_source,
                                    np_sink,
@@ -69,7 +73,7 @@ def run_single_experiment(example, mask, nref,fem,gamma,wd,wr,network_file,ini,c
                             confidence=conf,
                             tdens2image=tdens2image,
                             method=method,
-                            directory=f'results/{example}/{mask_name}/',
+                            directory=out_dir,
                             labels_problem=labels_problem,
                             comm=comm,
                             n_ensemble=n_ensemble)
@@ -113,7 +117,7 @@ if (__name__ == '__main__'):
     toremove=0
     TODO=[]
     for combination in combinations:
-        if is_present(combination) and args.overwrite == 1 : 
+        if is_present("./results/",combination) and args.overwrite == 0 : 
             toremove+=1
         else:
             TODO.append(combination)
@@ -128,8 +132,9 @@ if (__name__ == '__main__'):
         mask = combination[1]
         mask_name = os.path.splitext(mask)[0]
         label = '_'.join(labels_problem)
-        #if not is_present(combination):
-        #    print (label )
+        print(combination)
+        if not is_present("./results",combination):
+            print (label )
 
     del combinations
     combinations = TODO

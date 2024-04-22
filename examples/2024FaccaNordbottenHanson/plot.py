@@ -10,7 +10,7 @@ if (__name__ == '__main__'):
 
     figures = []
     combinations = []
-    vtu_dir = "./"
+    vtu_dir = "./results/"
     
     if ((args.figure == '2') or (args.figure == 'all')):
         combinations = figure2()
@@ -28,7 +28,7 @@ if (__name__ == '__main__'):
             plot_figure4(c,vtu_dir)
 
     if ((args.figure == '5') or (args.figure == 'all')):
-        plot_figure5(vtu_dir+"medium/mask02/")
+        plot_figure5(vtu_dir+"frog_tongue/mask/")
 
     if ((args.figure == '6') or (args.figure == 'all')):
         combinations = figure6()

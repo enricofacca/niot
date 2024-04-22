@@ -153,8 +153,8 @@ def figure5():
     #
     # combination for Figure 5 b
     #
-    examples = ['medium']#'frog_tongue/']
-    mask = ['mask02.png']
+    examples = ["frog_tongue/"]
+    mask = ['mask.png']
     nref=[0]
     gamma = [0.5]
     wd = [0] # set the discrepancy to zero
@@ -174,8 +174,8 @@ def figure6():
     #
     # combination for Figure 6
     #
-    examples = ["medium"]#'frog_tongue']
-    mask = ["mask02.png"]
+    examples = ["frog_tongue"]
+    mask = ["mask.png"]
     nref=[0]
     gamma = [0.5]
     wd = [1e-3,1e-1,1e0]
@@ -198,8 +198,6 @@ def figure7():
     #
     examples = ['frog_tongue/']
     mask = ['mask.png']
-    examples = ["medium"]#'frog_tongue']
-    mask = ["mask02.png"]
     nref=[0]
     gamma = [0.5]
     wd = [1e-2,1e-1,1e0]
@@ -221,8 +219,6 @@ def figure8():
     #
     examples = ['frog_tongue/']
     mask = ['mask.png']
-    examples = ["medium"]#'frog_tongue']
-    mask = ["mask02.png"]
     nref=[0]
     gamma = [0.5]
     wd = [1e1,1e3,1e4] # set the discrepancy to zero

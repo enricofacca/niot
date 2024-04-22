@@ -658,7 +658,7 @@ def plot_figure5(directory):
                 off_screen=True)
 
     mask_vtu_file = (directory 
-                     +'nref0_netnetwork_shifted_inside2'
+                     +'nref0_netnetwork'
                      +'_network_mask_0.vtu')
     mask_vtu = get_vtu(mask_vtu_file)
 
@@ -1066,7 +1066,7 @@ def plot_figure5(directory):
     # combination for Figure 5 b
     #
     examples = ['medium']#'frog_tongue/']
-    mask = ['mask02.png']
+    mask = ['mask.png']
     nref=[0]
     gamma = [0.5]
     wd = [0] # set the discrepancy to zero
