@@ -1,20 +1,30 @@
 This directory contains the data and the scripts used in the manuscript:
-"Network Inpainting via Optimal Transport" 
+"Network Inpainting via Optimal Transport".
 
-The command to reproduce all experiments is
+First, follow the instructions described in the README file in the home directory.
+The Firedrake version used during the experiments can be installed using
+
+```
+firedrake-install --doi
+```
+
+The ./data/ directory contains the inputs images.
+Reproduce all experiments with
 ```
 python run_parallel.py
 ```
-It runs in parallel all experiments shown in the paper. One processor for experiment (consider that it may require a lot of memory).
 
-The directories 
-./y_net/ 
-./y_nret_nref2/
-./frog_tounge/
+This script runs in parallel all experiments shown in the paper, one processor for experiment. Consider that it may require a lot of memory. Use
+```
+python run_parallel.py --help
+```
+to see the available options.
 
-contains the inputs images and the results of the reconstructed images, stored in pvd/vtu format.
 
-The directory ./plot_tools/ contains a series of scripts genereating the images shown in the manuscripts.
+The directory ./results/ will contain the reconstructed images, stored in pvd/vtu format.
+
+The script plot_figures.py will generate the images shown in the manuscripts.
+The directory tex_figures/ contains a series of tex files to obtain the figures shown in the papers.
 
 The directory ./classical_inpaiting/ contains two MATLAB scripts based on the thi code and adapted to the experiments in the paper.
 

@@ -83,9 +83,9 @@ def run_single_experiment(example, mask, nref,fem,gamma,wd,wr,network_file,ini,c
 
 if (__name__ == '__main__'):
     parser = argparse.ArgumentParser(description='Create data for the figures in the manuscript')
-    parser.add_argument("-f","--figure", type=str,default='all', help="all(default) or the number of figure (2-8)")
-    parser.add_argument("-o","--overwrite", type=int, default=0, help="1 = overwrite  0 = skip (default)")
-    parser.add_argument("-n","--np", type=int, default=mp.cpu_count(), help="number of processors (max available=default)")
+    parser.add_argument("--figure", type=str,default='all', help="all(default) or the number of figure (2-8)")
+    parser.add_argument("--overwrite", type=int, default=0, help="1 = overwrite  0 = skip (default)")
+    parser.add_argument("--np", type=int, default=mp.cpu_count(), help="number of processors (max available=default)")
     args, unknown = parser.parse_known_args()
 
     figures = []
