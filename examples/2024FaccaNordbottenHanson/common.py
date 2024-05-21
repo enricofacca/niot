@@ -136,7 +136,7 @@ def figure4():
     mask = ['mask_medium.png']
     nref=[0]
     gamma = [0.5]
-    wd = [1e-2,5e-2,1e-1,1e0] # set the discrepancy to zero
+    wd = [1e-3,5e-2,1e-1,1e0] # set the discrepancy to zero
     ini = [0,1e5]
     network_file = ['network_artifacts.png'] #
     conf = ['ONE']
@@ -181,7 +181,7 @@ def figure6():
     wd = [1e-3,1e-1,1e0]
     ini = [0]
     network_file = ['network.png'] 
-    conf = ['ONE']
+    conf = ["ONE","MASK"]
     maps = [
         {'type':'identity','scaling': 50}, 
     ]
@@ -224,7 +224,7 @@ def figure8():
     wd = [1e1,1e3,1e4] # set the discrepancy to zero
     ini = [0]
     network_file = ['mup3.0e+00zero5.0e+02.npy'] 
-    conf = ['MASK','ONE']
+    conf = ["MASK","ONE"]
     maps = [
         {'type':'identity','scaling': 1.0}, 
     ]

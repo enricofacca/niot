@@ -23,7 +23,7 @@ from firedrake import norm
 from firedrake import Function
 from firedrake import interpolate
 # for writing to file
-from firedrake import File
+from firedrake import VTKFile
 import firedrake as fire
 #from memory_profiler import profile
 
@@ -187,7 +187,7 @@ def corrupt_and_reconstruct(np_source,
     if (not os.path.exists(filename) or overwrite):
         try:
             #PETSc.Sys.Print(f"{n_ensemble=} open {filename=}", comm=comm)   
-            out_file = File(filename,comm=comm,mode='w')
+            out_file = VTKFile(filename,comm=comm,mode='w')
             out_file.write(corrupted,
             corrupted_for_contour,
             network,
@@ -205,7 +205,7 @@ def corrupt_and_reconstruct(np_source,
     if (not os.path.exists(filename) or overwrite):
         try:
             #PETSc.Sys.Print(f"{n_ensemble=} open {filename=}", comm=comm)
-            out_file = File(filename,comm=comm,mode='w')
+            out_file = VTKFile(filename,comm=comm,mode='w')
             out_file.write(
                 confidence_w,
                 confidence_for_contour,
@@ -222,7 +222,7 @@ def corrupt_and_reconstruct(np_source,
         sink_for_contour = Function(CG1)
         sink_for_contour.interpolate(sink).rename("sink_countour","sink")
         #PETSc.Sys.Print(f"{n_ensemble=} open {filename=}", comm=comm)
-        out_file = File(filename,comm=comm,mode='w')
+        out_file = VTKFile(filename,comm=comm,mode='w')
         out_file.write(
             source,
             sink,
@@ -303,7 +303,7 @@ def corrupt_and_reconstruct(np_source,
     if (not os.path.exists(filename) or overwrite):
         try:
             #PETSc.Sys.Print(f"{n_ensemble=} open {filename=}", comm=comm)
-            out_file = File(filename,comm=comm,mode='w')
+            out_file = VTKFile(filename,comm=comm,mode='w')
             out_file.write(niot_solver.confidence,niot_solver.img_observed)
         except:
             PETSc.Sys.Print(f'Error writing {filename}. Skipping',comm=comm)
@@ -335,7 +335,7 @@ def corrupt_and_reconstruct(np_source,
     
 
     filename = os.path.join(directory, f'{label}.pvd')
-    out_file = File(filename,comm=comm,mode='w')
+    out_file = VTKFile(filename,comm=comm,mode='w')
     out_file.write(pot, tdens, 
        tdens0, pot0, 
        reconstruction,
@@ -513,7 +513,7 @@ def callback(solver):
     PETSc.Sys.Print(f'{n_ensemble=} {solver.iteration=}',comm=solver.comm)
     filename = os.path.join(directory,'runs',f'{label}_{solver.iteration:03d}.pvd')
     #PETSc.Sys.Print(f"{ierr=}. {n_ensemble=} {comm.size} Open "+filename, comm=comm)
-    out_file = File(filename,comm=comm,mode='w')
+    out_file = VTKFile(filename,comm=comm,mode='w')
     pot, tdens, vel = solver.get_otp_solution(solver.sol)
     out_file.write(pot, tdens, 
                     solver.gradient_discrepancy, 
