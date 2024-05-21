@@ -19,7 +19,7 @@ pip install -e .
 ```
 
 # Examples
-Move in the directory example/2024FaccaNordbottenHanson and follow the instruction to reproduce the results of the paper.
+Move in the directory examples/2024FaccaNordbottenHanson and follow the instruction to reproduce the results of the paper.
 
 # Authors
 Enrico Facca, enrico.facca@uib.no : Departement of Mathematics, University of Bergen, Bergen, Norway.
