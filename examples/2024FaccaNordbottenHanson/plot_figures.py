@@ -246,15 +246,16 @@ def plot_figure3(parameters, dir_vtu="./results/"):
     )
 
     directory = dir_vtu+example+'/'+mask_name+'/'
+    labels_name = '_'.join(labels(*parameters_local))
     try:
-        path_vtu = os.path.abspath(directory,
-                +'_'.join(labels(*parameters_local))+'_0.vtu')
+        print(labels_name)
+        path_vtu = os.path.abspath(directory+labels_name+'_0.vtu')
         vtu = pv.read(path_vtu)
         print(path_vtu)
     except:
         path_vtu = os.path.abspath(directory
-                + '_'.join(labels(*parameters_local))+'/'
-                +'_'.join(labels(*parameters_local))+'_0.vtu')
+                + labels_name+'/'
+                + labels_name+'_0.vtu')
         vtu = pv.read(path_vtu)
         print(path_vtu)
 
