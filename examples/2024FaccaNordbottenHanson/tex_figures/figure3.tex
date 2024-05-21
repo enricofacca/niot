@@ -1,0 +1,107 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{grffile} % this is for handling files that have dots in their name
+
+\input{package}
+\input{commands}
+\input{style}
+\begin{document}
+{
+  \def \fraction {0.22}%0.225
+  \def \extrah {0.01em}
+  \def \labelh {0.5em}
+  \begin{figure}
+    \centering
+  \begin{tabular}{|@{}c@{}|@{\hspace{0.25em}}c@{\hspace{\labelh}}|@{\hspace{\extrah}}c@{\hspace{\extrah}}|@{\hspace{\extrah}}c@{\hspace{\extrah}}|@{\hspace{\extrah}}c@{\hspace{\extrah}}|@{\hspace{\extrah}}c@{\hspace{\extrah}}|}
+      \hline
+      && $\lambda=1e-2$ & $\lambda=5e-2$  &  $\lambda=1e-1$ & $\lambda=1e0$ 
+      \\
+      \hline
+      \multirow{2}{*}{
+      \raisebox{-.5\normalbaselineskip}[0pt][0pt]{\rotatebox[origin=c]{90}{$\confidence=\confmask$, $\Tdens_0=1$}}
+      }
+      &
+      \raisebox{-.5\normalbaselineskip}[0pt][0pt]{\rotatebox[origin=c]{90}{$\ImgTd(\Tdens)=1e1\Tdens$}}
+      &
+        \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-02_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+        &
+        \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd5.0e-02_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+        &
+        \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-01_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+        &
+        \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e+00_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      \\
+      \cline{2-5}
+      &
+      \raisebox{-.5\normalbaselineskip}[0pt][0pt]{\rotatebox[origin=c]{90}{\quad $\ImgTd(\Tdens)=50\PM(\Tdens)$}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-02_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2ipm1.0e-03_scaling5.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd5.0e-02_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2ipm1.0e-03_scaling5.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-01_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2ipm1.0e-03_scaling5.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e+00_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2ipm1.0e-03_scaling5.0e+01_methodte_tdens.pdf}}}}
+      \\
+      \hline
+      \multirow{2}{*}{
+      \raisebox{-.5\normalbaselineskip}[0pt][0pt]{\rotatebox[origin=c]{90}{$\confidence=1$, $\Tdens_0=1$}}
+      }
+      &
+      \raisebox{-.5\normalbaselineskip}[0pt][0pt]{\rotatebox[origin=c]{90}{\quad $\ImgTd(\Tdens)=10\Tdens$}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-02_wr0.0e+00_netnetwork_ini0.0e+00_confONE_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd5.0e-02_wr0.0e+00_netnetwork_ini0.0e+00_confONE_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-01_wr0.0e+00_netnetwork_ini0.0e+00_confONE_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e+00_wr0.0e+00_netnetwork_ini0.0e+00_confONE_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      \\
+      \cline{2-5}
+      &
+      \raisebox{-.5\normalbaselineskip}[0pt][0pt]{\rotatebox[origin=c]{90}{\quad $\ImgTd(\Tdens)=50\PM(\Tdens)$}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-02_wr0.0e+00_netnetwork_ini0.0e+00_confONE_mu2ipm1.0e-03_scaling5.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd5.0e-02_wr0.0e+00_netnetwork_ini0.0e+00_confONE_mu2ipm1.0e-03_scaling5.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-01_wr0.0e+00_netnetwork_ini0.0e+00_confONE_mu2ipm1.0e-03_scaling5.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e+00_wr0.0e+00_netnetwork_ini0.0e+00_confONE_mu2ipm1.0e-03_scaling5.0e+01_methodte_tdens.pdf}}}}
+        \\
+    \hline
+    \multirow{2}{*}{
+      \raisebox{-.5\normalbaselineskip}[0pt][0pt]{\rotatebox[origin=c]{90}{$\confidence=\confmask$, $\Tdens_0=\Obs{\Tdens}$}}
+      }
+    &
+    \raisebox{-.5\normalbaselineskip}[0pt][0pt]{\rotatebox[origin=c]{90}{\quad $\ImgTd(\Tdens)=10\Tdens$}}
+    &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-02_wr0.0e+00_netnetwork_ini1.0e+05_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd5.0e-02_wr0.0e+00_netnetwork_ini1.0e+05_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-01_wr0.0e+00_netnetwork_ini1.0e+05_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e+00_wr0.0e+00_netnetwork_ini1.0e+05_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+    \\
+    \cline{2-5}
+    &
+    \raisebox{-.5\normalbaselineskip}[0pt][0pt]{\rotatebox[origin=c]{90}{\quad $\ImgTd(\Tdens)=50\PM(\Tdens)$}}
+    &
+    \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-02_wr0.0e+00_netnetwork_ini1.0e+05_confMASK_mu2ipm1.0e-03_scaling5.0e+01_methodte_tdens.pdf}}}}
+    &
+    \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd5.0e-02_wr0.0e+00_netnetwork_ini1.0e+05_confMASK_mu2ipm1.0e-03_scaling5.0e+01_methodte_tdens.pdf}}}}
+    &
+    \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-01_wr0.0e+00_netnetwork_ini1.0e+05_confMASK_mu2ipm1.0e-03_scaling5.0e+01_methodte_tdens.pdf}}}}
+    &
+    \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e+00_wr0.0e+00_netnetwork_ini1.0e+05_confMASK_mu2ipm1.0e-03_scaling5.0e+01_methodte_tdens.pdf}}}}
+    \\
+    \hline
+  \end{tabular}
+  \caption{}
+  \label{fig:netnetwork-all}
+  \end{figure}
+}
+
+\end{document}

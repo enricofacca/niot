@@ -1,0 +1,56 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{grffile} % this is for handling files that have dots in their name
+
+\input{package}
+\input{commands}
+\input{style}
+\begin{document}
+{
+\def \fraction {0.225}
+\def \extrah {0.0em}
+  \begin{figure}
+    \centering
+    \begin{tabular}{|c|@{\hspace{\extrah}}c@{\hspace{\extrah}}|@{\hspace{\extrah}}c@{\hspace{\extrah}}|@{\hspace{\extrah}}c@{\hspace{\extrah}}|c}
+      \cline{1-4}
+      & $\Triang_{h}$ & $\Triang_{h/2}$ &  $\Triang_{h/4}$ &
+      \\
+      \cline{1-4}
+      \raisebox{-.5\normalbaselineskip}[0pt][0pt]{$\gamma=0.8$}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={4.3cm 0.9cm 4.3cm 0.9cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net/mask_medium/matrix_nref0_femDG0DG0_gamma8.0e-01_wd0.0e+00_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={4.3cm 0.9cm 4.3cm 0.9cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net/mask_medium/matrix_nref1_femDG0DG0_gamma8.0e-01_wd0.0e+00_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={4.3cm 0.9cm 4.3cm 0.9cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net/mask_medium/matrix_nref2_femDG0DG0_gamma8.0e-01_wd0.0e+00_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      &
+      \multirow{3}{*}{ \adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={20.3cm 0cm 0.3cm 0cm},clip,width=0.08\columnwidth,valign=t]{{../results/y_net/mask_medium/matrix_nref2_femDG0DG0_gamma5.0e-01_wd0.0e+00_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      \\
+      \cline{1-3}
+      \raisebox{-.5\normalbaselineskip}[0pt][0pt]{$\gamma=0.5$}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={4.3cm 0.9cm 4.3cm 0.9cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd0.0e+00_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={4.3cm 0.9cm 4.3cm 0.9cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net/mask_medium/matrix_nref1_femDG0DG0_gamma5.0e-01_wd0.0e+00_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={4.3cm 0.9cm 4.3cm 0.9cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net/mask_medium/matrix_nref2_femDG0DG0_gamma5.0e-01_wd0.0e+00_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      &
+      \\
+      \cline{1-4}
+      \raisebox{-.5\normalbaselineskip}[0pt][0pt]{$\gamma=0.2$}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={4.3cm 0.9cm 4.3cm 0.9cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net/mask_medium/matrix_nref0_femDG0DG0_gamma2.0e-01_wd0.0e+00_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={4.3cm 0.9cm 4.3cm 0.9cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net/mask_medium/matrix_nref1_femDG0DG0_gamma2.0e-01_wd0.0e+00_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      &
+      \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={4.3cm 0.9cm 4.3cm 0.9cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net/mask_medium/matrix_nref2_femDG0DG0_gamma2.0e-01_wd0.0e+00_wr0.0e+00_netnetwork_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+      &
+      \\
+      \cline{1-4}
+    \end{tabular}
+    \caption{}
+    \label{fig:dmk}
+  \end{figure}
+}
+
+\end{document}

@@ -1,0 +1,50 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{grffile} % this is for handling files that have dots in their name
+
+\input{package}
+\input{commands}
+\input{style}
+\begin{document}
+{
+\def \fraction {0.3}
+\def \extrah {0.02em}
+\begin{figure}
+  \begin{tabular}{|@{}c@{}|@{\hspace{\extrah}}c@{\hspace{\extrah}}|@{\hspace{\extrah}}c@{\hspace{\extrah}}|@{\hspace{\extrah}}c@{\hspace{\extrah}}|}      
+  \hline
+  &$\lambda=1e1$ & $\lambda=1e3$ & $\lambda=1e4$ 
+      \\ 
+      \hline
+      \raisebox{-.5\normalbaselineskip}[0pt][0pt]{\rotatebox[origin=c]{90}{$\confidence=\confmask$}}
+      %\xintFor #1 in {1.0e+01,1.0e+03,1.0e+04} \do {
+      %  &
+      %  \adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={.4cm 2.6cm 0.2cm 2.6cm},clip, width=\fraction\columnwidth,valign=t]{{../results/frog_tongue/mask/matrix_nref0_femDG0DG0_gamma5.0e-01_wd#1_wr0.0e+00_netmup3.0e+00zero5.0e+02_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+00_methodte_tdens.pdf}}}
+      %}   
+      &
+      \adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={.4cm 2.6cm 0.2cm 2.6cm},clip, width=\fraction\columnwidth,valign=t]{{../results/frog_tongue/mask/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e+01_wr0.0e+00_netmup3.0e+00zero5.0e+02_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+00_methodte_tdens.pdf}}}
+      &
+      \adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={.4cm 2.6cm 0.2cm 2.6cm},clip, width=\fraction\columnwidth,valign=t]{{../results/frog_tongue/mask/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e+03_wr0.0e+00_netmup3.0e+00zero5.0e+02_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+00_methodte_tdens.pdf}}}  
+      &
+      \adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={.4cm 2.6cm 0.2cm 2.6cm},clip, width=\fraction\columnwidth,valign=t]{{../results/frog_tongue/mask/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e+04_wr0.0e+00_netmup3.0e+00zero5.0e+02_ini0.0e+00_confMASK_mu2iidentity_scaling1.0e+00_methodte_tdens.pdf}}}
+      \\
+      \hline
+      \raisebox{-.5\normalbaselineskip}[0pt][0pt]{\rotatebox[origin=c]{90}{$\confidence=1$}}
+      &
+      \adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={.4cm 2.6cm 0.2cm 2.6cm},clip, width=\fraction\columnwidth,valign=t]{{../results/frog_tongue/mask/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e+01_wr0.0e+00_netmup3.0e+00zero5.0e+02_ini0.0e+00_confONE_mu2iidentity_scaling1.0e+00_methodte_tdens.pdf}}}
+      &
+      \adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={.4cm 2.6cm 0.2cm 2.6cm},clip, width=\fraction\columnwidth,valign=t]{{../results/frog_tongue/mask/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e+03_wr0.0e+00_netmup3.0e+00zero5.0e+02_ini0.0e+00_confONE_mu2iidentity_scaling1.0e+00_methodte_tdens.pdf}}}
+        &
+      \adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={.4cm 2.6cm 0.2cm 2.6cm},clip, width=\fraction\columnwidth,valign=t]{{../results/frog_tongue/mask/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e+04_wr0.0e+00_netmup3.0e+00zero5.0e+02_ini0.0e+00_confONE_mu2iidentity_scaling1.0e+00_methodte_tdens.pdf}}}
+      \\
+      \hline
+      \multicolumn{4}{c}{
+      \qquad
+      \includegraphics[trim={0.cm 0cm 0.cm 24.83cm},clip,width=0.33\columnwidth,valign=t]{{../results/frog_tongue/mask/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e+04_wr0.0e+00_netmup3.0e+00zero5.0e+02_ini0.0e+00_confONE_mu2iidentity_scaling1.0e+00_methodte_tdens.pdf}}
+      }
+    \end{tabular}
+    \caption{}
+    \label{fig:frog-mu}
+    \end{figure}
+}   
+
+\end{document}

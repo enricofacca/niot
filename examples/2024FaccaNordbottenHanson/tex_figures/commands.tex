@@ -1,0 +1,252 @@
+\newfont{\NUMBERS}{msbm8 scaled\magstep1}
+\newcommand{\COMPLEX}{\mbox{\NUMBERS C}}
+\newcommand{\REAL}{\mbox{\NUMBERS R}}
+\newcommand{\INTEGER}{\mbox{\NUMBERS I}}
+\usepackage{ifthen}
+
+% vectors and matrices
+\newcommand{\Vect}[2][]
+{
+  \ifthenelse{\equal{#1}{}}
+  {\boldsymbol{#2}}
+  {{#2}_{#1}}
+}
+\newcommand{\Matr}[2][]
+{
+  \ifthenelse{\equal{#1}{}}
+  {\boldsymbol{#2}}
+  {{#2}_{#1}}
+}
+
+% inf min etc
+\newcommand{\Argmin}{\operatornamewithlimits{argmin\vphantom{q}}}
+\newcommand{\Argmax}{\operatornamewithlimits{argmax\vphantom{q}}}
+\newcommand{\Inf}{\operatornamewithlimits{\inf\vphantom{q}}}
+
+
+% operators
+\newcommand{\dx}{\, dx}
+\newcommand{\ds}{\, ds}
+\newcommand{\Haus}[1]{\mathcal{H}^{#1}}
+\DeclareMathOperator{\Div}{\operatorname{\text{div}}}
+\DeclareMathOperator{\Grad}{\nabla}
+\DeclareMathOperator{\Sign}{\operatorname{sign}}
+
+\newcommand{\NORM}[1]{\left\|#1\right\|}
+\newcommand{\Dt}[1]{\partial_{t}{#1}}
+\newcommand{\Dtt}[1]{#1''}
+\newcommand{\Ds}[1]{\partial_{s}#1}
+\newcommand{\Dss}[1]{\partial_{ss}#1}
+% optimal transport problem
+\newcommand{\Map}{T}
+\newcommand{\Maps}{\mathcal{T}}
+\newcommand{\Cost}{c}
+\newcommand{\Monge}{I}
+\newcommand{\Plan}{\gamma}
+\newcommand{\Plans}{\Pi}
+\newcommand{\Metric}{d}
+\newcommand{\Obs}[1]{{#1}_{\text{obs}}}
+\newcommand{\Rec}[1]{{#1}_{\text{rec}}}
+\newcommand{\True}[1]{#1_{\text{true}}}
+\newcommand{\Opt}[1]{{#1}_{\text{opt}}}
+
+\newcommand{\Scale}{\alpha}
+\newcommand{\ImgTd}{\mathcal{I}}
+
+
+\newcommand{\Discr}{\mathcal{D}}
+\newcommand{\Img}{I}
+\newcommand{\Reg}{\ensuremath{\mathcal{R}}}
+\newcommand{\Pen}{\text{Penalty}}%\mathcal{P}}
+\newcommand{\confidence}{W}
+\newcommand{\BranchPenalty}{BW}
+\newcommand{\Inpaint}{\mathcal{J}}
+\newcommand{\InpaintReg}{\mathcal{R}}
+\newcommand{\Id}[1]{\Matr{I}_{#1}}
+
+%symbols
+\newcommand{\Lyap}{\Reg}%\ensuremath{\mathcal{L}}}
+\newcommand{\SLyap}{\ensuremath{\mathcal{S}}}
+\newcommand{\LyapDiscrete}{\ensuremath{\Phi}}
+\newcommand{\EiFun}{\ensuremath{\mathcal{J}}}
+\newcommand{\Banach}{\ensuremath{X}}
+\newcommand{\Wmass}{\ensuremath{\mathcal{M}_{\gamma}}}
+\newcommand{\Ene}{\ensuremath{\mathcal{E}}}
+\newcommand{\EneSup}{\ensuremath{\Gamma_{\Forcing}}}
+\newcommand{\EneInf}{\ensuremath{\Theta}}
+\newcommand{\InfSupLyap}{\ensuremath{\Upsilon}}
+\newcommand{\InfInfLyap}{\ensuremath{\Theta}}
+\newcommand{\InfSupGfLyap}{\ensuremath{\InfSupLyap}}
+\newcommand{\InfInfGfLyap}{\ensuremath{\InfInfLyap}}
+
+\newcommand{\NLyap}{\ensuremath{\mathcal{N}}}
+\newcommand{\Dim}{d}
+\newcommand{\Domain}{\ensuremath{\Omega}}
+\newcommand{\CDomain}{\ensuremath{\bar{\Omega}}}
+\newcommand{\Boundary}{\ensuremath{\Gamma}}
+% numeric
+\newcommand{\tstep}{k}
+\newcommand{\tstepp}{k+1}
+\newcommand{\Deltat}[1][]{
+  \ifthenelse{\equal{#1}{}}
+  {\Delta t_{\tstep}}
+  {\Delta t_{#1}}
+  }
+\newcommand{\nlit}{m}
+\newcommand{\nlitp}{m+1}
+\newcommand{\PolySymb}{\mathcal{P}}
+\newcommand{\PC}[1]{\ensuremath{\PolySymb_{#1}}}
+\newcommand{\PONE}{\ensuremath{\PolySymb_{1}}}
+\newcommand{\PTWO}{\ensuremath{\PolySymb_{2}}}
+\newcommand{\PZERO}{\ensuremath{\PolySymb_{0}}}
+\newcommand{\MeshPar}{h}
+\newcommand{\Cell}[1][]{\ifthenelse{\equal{#1}{}}{T}{T_{#1}}}
+\newcommand{\Tsymb}{\mathcal{T}}
+\newcommand{\Triang}[1][]
+{
+  \ifthenelse{\equal{#1}{}}
+  {\Tsymb}
+  {\Tsymb_{#1}}
+}
+\newcommand{\TriangH}{\Triang[\MeshPar]}
+
+
+        
+
+
+%spaces
+
+\newcommand{\Vof}[2]{[#1]^{#2}}
+\newcommand{\Borel}{\mathcal{P}}
+\newcommand{\Radon}{\mathcal{M}}
+\newcommand{\RadonPlus}{\mathcal{M}_{+}}
+\newcommand{\Lebesgue}[1]{\mathcal{L}^{#1}}
+
+
+
+\newcommand{\Lspacechar}{L}
+\newcommand{\Lspace}[2][]{
+  \ifthenelse{\equal{#1}{}}
+  {\Lspacechar^{#2}}
+  {\Lspacechar_{#1}^{#2}}
+}
+\newcommand{\Lplus}[1]{\Lspace{#1}_{+}}
+
+% vars
+\newcommand{\Tdens}{\mu}
+\newcommand{\Gfvar}{\sigma}
+\newcommand{\TdensIni}{\Tdens_0}
+\newcommand{\TdensH}{\Tdens_{\MeshPar}}
+\newcommand{\GfvarH}{\Gfvar_{\MeshPar}}
+\newcommand{\RecTdensH}{\Tdens_{\text{rec},h}}
+\newcommand{\PouTdens}{\Tdens_{\text{Pou}}}
+\newcommand{\OptTdensH}{\Tdens_{\text{opt},h}}%\Opt{\TdensH}}
+\newcommand{\OptTdens}{\Opt{\Tdens}}
+\newcommand{\Pot}{u}
+\newcommand{\PotH}{\Pot_{\MeshPar}}
+\newcommand{\OptPot}{\Opt{\Pot}}
+\newcommand{\OptPotH}{\Opt{\PotH}}
+\newcommand{\Vel}{v}
+\newcommand{\VelH}{v_\MeshPar}
+\newcommand{\Dirac}[1]{\delta_{#1}}
+
+\newcommand{\Of}[1]{(#1)}
+\newcommand{\Flux}{q}
+\newcommand{\Kappa}{k}
+
+\newcommand{\OptVel}{\Vel^*}
+
+\newcommand{\Graph}{\mathcal{G}}
+\newcommand{\Graphs}{\mathbf{G}}
+\newcommand{\Vertices}{\mathcal{V}}
+\newcommand{\Edges}{\mathcal{E}}
+
+
+%Expontents
+\newcommand{\Pflux}{\gamma}
+\newcommand{\Pmass}{\gamma}
+\newcommand{\Pbranch}{\alpha}
+\newcommand{\Plapl}{p}
+
+
+
+
+% Forcings
+\newcommand{\Forcing}{f}
+\newcommand{\ForcingDomain}{\mathcal{F}}
+\newcommand{\Source}{\Forcing^{+}}
+\newcommand{\Sink}{\Forcing^{-}}
+
+
+% branch
+\newcommand{\EneXia}{E}
+\newcommand{\Vmeasure}{v}
+\newcommand{\Atomsource}{\Source}
+\newcommand{\Atomsink}{\Sink}
+
+\newcommand{\eps}{\varepsilon}
+\newcommand{\DiscrW}{\alpha}
+\newcommand{\RegW}{\eps}
+
+
+
+% abbreviation
+\newcommand{\MK}{MK}
+\newcommand{\MKP}{MK Problem}
+\newcommand{\MKEQS}{MK equations}
+\newcommand{\OT}{OT}
+\newcommand{\OTP}{OTP}
+\newcommand{\OTD}{OT\ density}
+\newcommand{\MOP}{MOP}
+\newcommand{\BT}{BT}
+\newcommand{\BTP}{BTP}
+\newcommand{\DMK}{DMK}
+
+\newcommand{\Lower}{\Tdens_{\min}}
+\newcommand{\Mask}{D}
+
+\newcommand{\GridH}{\mathcal{Q}_h}
+\newcommand{\DGzero}{DG^{0}}
+\newcommand{\CRone}{CR^{1}}
+
+
+\newcommand{\Scaling}{\alpha}
+\newcommand{\PM}{PM}
+\newcommand{\pmu}{\rho}
+\newcommand{\PouseilleConstant}{\kappa}
+\newcommand{\confmask}{\confidence_{\text{mask}}}
+\newcommand{\TdensLift}{\Tdens_{+}}
+\newcommand{\NIOT}{NIOT}
+
+\setlength{\fboxsep}{0.005pt}
+\newcommand{\tmpframe}[1]{\fbox{#1}}
+
+
+
+% before submission
+% \usepackage{refcheck}
+% \makeatletter
+% \newcommand{\refcheckize}[1]{%
+%   \expandafter\let\csname @@\string#1\endcsname#1%
+%   \expandafter\DeclareRobustCommand\csname relax\string#1\endcsname[1]{%
+%     \csname @@\string#1\endcsname{##1}\@for\@temp:=##1\do{\wrtusdrf{\@temp}\wrtusdrf{{\@temp}}}}%
+%   \expandafter\let\expandafter#1\csname relax\string#1\endcsname
+% }
+% \newcommand{\refcheckizetwo}[1]{%
+%   \expandafter\let\csname @@\string#1\endcsname#1%
+%   \expandafter\DeclareRobustCommand\csname relax\string#1\endcsname[2]{%
+%     \csname @@\string#1\endcsname{##1}{##2}\wrtusdrf{##1}\wrtusdrf{{##1}}\wrtusdrf{##2}\wrtusdrf{{##2}}}%
+%   \expandafter\let\expandafter#1\csname relax\string#1\endcsname
+% }
+% \makeatother
+
+% \refcheckize{\cref}
+% \refcheckize{\Cref}
+% \refcheckizetwo{\crefrange}
+% \refcheckizetwo{\Crefrange}
+
+
+\usepackage{changes}
+\newcommand{\EF}[1]{(\textcolor{blue}{EF:#1})}
+\newcommand{\JMN}[1]{(\textcolor{orange}{JMN:#1})}
+\newcommand{\EAH}[1]{\textcolor{green}{{\textbf{EAH}:#1}}}
