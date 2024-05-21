@@ -24,4 +24,4 @@ Move in the directory example/2024FaccaNordbottenHanson and follow the instructi
 # Authors
 Enrico Facca, enrico.facca@uib.no : Departement of Mathematics, University of Bergen, Bergen, Norway.
 
-[^1] "Network Inpainting via Optimal Transport" Enrico Facca, Jan Martin Nordbotten, Erik Andreas Hanson
+[^1]:"Network Inpainting via Optimal Transport" Enrico Facca, Jan Martin Nordbotten, Erik Andreas Hanson
