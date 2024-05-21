@@ -36,4 +36,8 @@ test/*/runs/
 **/evolution/
 *.err
 *.out
+# TEX
 *.log
+*.aux
+*.soc
+*.loc
