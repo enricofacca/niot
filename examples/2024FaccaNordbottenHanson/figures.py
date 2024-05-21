@@ -1,5 +1,7 @@
 import pyvista as pv
 import numpy as np
+from common import labels
+
 # this is to use latex see https://github.com/pyvista/pyvista/discussions/2928
 import vtk 
 import sys
@@ -8,57 +10,10 @@ import itertools
 
 pv.start_xvfb()
 
-def labels(nref,fem,
-           gamma,wd,wr,
-           network_file,
-           corrupted_as_initial_guess,
-           confidence,
-           tdens2image,
-           method):
-    
-    
-    # take filename and remove extension
-    label_network = os.path.basename(network_file)
-    # remove extension
-    label_network = os.path.splitext(label_network)[0]
-    label= [
-        f'nref{nref}',
-        f'fem{fem}',
-        f'gamma{gamma:.1e}',
-        f'wd{wd:.1e}',
-        f'wr{wr:.1e}',
-        f'net{label_network}',
-        f'ini{corrupted_as_initial_guess:.1e}',
-        f'conf{confidence}']
-    if tdens2image['type'] == 'identity':
-        label.append(f'mu2iidentity')
-    elif tdens2image['type'] == 'heat':
-        label.append(f"mu2iheat{tdens2image['sigma']:.1e}")
-    elif tdens2image['type'] == 'pm':
-        label.append(f"mu2ipm{tdens2image['sigma']:.1e}")
-    else:
-        raise ValueError(f'Unknown tdens2image {tdens2image}')
-    label.append(f"scaling{tdens2image['scaling']:.1e}")  
-    if method is not None:
-        if method == 'tdens_mirror_descent_explicit':
-            short_method = 'te'
-        elif method == 'tdens_mirror_descent_semi_implicit':
-            short_method = 'tsi'
-        elif method == 'gfvar_gradient_descent_explicit':
-            short_method = 'ge'
-        elif method == 'gfvar_gradient_descent_semi_implicit':
-            short_method = 'gsi'
-        elif method == 'tdens_logarithmic_barrier':
-            short_method = 'tlb'
-        else:
-            raise ValueError(f'Unknown method {method}')
-    label.append(f'method{short_method}')
-    return label
 
 def get_vtu(pathdotvtu):
     try:
         os.path.exists(pathdotvtu)
-        print(pathdotvtu)
         vtu = pv.read(pathdotvtu)
         return vtu
     except:
@@ -68,11 +23,7 @@ def get_vtu(pathdotvtu):
         # remove last 5 characters with "_0.vtu"
         filename_cut = filename[:-6]
 
-        print(filename)
-        print(filename_cut)
-
         pathdotvtu = os.path.join(dirname,filename_cut,filename)
-        print(pathdotvtu)
         vtu = pv.read(pathdotvtu)
         return vtu
         
@@ -641,6 +592,7 @@ def plot_figure4(parameters, dir_vtu="./results/"):
     print(f'done:\n {pdf_filename})')
 
 def plot_figure5(directory):
+    
     plot_mask=True
     plot_network =2 #0=no, 1=remove were the mask is applied, 2= show everywhere
     plot_sink = True
@@ -714,7 +666,7 @@ def plot_figure5(directory):
     )
 
 
-    boundary_vtu_file = ('./medium/boundary_inside2/boundary_inside2_0.vtu')
+    boundary_vtu_file = ('./data/frog_tongue/rectangle_shift/rectangle_shift_0.vtu')
     boundary_vtu = pv.read(boundary_vtu_file)
 
     b_contours = boundary_vtu.contour(isosurfaces=2, scalars='img_contour')
@@ -831,10 +783,12 @@ def plot_figure5(directory):
 
     pl.camera_position = 'xy'
     pl.zoom_camera(zoom)
-    pdf_filename=directory+"medium_shifted.pdf"
+    pdf_filename=directory+"frog_tongue_shifted.pdf"
     pl.save_graphic(pdf_filename,painter=False)
     print(pdf_filename)
 
+
+    # Figure 5d 
 
     width=int(1000*0.5)
     height=int(1550*0.5)
@@ -851,18 +805,10 @@ def plot_figure5(directory):
                     window_size=window_size,
                     off_screen=True)
     
-    try:
-        mask_vtu_file = (directory 
-                         +'nref0_netnetwork_shifted_inside2'
-                         +'_network_mask_0.vtu')
-        mask_vtu = pv.read(mask_vtu_file)                        
-    except:
-        mask_vtu_file = (directory
-                         + 'nref0_netnetwork_shifted_inside2'
-                         +'_network_mask/'
-                         +'nref0_netnetwork_shifted_inside2'
-                         +'_network_mask_0.vtu')
-        mask_vtu = pv.read(mask_vtu_file)
+    mask_vtu_file = (directory
+                     + 'nref0_netmup3.0e+00zero5.0e+02_network_mask'
+                     +'/nref0_netmup3.0e+00zero5.0e+02_network_mask_0.vtu')
+    mask_vtu = pv.read(mask_vtu_file)
 
 
 
@@ -874,15 +820,9 @@ def plot_figure5(directory):
         "width": 0.8,
         "height" : 0.15}
     
-    print(mask_vtu_file)
     net_data = mask_vtu.get_array("network")
     net_support= net_data
-    binary = False
     network = plot_network
-    if binary: 
-        thr = 1e-3
-        net_support[net_support>=thr]=1
-        net_support[net_support<thr]=0
         
     if network == 1:
         mask_data = mask_vtu.get_array("mask")
@@ -922,37 +862,14 @@ def plot_figure5(directory):
     )
 
 
-    try:
-        boundary_vtu_file = ('./medium/' 
-                             +'boundary_inside2.vtu')
-        boundary_vtu = pv.read(boundary_vtu_file)
-    except:
-        boundary_vtu_file = ('./medium/'
-                             + 'boundary_inside2/'
-                             +'boundary_inside2_0.vtu')
-        boundary_vtu = pv.read(boundary_vtu_file)
-
-    b_contours = boundary_vtu.contour(isosurfaces=2, scalars='img_contour')
-    pl.add_mesh(b_contours, line_width=2, color="black",show_scalar_bar=False)
-    
-
-
 
     if plot_sink:
-        try:
-            file_btp = (directory 
-                        + 'nref0'
-                        +'_btp_0.vtu')
-            print(file_btp)
-            btp_vtu = pv.read(file_btp)
-        except:
-            file_btp = (directory
+        file_btp = (directory
                             + 'nref0'
                             +'_btp/'
                             + 'nref0'
                             +'_btp_0.vtu')
-            print(file_btp)
-            btp_vtu = pv.read(file_btp)
+        btp_vtu = pv.read(file_btp)
 
         contours = btp_vtu.contour(isosurfaces=2, scalars='sink_countour')
         pl.add_mesh(contours, line_width=2, color="black",show_scalar_bar=False)
@@ -1056,8 +973,7 @@ def plot_figure5(directory):
 
     pl.camera_position = 'xy'
     pl.zoom_camera(zoom)
-    pdf_filename=directory+"medium_shifted.pdf"
-    print('saved in')
+    pdf_filename=directory+"mup3.0e+00zero5.0e+02_network.pdf"
     print(pdf_filename)
     pl.save_graphic(pdf_filename,painter=False)
 
@@ -1183,15 +1099,26 @@ def plot_figure5(directory):
             scalar_bar_args=sargs,
             log_scale=True,
     )
+
+    if plot_sink:
+        file_btp = (directory
+                            + 'nref0'
+                            +'_btp/'
+                            + 'nref0'
+                            +'_btp_0.vtu')
+        btp_vtu = pv.read(file_btp)
+
+        contours = btp_vtu.contour(isosurfaces=2, scalars='sink_countour')
+        pl.add_mesh(contours, line_width=2, color="black",show_scalar_bar=False)
+
             
                 
     pl.camera_position = 'xy'
     pl.zoom_camera(zoom)
 
     pdf_filename = directory+'matrix_'+'_'.join(labels(*parameters[2:]))+f'_{variable}.pdf'
-    print(f'rendering:{pdf_filename})')
     pl.save_graphic(pdf_filename,painter=False)
-    print(f'done:\n {pdf_filename})')
+    print(f'{pdf_filename}')
 
     
     
