@@ -23,7 +23,7 @@ from firedrake import norm
 from firedrake import Function
 from firedrake import interpolate
 # for writing to file
-from firedrake import VTKFile
+from firedrake import File as VTKFile
 import firedrake as fire
 #from memory_profiler import profile
 
