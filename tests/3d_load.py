@@ -2,57 +2,58 @@ import sys
 import glob
 import os
 from copy import deepcopy as cp
+
+
+from niot import image2dat as i2d
 import numpy as np
-
-
-sys.path.append('../src/niot')
-from niot import NiotSolver
-from utilities import save2pvd
+from niot import utilities
 from firedrake import *
-from time import process_time
-
-print('mesh 100')
-time = process_time()
-mesh = BoxMesh(nx=200,ny=200, 
-                        nz=200,  
-                        Lx=1, 
-                        Ly=1,
-                        Lz=1,
-                        #hexahedral=True,
-                        )
-print('mesh 100',process_time()-time)
-
-exit()
-
-nx=5
-ny=11
-nz=17
-example=np.zeros([nx,ny,nz])
-
-x_array = np.linspace(1,nx+1,nx+1)[:-1]
-y_array = np.linspace(nx+1,nx+ny+1,ny+1)[:-1]
-z_array = np.linspace(nx+ny+1,nx+ny+nz+1,nz+1)[:-1]
-print(x_array)
-print(y_array)
-print(z_array)
-
-example[:,0,0] = x_array[:]
-example[0,:,0] = y_array[:]
-example[0,0,:] = z_array[:]
-
-print(example[:,:,:])
-niot_solver = NiotSolver('DG0DG0',example)
-save2pvd(niot_solver.img_observed,'3d_load.pvd')
-
-t1 = np.load('TOF.npy')
+from scipy.ndimage import zoom
+import time
 
 
-t1 = t1[:,:,0:-1]
-print(t1.shape)
+field = 'T1'
+data = np.load(f'mri/{field}.npy')
+
+
+print(data.shape)
 
 coarseness = 4
-from scipy.ndimage import zoom
-t1_vtu = zoom(t1, (1/coarseness,1/coarseness,1/coarseness), order=0)
-print(t1_vtu.shape)
-niot_solver = NiotSolver('DG0DG0',t1_vtu)
-save2pvd(niot_solver.img_observed,'t1.pvd')
+if coarseness > 1:
+    print('coarsening image')
+    data = zoom(data, (1/coarseness,1/coarseness,1/coarseness), order=0)
+    print(data.shape)
+
+# create mesh
+print('building mesh')
+start = time.time()
+mesh = i2d.build_mesh_from_numpy(data, mesh_type='cartesian')
+mesh.name = 'mesh'
+end = time.time()
+print(f'mesh built {end-start}s')
+
+# convert to firedrake
+print('converting image')
+start = time.time()
+data_fire = i2d.numpy2firedrake(mesh, data, name=field)
+end = time.time()
+print(f'image converted {end-start}s')
+
+utilities.save2pvd(data_fire,f'{field}_c{coarseness}.pvd')
+
+print('saving to file')
+start = time.time()
+fname = f'{field}_c{coarseness}.h5'
+with CheckpointFile(fname, 'w') as afile:
+    afile.save_mesh(mesh)  # optional
+    afile.save_function(data_fire)
+end = time.time()
+print(f'saved to file {end-start}s')
+
+print ('loading from file')
+start = time.time()
+with CheckpointFile(fname, 'r') as afile:
+    mesh = afile.load_mesh("mesh")
+    field_read = afile.load_function(mesh, f"{field}")
+end = time.time()
+print(f'loaded from file {end-start}s')

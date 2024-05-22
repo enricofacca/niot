@@ -1,0 +1,47 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{grffile} % this is for handling files that have dots in their name
+
+\input{package}
+\input{commands}
+\input{style}
+\begin{document}
+{
+\def \fraction {0.235}
+\def \extrah {1pt}
+\begin{figure}
+  \centering
+  \begin{tabular}{|@{}c@{}|@{\hspace{\extrah}}c@{\hspace{\extrah}}|@{\hspace{\extrah}}c@{\hspace{\extrah}}|@{\hspace{\extrah}}c@{\hspace{\extrah}}|@{\hspace{\extrah}}c@{\hspace{\extrah}}|}
+    \hline
+    & $\lambda=1e-3$ & $\lambda=5e-2$  &  $\lambda=1e-1$ & $\lambda=1e0$ 
+    \\
+    \hline
+    \raisebox{-.5\normalbaselineskip}[0pt][0pt]{\rotatebox[origin=c]{90}{$\Tdens_0=1$}}
+    &
+    \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-03_wr0.0e+00_netnetwork_artifacts_ini0.0e+00_confONE_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+    & 
+    \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd5.0e-02_wr0.0e+00_netnetwork_artifacts_ini0.0e+00_confONE_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+    & 
+    \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-01_wr0.0e+00_netnetwork_artifacts_ini0.0e+00_confONE_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+    & 
+    \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e+00_wr0.0e+00_netnetwork_artifacts_ini0.0e+00_confONE_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+    \\
+    \hline
+    \raisebox{-.5\normalbaselineskip}[0pt][0pt]{\rotatebox[origin=c]{90}{$\Tdens_0=\Obs{\Tdens}$}}
+    &
+    \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-03_wr0.0e+00_netnetwork_artifacts_ini1.0e+05_confONE_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+    & 
+    \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd5.0e-02_wr0.0e+00_netnetwork_artifacts_ini1.0e+05_confONE_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+    & 
+    \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-01_wr0.0e+00_netnetwork_artifacts_ini1.0e+05_confONE_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}
+    & 
+    \tmpframe{\adjustbox{valign=m,vspace=0pt}{\includegraphics[trim={0.9cm 2.7cm 0.9cm 2.7cm},clip,width=\fraction\columnwidth,valign=t]{{../results/y_net_nref2/mask_medium/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e+00_wr0.0e+00_netnetwork_artifacts_ini1.0e+05_confONE_mu2iidentity_scaling1.0e+01_methodte_tdens.pdf}}}}\\
+    \hline
+  \end{tabular}
+  \caption{}
+\label{fig:artifacts}
+\end{figure}
+}
+
+
+\end{document}

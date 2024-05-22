@@ -72,7 +72,7 @@ class BranchedTransportProblem():
                   Neumann=None,
                   Dirichlet=None, 
                   kappa=1.0, 
-                  tolerance_imbalance=1e-12,
+                  tolerance_imbalance=1e-11,
                   gamma=0.5):
         # store spatial info
         self.mesh = source.function_space().mesh()
@@ -85,16 +85,20 @@ class BranchedTransportProblem():
         self.source = source
         self.sink = sink
         self.Dirichlet = Dirichlet
-        self.kappa = kappa
+        if isinstance(kappa,float):
+            R = FunctionSpace(self.mesh, 'R', 0)
+            self.kappa = Function(R,val=1,name='kappa')
+        else:
+            self.kappa = kappa
         
         # Check data consistency
         mass_source = assemble(self.source * dx)
         mass_sink = assemble(self.sink * dx)
         mass_Neumann = compute_mass_Neumann(self.mesh, self.Neumann)
-        mass_balance = mass_source - mass_sink + mass_Neumann
+        mass_balance = (mass_source - mass_sink + mass_Neumann)/max(mass_source,mass_sink)
         if ( self.Dirichlet is None 
             and abs(mass_balance) > tolerance_imbalance):
-            raise ValueError('Source, sink, and Neumann terms are not balanced')
+            raise ValueError(f'Source, sink, and Neumann terms are not balanced {mass_balance}')
         
         # branched transport exponent
         self.gamma = gamma

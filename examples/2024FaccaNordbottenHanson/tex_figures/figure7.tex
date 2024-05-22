@@ -1,0 +1,36 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{grffile} % this is for handling files that have dots in their name
+
+\input{package}
+\input{commands}
+\input{style}
+\begin{document}
+
+{
+\def \fraction {0.32}
+\def \extrah {0.02em}
+\begin{figure}
+    \centering
+    \begin{tabular}{|@{\hspace{\extrah}}c@{\hspace{\extrah}}|@{\hspace{\extrah}}c@{\hspace{\extrah}}|@{\hspace{\extrah}}c@{\hspace{\extrah}}|}
+      \hline
+        $\lambda=1e-2$ & $\lambda=1e-1$ & $\lambda=1e0$
+      \\
+      \hline
+      \adjustbox{valign=m,vspace=0pt}{ \includegraphics[trim={0.cm 2.65cm 0.cm 2.65cm},clip,width=\fraction\columnwidth]{{../results/frog_tongue/mask/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-02_wr0.0e+00_netnetwork_shifted_ini0.0e+00_confONE_mu2iidentity_scaling5.0e+01_methodte_tdens.pdf}}}
+      &
+      \adjustbox{valign=m,vspace=0pt}{ \includegraphics[trim={0.cm 2.65cm 0.cm 2.65cm},clip,width=\fraction\columnwidth]{{../results/frog_tongue/mask/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-01_wr0.0e+00_netnetwork_shifted_ini0.0e+00_confONE_mu2iidentity_scaling5.0e+01_methodte_tdens.pdf}}}
+      &
+      \adjustbox{valign=m,vspace=0pt}{ \includegraphics[trim={0.cm 2.65cm 0.cm 2.65cm},clip,width=\fraction\columnwidth]{{../results/frog_tongue/mask/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e+00_wr0.0e+00_netnetwork_shifted_ini0.0e+00_confONE_mu2iidentity_scaling5.0e+01_methodte_tdens.pdf}}}
+      \\
+      \hline
+    \multicolumn{3}{c}{
+    \includegraphics[trim={0.cm 0cm 0.cm 24.83cm},clip,width=0.33\columnwidth,valign=t]{{../results/frog_tongue/mask/matrix_nref0_femDG0DG0_gamma5.0e-01_wd1.0e-02_wr0.0e+00_netnetwork_shifted_ini0.0e+00_confONE_mu2iidentity_scaling5.0e+01_methodte_tdens.pdf}}
+    }
+  \end{tabular} 
+  \caption{  }
+  \label{fig:shifted}
+\end{figure}
+
+
+\end{document}

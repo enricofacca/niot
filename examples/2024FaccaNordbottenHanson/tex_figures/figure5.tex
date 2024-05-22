@@ -1,0 +1,53 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{grffile} % this is for handling files that have dots in their name
+
+\input{package}
+\input{commands}
+\input{style}
+\begin{document}
+
+\def \fraction {0.4}
+\def \subfraction {0.99}
+\begin{figure}
+  \centering
+  \begin{subfigure}[t]{\fraction\textwidth}
+  \centerline{
+     \includegraphics[width=\subfraction\columnwidth,valign=t]{{../data/frog_tongue/frog_RGB_low_clean_contrast.png}}
+  }
+  \caption{}
+  \label{fig:frog-network-cohnheim}
+  \end{subfigure}
+  %
+\qquad
+  \begin{subfigure}[t]{\fraction\textwidth}
+  \centerline{
+     \includegraphics[trim={.4cm 0cm 0.2cm 2.6cm},clip, width=\subfraction\columnwidth,valign=t]{{../results/frog_tongue/mask/matrix_nref0_femDG0DG0_gamma5.0e-01_wd0.0e+00_wr0.0e+00_netnetwork_ini0.0e+00_confONE_mu2iidentity_scaling5.0e+01_methodte_tdens.pdf}}
+  }
+  \caption{Spatial distribution of $\OptTdensH$
+  solving for $\gamma=0.5$ and $\Tdens_0=1$.}
+  \label{fig:frog-network-opttdens}
+  \end{subfigure}
+  %
+  \begin{subfigure}[t]{\fraction\textwidth}
+  \centerline{
+    \includegraphics[trim={.4cm 0cm 0.2cm 2.6cm},clip, width=\subfraction\columnwidth,valign=t]{{../results/frog_tongue/mask/frog_tongue_shifted.pdf}}
+  }
+  \caption{}
+  \label{fig:frog-network-shifted}
+  \end{subfigure}
+  %
+  \qquad
+  \begin{subfigure}[t]{\fraction\textwidth}
+    \centerline{
+    \includegraphics[trim={.4cm 0cm 0.2cm 2.6cm},clip, width=\subfraction\columnwidth,valign=t]{{../results/frog_tongue/mask/mup3.0e+00zero5.0e+02_network.pdf}}
+  }
+  \caption{}
+  \label{fig:frog-network-mupou}
+  \end{subfigure}
+  \caption{}
+  \label{fig:cohnheim}
+\end{figure}
+
+
+\end{document}

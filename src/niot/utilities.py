@@ -11,15 +11,25 @@ from firedrake import conditional
 from firedrake import File
 from firedrake import solving_utils
 
+from firedrake import sqrt, jump, avg, conditional, gt
+
 from pyadjoint import Block
 from pyadjoint.overloaded_function import overload_function
 
 import firedrake.adjoint as fire_adj
 
+from firedrake.__future__ import interpolate
 
 
+from firedrake import COMM_WORLD, COMM_SELF
+
+import re
 import os
 import numpy as np
+
+
+
+
 
 """
 Define a variable to store the reason of the SNES solver
@@ -52,15 +62,56 @@ def save2pvd(functions,filename):
     out_file = File(filename)
     out_file.write(*functions)
 
-    # get file name without extension
+    # get directory 
+    directory = os.path.dirname(os.path.abspath(filename))
+    filename = os.path.basename(filename)
     filename = filename[:-4]
-    # Firedrake appends _0 to vtu
-    # We remove it
-    firedrake_vtu_name = filename+'_0.vtu'
-    new_vtu_name = filename+'.vtu'
 
-    # rename vtu file
-    os.rename(firedrake_vtu_name,new_vtu_name)
+
+    comm = functions[0].function_space().mesh().comm
+    if comm.size == 1:
+        firedrake_vtu_name = f'{directory}/{filename}/{filename}_0.vtu'
+        new_vtu_name = f'{directory}/{filename}.vtu'
+        print(new_vtu_name)
+        try:
+            os.rename(firedrake_vtu_name,new_vtu_name)
+        except:
+            print(f"Error renaming vtu file{firedrake_vtu_name}")
+            pass
+    else:
+        if comm.rank == 0:
+            firedrake_vtu_name = filename+'_0.pvtu'
+            new_vtu_name = filename+'.pvtu'
+            try:
+                os.rename(firedrake_vtu_name,new_vtu_name)
+            except:
+                print(f"Error renaming vtu file{firedrake_vtu_name}")
+            pass
+            
+            with open(new_vtu_name, "r") as sources:
+                lines = sources.readlines()
+            with open(new_vtu_name,'w') as sources:
+                for line in lines:
+                    sources.write(re.sub(r'_0_', '_', line))
+            
+            with open(filename+'.pvd', "r") as sources:
+                lines = sources.readlines()
+            with open(filename+'.pvd','w') as sources:
+                for line in lines:
+                    sources.write(re.sub(r'_0.', '.', line))    
+
+        
+        # each processor has a vtu file
+        firedrake_vtu_name = f'{filename}_0_{comm.rank}.vtu'
+        new_vtu_name = f'{filename}_{comm.rank}.vtu'
+        try:
+            os.rename(firedrake_vtu_name,new_vtu_name)
+        except:
+            print(f"Error renaming vtu file{firedrake_vtu_name}")
+            pass
+        
+        comm.Barrier()
+
 
 
 def get_subfunction(function, index):
@@ -142,7 +193,7 @@ def threshold_from_below(func, lower_bound):
         lower_bound (float): lower bound
     """
     temp = Function(func.function_space())
-    temp.interpolate(conditional(func>lower_bound,func,lower_bound))
+    temp = assemble(interpolate(conditional(func>lower_bound,func,lower_bound),func.function_space()))
     func.assign(temp)
 
 
@@ -314,3 +365,118 @@ def sizeof_fmt(num, suffix='B'):
             return "%3.1f %s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f %s%s" % (num, 'Yi', suffix)
+
+
+def nested_get(dic, keys, default=None):
+    """
+    Get the value from a nested dictionary
+    Args:
+        dic (dict): dictionary
+        keys (list): list of keys
+        default (any): default value if the key is not found
+    Returns:
+        value (any): value of the nested dictionary (it can be a dictionary)
+    
+    Example:
+        dic = {'a':{'b':{'c':1}}}
+        keys = ['a','b','c']
+        value = nested_get(dic,keys)
+        print(value)
+        >>> 1
+    """
+    if type(keys) != list:
+        keys = [keys]
+    d = dic
+    for key in keys[:-1]:
+        if key in d:
+            d = d[key]
+    try:        
+        value = d[keys[-1]]
+    except:
+        print(keys)
+        if default is None:
+            raise KeyError
+        value = default
+    return value
+
+
+def nested_set(dic, keys, value, create_missing=False):
+    """
+    Get the value from a nested dictionary
+    Args:
+        dic (dict): dictionary
+        keys (list): list of keys
+        value (any): value to be set
+        create_missing (bool): if True, create the missing keys
+    Returns:
+        None (it modifies the dictionary in place)
+    Example:
+        dic = {'a':{'b':{'c':1}}}
+        keys = ['a','b','c']
+        nested_set(dic,keys,2)
+        print(dic)
+        >>> {'a': {'b': {'c': 2}}}
+    """
+    d = dic
+    if type(keys) != list:
+        keys = [keys]
+    for key in keys[:-1]:
+        if key in d:
+            d = d[key]
+        elif create_missing:
+            d = d.setdefault(key, {})
+        else:
+            print(f'Key {key} not found in dictionary {value}')
+            raise KeyError 
+        
+    if keys[-1] in d or create_missing:
+        d[keys[-1]] = value
+    else:
+        print(f'Key {keys[-1]} not found in dictionary {value}')
+        raise KeyError 
+    
+    return dic
+
+
+def delta_h(space):
+    # check if mesh is simplex
+    mesh = space.mesh()
+    if mesh.ufl_cell().is_simplex():
+        raise ValueError('implemented for cartesian grids')   
+    
+    if mesh.geometric_dimension() == 2:
+        # try:
+        #     # try to get this information from the mesh 
+        #     hx = mesh.Lx/mesh.nx
+        #     hy = mesh.Ly/mesh.ny
+        #     # check if the values are close numerically with numpy
+        #     if np.isclose(hx,hy):
+        #         delta_h = hx
+        #     else:
+        #         raise ValueError('hx and hy are not close numerically')
+        # except:
+        x,y = mesh.coordinates
+        x_func = assemble(interpolate(x, space))
+        y_func = assemble(interpolate(y, space))
+        delta_h = sqrt(jump(x_func)**2 + jump(y_func)**2)
+    elif mesh.geometric_dimension() == 3:
+        x,y,z = mesh.coordinates
+        x_func = assemble(interpolate(x, space))
+        y_func = assemble(interpolate(y, space))
+        z_func = assemble(interpolate(z, space))
+        delta_h = sqrt(jump(x_func)**2 
+                            + jump(y_func)**2 
+                            + jump(z_func)**2)
+    return delta_h
+
+def cell2face_map(fun, approach="harmonic_mean"):
+    """
+    Compute a face value from a cell value
+    """
+    if approach == 'arithmetic_mean':
+        return (fun('+') + fun('-')) / 2
+    elif approach == 'harmonic_mean':
+        avg_fun = avg(fun)
+        return conditional( gt(avg_fun, 0.0), fun('+') * fun('-') / avg_fun, 0.0)          
+    else:
+        raise ValueError('Wrong approach passed. Only arithmetic_mean or harmonic_mean are implemented')

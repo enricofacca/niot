@@ -378,8 +378,16 @@ def info_ksp(ksp):
     last_iterations = ksp.getIterationNumber()
     last_pres = ksp.getResidualNorm() 
     h=ksp.getConvergenceHistory()
+    A = ksp.getOperators()[0]
+    rhs = ksp.getRhs()
+    sol = ksp.getSolution()
+    temp = A.createVecLeft()
+    A.mult(sol,temp)
+    temp.aypx(-1,rhs)
+    rhs_norm = rhs.norm()
+    real_res = temp.norm()/rhs_norm
     residuals = h[-(last_iterations+1):]  
-    return str(ksp.getOptionsPrefix())+f' {solving_utils.KSPReasons[reason]} {last_iterations} {residuals[0]:.1e} {residuals[-1]:.1e} pres {last_pres:.1e}' 
+    return str(ksp.getOptionsPrefix())+f' {solving_utils.KSPReasons[reason]} {last_iterations} {residuals[0]:.1e} {residuals[-1]:.1e} res={real_res:.1e} |rhs|={rhs_norm:.1e} pres {last_pres:.1e}' 
 
 def attach_nullspace(A, nullspace = None, transpose_nullspace = None, near_nullspace = None):
     """

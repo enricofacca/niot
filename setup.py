@@ -11,8 +11,12 @@ version = "0.1"
 
 p=find_packages('src')
 
+with open("requirements.txt") as f:
+    required = f.read().splitlines()
+
 setup(
     name="niot",
+    install_requires=required,
     description="Network Inpainting via Optimal Transport",
     version=version,
     author="Enrico Facca",
