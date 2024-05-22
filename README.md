@@ -4,7 +4,7 @@ Network Inpainting via Optimal Transport (NIOT) is a python package for reconstr
 # Installation
 The code is written in python and it is based on [Firedrake](https://www.firedrakeproject.org). Check [the dedicated page](https://www.firedrakeproject.org/download.html) for installation guidance. Consider also installing using
 ```
-firedrake-install --doi 
+firedrake-install --doi 10.5281/zenodo.11242360
 ```
 to ensure having the same software used in the manuscript [^1].
 

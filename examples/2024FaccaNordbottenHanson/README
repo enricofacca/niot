@@ -5,7 +5,7 @@ First, follow the instructions described in the README file in the home director
 The Firedrake version used during the experiments can be installed using
 
 ```
-firedrake-install --doi
+firedrake-install --doi 10.5281/zenodo.11242360
 ```
 
 The ./data/ directory contains the inputs images.
