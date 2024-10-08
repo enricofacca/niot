@@ -82,12 +82,47 @@ method = [
     "tdens_mirror_descent_explicit",
 ]
 
+def figure1():
+    #
+    # Combinations producting the data for Figure 2
+    #
+    examples = ["y_net_frog200/"]
+    mask = ["mask_medium.png"]  # not used in the figure
+    nref = [0] #
+    gamma = [0.5] # 
+    wd = [0.1]  # set the discrepancy to zero
+    ini = [0]
+    # the following are not influent since wd=weight discrepancy is zero
+    network_file = ["network_artifacts.png"]  #
+    conf = ["ONE"]
+    maps = [
+        {"type": "identity", "scaling": 10},
+    ]
+    parameters = [
+        examples,
+        mask,
+        nref,
+        fems,
+        gamma,
+        wd,
+        wr,
+        network_file,
+        ini,
+        conf,
+        maps,
+        method,
+    ]
+    combinations = list(itertools.product(*parameters))
+
+    return combinations
+
+
 
 def figure2():
     #
     # Combinations producting the data for Figure 2
     #
-    examples = ["y_net/"]
+    examples = ["y_net_frog_coarse/"]
     mask = ["mask_medium.png"]  # not used in the figure
     nref = [0, 1, 2]
     gamma = [0.2, 0.5, 0.8]
@@ -122,17 +157,18 @@ def figure3():
     #
     # combinations for Figure 3
     #
-    examples = ["y_net_nref2/"]
-    mask = ["mask_medium.png"]
+    examples = ["y_net_frog200/"]
+    mask = ["mask_medium.png"]#_overlap_forcing.png"]
     nref = [0]
     gamma = [0.5]
-    wd = [1e-2, 5e-2, 1e-1, 1e0]  # set the discrepancy to zero
+    wd = [1e-2, 5e-2, 1e-1, 5e-1, 1e0]  # set the discrepancy to zero
     ini = [0, 1e5]
     network_file = ["network.png"]  #
     conf = ["MASK"]
     maps = [
         {"type": "identity", "scaling": 10},
         {"type": "pm", "sigma": 1e-3, "exponent_m": 2.0, "scaling": 50},
+        {"type": "pm", "sigma": 1e-4, "exponent_m": 2.0, "scaling": 50},
     ]
 
     parameters = [
@@ -178,7 +214,7 @@ def figure4():
     #
     # figure for figure 4,
     #
-    examples = ["y_net_nref2/"]
+    examples = ["y_net_frog200/"]
     mask = ["mask_medium.png"]
     nref = [0]
     gamma = [0.5]

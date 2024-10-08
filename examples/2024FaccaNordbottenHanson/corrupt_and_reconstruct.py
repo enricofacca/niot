@@ -12,6 +12,7 @@ import argparse
 import os
 from copy import deepcopy as cp
 import numpy as np
+import time 
 from niot import NiotSolver # reconstruction solver
 from niot import optimal_transport as ot # optimal transport
 from niot import image2dat as i2d # processing images
@@ -222,13 +223,16 @@ def corrupt_and_reconstruct(np_source,
         sink_for_contour = Function(CG1)
         sink_for_contour.interpolate(sink).rename("sink_countour","sink")
         #PETSc.Sys.Print(f"{n_ensemble=} open {filename=}", comm=comm)
-        out_file = VTKFile(filename,comm=comm,mode='w')
-        out_file.write(
+        try:
+            out_file = VTKFile(filename,comm=comm,mode='w')
+            out_file.write(
             source,
             sink,
             source_for_contour,
             sink_for_contour,
             )
+        except:
+            pass
 
     # Setup reconstruction solver
     niot_solver = NiotSolver(btp, corrupted,  confidence_w, 
@@ -314,11 +318,16 @@ def corrupt_and_reconstruct(np_source,
     pot0.rename('pot_0','pot_0')
     tdens0.rename('tdens_0','tdens_0')
     niot_solver.ctrl_set('max_iter', max_iter)
-    
 
-    ierr = niot_solver.solve()
     
-   
+    start = time.process_time()
+    ierr = niot_solver.solve()
+    cpu_rec = time.process_time() - start 
+    filename = os.path.join(directory, f'{label}.cpu')
+    with open(filename, 'w') as fd:
+        fd.writelines(str(cpu_rec))
+
+    
     # save solution
     pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
     

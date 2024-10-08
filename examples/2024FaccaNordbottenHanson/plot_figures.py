@@ -2,7 +2,7 @@ import pyvista as pv
 import numpy as np
 import os
 import argparse
-from common import labels, figure2, figure3, figure4, figure5, figure6, figure7, figure8
+from common import labels, figure1, figure2, figure3, figure4, figure5, figure6, figure7, figure8
 
 # this is to use latex see https://github.com/pyvista/pyvista/discussions/2928
 import vtk 
@@ -226,7 +226,7 @@ def plot_figure3(parameters, dir_vtu="./results/"):
     
     variable='tdens'
     mask=True
-    network = 1 #0=no, 1=remove were the mask is applied, 2= show everywhere
+    network = 2 #0=no, 1=remove were the mask is applied, 2= show everywhere
     sink = False 
     bounds = False
 
@@ -420,6 +420,255 @@ def plot_figure3(parameters, dir_vtu="./results/"):
     pl.save_graphic(pdf_filename,painter=False)
     print(f'done:\n {pdf_filename})')
 
+def plot_figure1(parameters, dir_vtu="./results/"):
+    width=500
+    height=600
+    zoom=1.3
+    scaling=0.5
+    
+    mask=True
+    network = 1 #0=no, 1=remove were the mask is applied, 2= show everywhere
+    sink = False 
+    bounds = False
+
+    
+    example = parameters[0]
+    mask = parameters[1]
+    #remove extension
+    mask_name = os.path.splitext(mask)[0]
+    directory = dir_vtu+example+'/'+mask_name+'/'
+
+    parameters_local = parameters[2:]
+    
+    window_size=(width,height)
+    pl = pv.Plotter(border=False,
+            window_size=window_size,
+            off_screen=True,
+    )
+
+
+    #
+    # network
+    #
+    if network>=1:
+        try:
+            mask_vtu_file = (directory 
+                             + labels(*parameters_local)[0]
+                             +'_'+ labels(*parameters_local)[5]
+                             +'_network_mask_0.vtu')
+            mask_vtu = pv.read(mask_vtu_file)                        
+        except:
+            mask_vtu_file = (directory
+                             + labels(*parameters_local)[0]
+                             +'_'+ labels(*parameters_local)[5]
+                             +'_network_mask/'
+                            + labels(*parameters_local)[0]
+                             +'_'+ labels(*parameters_local)[5]
+                             +'_network_mask_0.vtu')
+            mask_vtu = pv.read(mask_vtu_file)
+
+        
+        print(mask_vtu_file)
+        net_data = mask_vtu.get_array("network")
+        net_support= net_data
+        thr = 1e-3
+        net_support[net_support>=thr]=1
+        net_support[net_support<thr]=0
+        if network == 1:
+            mask_data = mask_vtu.get_array("mask")
+            net_support *= (1.0-mask_data)
+
+        pl.add_mesh(mask_vtu,
+                    scalars=net_support,
+                    cmap="binary",
+                    opacity = [0,1],
+                    show_scalar_bar=False)
+        
+    #
+    # MASK
+    #
+    if mask:
+        try:
+            contours = vtu.contour(isosurfaces=2, scalars='mask_countour')
+        except:
+            contours = mask_vtu.contour(isosurfaces=2, scalars='mask_countour')
+        pl.add_mesh(contours, line_width=2, color="red",show_scalar_bar=False)
+
+        
+    pl.camera_position = 'xy'
+    pl.zoom_camera(zoom)
+
+    pdf_filename = directory+'network_artifacts_masked.pdf'
+    print(f'rendering:{pdf_filename})')
+    pl.save_graphic(pdf_filename,painter=False)
+    print(f'done:\n {pdf_filename})')
+
+
+    # figure 1g
+    width=500
+    height=600
+    zoom=1.3
+    scaling=0.5
+    
+    variable='tdens'
+    mask=True
+    network = 2 #0=no, 1=remove were the mask is applied, 2= show everywhere
+    sink = False 
+    
+    
+    example = parameters[0]
+    mask = parameters[1]
+    #remove extension
+    mask_name = os.path.splitext(mask)[0]
+    
+
+    parameters_local = parameters[2:]
+    
+    window_size=(width,height)
+    pl = pv.Plotter(border=False,
+            window_size=window_size,
+            off_screen=True,
+    )
+
+    directory = dir_vtu+example+'/'+mask_name+'/'
+    try:
+        path_vtu = os.path.abspath(directory,
+                +'_'.join(labels(*parameters_local))+'_0.vtu')
+        vtu = pv.read(path_vtu)
+        print(path_vtu)
+    except:
+        path_vtu = os.path.abspath(directory
+                + '_'.join(labels(*parameters_local))+'/'
+                +'_'.join(labels(*parameters_local))+'_0.vtu')
+        vtu = pv.read(path_vtu)
+        print(path_vtu)
+
+    #
+    # network
+    #
+    if network>=1:
+        mask_vtu_file = (directory
+                             + labels(*parameters_local)[0]
+                             +'_' + "netnetwork"# labels(*parameters_local)[5]
+                             +'_network_mask/'
+                             + labels(*parameters_local)[0]
+                             +'_' + "netnetwork"#labels(*parameters_local)[5]
+                            +'_network_mask_0.vtu')
+        mask_vtu = pv.read(mask_vtu_file)
+
+        
+        net_data = mask_vtu.get_array("network")
+        net_support= net_data
+        thr = 1e-3
+        net_support[net_support>=thr]=1
+        net_support[net_support<thr]=0
+        if network == 1:
+            mask_data = mask_vtu.get_array("mask")
+            net_support *= (1.0-mask_data)
+
+        pl.add_mesh(mask_vtu,
+                    scalars=net_support,
+                    cmap="binary",
+                    opacity = [0,0.2],
+                   show_scalar_bar=False)
+
+
+        # artifacts_vtu_file = "data/y_net_frog200/artifacts/artifacts_0.vtu"
+        # artifacts_vtu = pv.read(artifacts_vtu_file)
+
+        # art_data = artifacts_vtu.get_array("network")
+        # art_support= art_data
+        # thr = 1e-3
+        # art_support[art_support>=thr]=1
+        # art_support[art_support<thr]=0
+        # mask_data = mask_vtu.get_array("mask")
+        # art_support *= (1.0-mask_data)
+
+        # pl.add_mesh(artifacts_vtu,
+        #             scalars=art_support,
+        #             cmap="Reds",
+        #             opacity = [0,0.5],
+        #             show_scalar_bar=False)
+
+        
+    #
+    # TDENS
+    #
+    
+    bar_dict = {
+        "position_x": 0.1,
+        "position_y": 0.00,
+        "width": 0.8,
+        "height" : 0.15}
+    
+    sargs = dict(
+        title="",#(i*10+j)*" ",#title, trick to change lenght
+        title_font_size=int(60*scaling),
+        #color="white",
+        label_font_size=int(60*scaling),
+        shadow=True,
+        n_labels=3,
+        #italic=True,
+        fmt="%.0e",
+        font_family="times",
+        vertical=False,
+        **bar_dict
+    )
+
+    # this is to make values below min as white/transparent
+    r=np.ones(50)
+    r[0]=0
+
+    plot_variable = True
+    if plot_variable:
+        var = vtu.get_array(variable)
+        #var = np.log10(vtu.get_array(variable))
+        if variable=='tdens':
+            clim = [1e-5,1e-2] 
+        elif variable=='reconstruction':
+            clim = [1e-8,1e-1]
+
+        pl.add_mesh(vtu.copy(),
+                scalars=var, 
+                #cmap="hot_r",
+                cmap="gnuplot2_r",
+                opacity=list(0.89*r),
+                clim = clim,
+                #below_color='white',
+                #above_color='black',
+                show_scalar_bar=True,
+                scalar_bar_args=sargs,
+                    log_scale=False,#True,
+        )
+        pl.view_xy(render=False)
+        pl.add_bounding_box()
+        var = vtu.get_array(variable)
+        min_var = np.min(var)
+        max_var = np.max(var)
+
+    #
+    # MASK
+    #
+    if mask:
+        try:
+            contours = vtu.contour(isosurfaces=2, scalars='mask_countour')
+        except:
+            contours = mask_vtu.contour(isosurfaces=2, scalars='mask_countour')
+        pl.add_mesh(contours, line_width=2, color="red",show_scalar_bar=False)
+
+        
+    pl.camera_position = 'xy'
+    pl.zoom_camera(zoom)
+
+    pdf_filename = directory+'reconstruction_figure1.pdf'
+    print(f'rendering:{pdf_filename})')
+    pl.save_graphic(pdf_filename,painter=False)
+    print(f'done:\n {pdf_filename})')
+
+
+
+
+    
 
 def plot_figure4(parameters, dir_vtu="./results/"):
     width=500
@@ -429,7 +678,7 @@ def plot_figure4(parameters, dir_vtu="./results/"):
     
     variable='tdens'
     mask=True
-    network = 1 #0=no, 1=remove were the mask is applied, 2= show everywhere
+    network = 2 #0=no, 1=remove were the mask is applied, 2= show everywhere
     sink = False 
     bounds = False
 
@@ -469,21 +718,14 @@ def plot_figure4(parameters, dir_vtu="./results/"):
             net_data = vtu.get_array("network")
             net_support= net_data
         except:
-            try:
-                mask_vtu_file = (directory 
-                    + labels(*parameters_local)[0]
-                    +'_'+ labels(*parameters_local)[5]
-                    +'_network_mask_0.vtu')
-                mask_vtu = pv.read(mask_vtu_file)                        
-            except:
-                mask_vtu_file = (directory
-                            + labels(*parameters_local)[0]
-                    +'_'+ labels(*parameters_local)[5]
-                            +'_network_mask/'
-                    + labels(*parameters_local)[0]
-                    +'_'+ labels(*parameters_local)[5]
-                    +'_network_mask_0.vtu')
-                mask_vtu = pv.read(mask_vtu_file)
+            mask_vtu_file = (directory
+                             + labels(*parameters_local)[0]
+                             +'_' + "netnetwork"# labels(*parameters_local)[5]
+                             +'_network_mask/'
+                             + labels(*parameters_local)[0]
+                             +'_' + "netnetwork"#labels(*parameters_local)[5]
+                            +'_network_mask_0.vtu')
+            mask_vtu = pv.read(mask_vtu_file)
 
         
         net_data = mask_vtu.get_array("network")
@@ -499,7 +741,26 @@ def plot_figure4(parameters, dir_vtu="./results/"):
                     scalars=net_support,
                     cmap="binary",
                     opacity = [0,0.2],
+                   show_scalar_bar=False)
+
+
+        artifacts_vtu_file = "data/y_net_frog200/artifacts/artifacts_0.vtu"
+        artifacts_vtu = pv.read(artifacts_vtu_file)
+
+        art_data = artifacts_vtu.get_array("network")
+        art_support= art_data
+        thr = 1e-3
+        art_support[art_support>=thr]=1
+        art_support[art_support<thr]=0
+        mask_data = mask_vtu.get_array("mask")
+        art_support *= (1.0-mask_data)
+
+        pl.add_mesh(artifacts_vtu,
+                    scalars=art_support,
+                    cmap="Reds",
+                    opacity = [0,0.5],
                     show_scalar_bar=False)
+
         
     #
     # TDENS
@@ -594,9 +855,132 @@ def plot_figure4(parameters, dir_vtu="./results/"):
     print(f'done:\n {pdf_filename})')
 
 def plot_figure5(directory):
+
+    plot_mask=True
+    plot_network = 2 #0=no, 1=remove were the mask is applied, 2= show everywhere
+    plot_sink = True
+    plot_bounds = False
+
+
+    
+    width=int(1000*0.5)
+    height=int(1550*0.5)
+    zoom=1.62
+    
+    window_size=(width,height)
+    pl = pv.Plotter(border=False,
+                window_size=window_size,
+                off_screen=True)
+
+    mask_vtu_file = (directory 
+                     +'nref0_netnetwork'
+                     +'_network_mask_0.vtu')
+    mask_vtu = get_vtu(mask_vtu_file)
+
+
+    scaling = width/1000
+
+    bar_dict = {
+        "position_x": 0.1,
+        "position_y": 0.00,
+        "width": 0.8,
+        "height" : 0.15}
+    
+    net_data = mask_vtu.get_array("network")
+    net_support= net_data
+    binary = False
+    network = 2
+    if binary: 
+        thr = 1e-3
+        net_support[net_support>=thr]=1
+        net_support[net_support<thr]=0
+    mask_data = mask_vtu.get_array("mask")
+
+    if network == 1:
+        print("mask")
+        net_support *= (1.0-mask_data)
+
+    r=np.ones(50)
+    r[0]=0
+
+    sargs = dict(
+        title="",
+        title_font_size=int(60*scaling),
+        #color="white",
+        label_font_size=int(60*scaling),
+        shadow=True,
+        n_labels=3,
+        #italic=True,
+        fmt="%.0e",
+        font_family="times",
+        vertical=False,
+        **bar_dict
+    )
+
+    clim = [1e-3,2e-2] 
+    pl.add_mesh(mask_vtu,
+            scalars=net_support, 
+            #cmap="hot_r",
+            cmap="gnuplot2_r",
+            opacity=list(0.89*r),
+            clim = clim,
+           #below_color='white',
+            #above_color='black',
+            show_scalar_bar=False,#True,
+            scalar_bar_args=sargs,
+            log_scale=False
+    )
+
+    if plot_sink:
+        file_btp = (directory 
+                    + 'nref0'
+                    +'_btp_0.vtu')
+        btp_vtu = get_vtu(file_btp)
+        contours = btp_vtu.contour(isosurfaces=2, scalars='sink_countour')
+        pl.add_mesh(contours, line_width=2,
+                    color="black",
+                    show_scalar_bar=False)
+
+    correction = 0.95
+    letter_size=30
+    pl.add_text(
+            text="L",
+            #position=[0.3*width,0.16*correction*height],
+            position=[0.4*width,0.1*height],
+            font_size=int(letter_size*scaling),
+            color=None,
+            font="times",
+            shadow=False,
+            name=None,
+            viewport=False,
+            orientation=0.0,
+            font_file=None)
+
+    pl.add_text(
+            text="R",
+            #position=[0.23*width,0.3*correction*height],
+            position=[0.6*width,0.1*height],
+            font_size=int(letter_size*scaling),
+            color=None,
+            font="times",
+            shadow=False,
+            name=None,
+            viewport=False,
+            orientation=0.0,
+            font_file=None)
+        
+        
+    pl.camera_position = 'xy'
+    pl.zoom_camera(zoom)
+    pdf_filename=directory+"frog_network.pdf"
+    pl.save_graphic(pdf_filename,painter=False)
+    print(pdf_filename)
+    
+
+    # figure 5.b
     
     plot_mask=True
-    plot_network =2 #0=no, 1=remove were the mask is applied, 2= show everywhere
+    plot_network = 1 #0=no, 1=remove were the mask is applied, 2= show everywhere
     plot_sink = True
     plot_bounds = False
 
@@ -629,12 +1013,16 @@ def plot_figure5(directory):
     net_data = mask_vtu.get_array("network")
     net_support= net_data
     binary = False
-    network = 2
+    network = 1
     if binary: 
         thr = 1e-3
         net_support[net_support>=thr]=1
         net_support[net_support<thr]=0
-        network = 2
+    mask_data = mask_vtu.get_array("mask")
+
+    if network == 1:
+        print("mask")
+        net_support *= (1.0-mask_data)
 
     r=np.ones(50)
     r[0]=0
@@ -660,7 +1048,7 @@ def plot_figure5(directory):
             cmap="gnuplot2_r",
             opacity=list(0.89*r),
             clim = clim,
-            #below_color='white',
+           #below_color='white',
             #above_color='black',
             show_scalar_bar=False,#True,
             scalar_bar_args=sargs,
@@ -668,12 +1056,29 @@ def plot_figure5(directory):
     )
 
 
-    boundary_vtu_file = ('./data/frog_tongue/rectangle_shift/rectangle_shift_0.vtu')
-    boundary_vtu = pv.read(boundary_vtu_file)
+    #boundary_vtu_file = ('./data/frog_tongue/rectangle_shift/rectangle_shift_0.vtu')
+    #boundary_vtu = pv.read(boundary_vtu_file)
 
-    b_contours = boundary_vtu.contour(isosurfaces=2, scalars='img_contour')
-    pl.add_mesh(b_contours, line_width=2, color="black",show_scalar_bar=False)
+    #b_contours = boundary_vtu.contour(isosurfaces=2, scalars='img_contour')
+    #pl.add_mesh(b_contours, line_width=2, color="black",show_scalar_bar=False)
 
+
+    artifacts_vtu_file = "data/frog_tongue/artifacts/artifacts_0.vtu"
+    artifacts_vtu = pv.read(artifacts_vtu_file)
+
+    art_data = artifacts_vtu.get_array("network")
+    art_support= art_data
+    thr = 1e-3
+    art_support[art_support>=thr]=1
+    art_support[art_support<thr]=0
+    mask_data = mask_vtu.get_array("mask")
+    art_support *= (1.0-mask_data)
+
+    pl.add_mesh(artifacts_vtu,
+                scalars=art_support,
+                cmap="Reds",
+                opacity = [0,0.5],
+                show_scalar_bar=False)
 
     
 
@@ -686,12 +1091,14 @@ def plot_figure5(directory):
     contours = btp_vtu.contour(isosurfaces=2, scalars='sink_countour')
     pl.add_mesh(contours, line_width=2, color="black",show_scalar_bar=False)
 
-    letters = True#False
+    contours = mask_vtu.contour(isosurfaces=2, scalars='mask_countour')
+    pl.add_mesh(contours, line_width=2, color="red",show_scalar_bar=False)
+
+    
+    letters = False
     if letters:
 
-        contours = mask_vtu.contour(isosurfaces=2, scalars='mask_countour')
-        pl.add_mesh(contours, line_width=2, color="red",show_scalar_bar=False)
-
+        
         correction = 0.95
         letter_size=30
         pl.add_text(
@@ -858,7 +1265,7 @@ def plot_figure5(directory):
                 clim = clim,
                 #below_color='white',
                 #above_color='black',
-                show_scalar_bar=False,#True,
+                show_scalar_bar=True,
                 scalar_bar_args=sargs,
             log_scale=False
     )
@@ -876,11 +1283,12 @@ def plot_figure5(directory):
         contours = btp_vtu.contour(isosurfaces=2, scalars='sink_countour')
         pl.add_mesh(contours, line_width=2, color="black",show_scalar_bar=False)
 
-    letters = True#False
+    contours = mask_vtu.contour(isosurfaces=2, scalars='mask_countour')
+    pl.add_mesh(contours, line_width=2, color="red",show_scalar_bar=False)
+
+    letters = False
     if letters:
 
-        contours = mask_vtu.contour(isosurfaces=2, scalars='mask_countour')
-        pl.add_mesh(contours, line_width=2, color="red",show_scalar_bar=False)
 
         correction = 0.95
         letter_size=30
@@ -1162,9 +1570,10 @@ def plot_figure678(parameters,dir_vtu="./results/"):
     # network
     #
     if network>=1:
+        # frog_tongue/mask/nref0_netnetwork_network_mask
         mask_vtu_file = (directory 
                     + labels(*parameters_local)[0]
-                    +'_'+ labels(*parameters_local)[5]
+                    +'_'+'netnetwork'# labels(*parameters_local)[5]
                     +'_network_mask_0.vtu')
         mask_vtu = get_vtu(mask_vtu_file)
         
@@ -1243,14 +1652,14 @@ def plot_figure678(parameters,dir_vtu="./results/"):
         contours = btp_vtu.contour(isosurfaces=2, scalars='sink_countour')
         pl.add_mesh(contours, line_width=2, color="black",show_scalar_bar=False)
 
-    letters = True
+    letters = False#True
     if letters:
         correction = 0.95
         letter_size=30
         pl.add_text(
             text="a",
             #position=[0.3*width,0.16*correction*height],
-            position=[0.3*width,0.22*height],
+            position=[0.3*width,0.215*height],
             font_size=int(letter_size*scaling),
             color=None,
             font="times",
@@ -1263,7 +1672,7 @@ def plot_figure678(parameters,dir_vtu="./results/"):
         pl.add_text(
             text="b",
             #position=[0.23*width,0.3*correction*height],
-            position=[0.23*width,0.31*height],
+            position=[0.23*width,0.32*height],
             font_size=int(letter_size*scaling),
             color=None,
             font="times",
@@ -1276,7 +1685,7 @@ def plot_figure678(parameters,dir_vtu="./results/"):
         pl.add_text(
             text="c",
             #position=[0.36*width,0.66*correction*height],
-            position=[0.36*width,0.62*height],
+            position=[0.36*width,0.625*height],
             font_size=int(letter_size*scaling),
             color=None,
             font="times",
@@ -1288,7 +1697,7 @@ def plot_figure678(parameters,dir_vtu="./results/"):
         pl.add_text(
             text="d",
             #position=[0.64*width,0.56*height],
-            position=[0.64*width,0.55*height],
+            position=[0.64*width,0.54*height],
             font_size=int(letter_size*scaling),
             color=None,
             font="times",
@@ -1300,7 +1709,7 @@ def plot_figure678(parameters,dir_vtu="./results/"):
         pl.add_text(
             text="e",
             #position=[0.7*width,0.72*height],
-            position=[0.7*width,0.66*height],
+            position=[0.71*width,0.67*height],
             font_size=int(letter_size*scaling),
             color=None,
             font="times",
@@ -1312,7 +1721,7 @@ def plot_figure678(parameters,dir_vtu="./results/"):
         pl.add_text(
             text="f",
             #position=[0.85*width,0.35*correction*height],
-            position=[0.85*width,0.41*correction*height],
+            position=[0.84*width,0.4*correction*height],
             font_size=int(letter_size*scaling),
             color=None,
             font="times",
@@ -1324,7 +1733,7 @@ def plot_figure678(parameters,dir_vtu="./results/"):
         pl.add_text(
             text="g",
             #position=[0.65*width,0.12*correction*height],
-            position=[0.65*width,0.19*height],
+            position=[0.64*width,0.19*height],
             font_size=int(letter_size*scaling),
             color=None,
             font="times",
@@ -1362,6 +1771,12 @@ if (__name__ == '__main__'):
     figures = []
     combinations = []
     vtu_dir = "./results/"
+
+    if ((args.figure == '1') or (args.figure == 'all')):
+        combinations = figure1()
+        for c in combinations:
+            plot_figure1(c,vtu_dir)
+
     
     if ((args.figure == '2') or (args.figure == 'all')):
         combinations = figure2()
