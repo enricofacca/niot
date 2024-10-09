@@ -96,16 +96,24 @@ def build_mesh_from_numpy(np_image, mesh_type='simplicial',lengths=None,comm=COM
    mesh.init()
   
    # we attach this info to the mesh
-   mesh.nx = width
-   mesh.ny = height
-   mesh.xmin = 0
-   mesh.xmax = lengths[0]
-   mesh.ymin = 0
-   mesh.ymax = lengths[1]
+   if (np_image.ndim == 2):
+      mesh.nx = width
+      mesh.ny = height
+      mesh.xmin = 0
+      mesh.xmax = lengths[0]
+      mesh.ymin = 0
+      mesh.ymax = lengths[1]
    if (np_image.ndim == 3):
-      mesh.nz = depth 
+      mesh.nx = height
+      mesh.ny = width
+      mesh.nz = depth
+      mesh.xmin = 0
+      mesh.xmax = lengths[0]
+      mesh.ymin = 0
+      mesh.ymax = lengths[1] 
       mesh.zmin = 0
       mesh.zmax = lengths[2]
+
 
 
    return mesh
@@ -245,8 +253,7 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
          j = np.fix(y/hy).astype(int)
          k = np.fix(z/hz).astype(int)
          return value[i,j,k]
-
-   if mesh.geometric_dimension() == 2:
+   elif mesh.geometric_dimension() == 2:
       #   
       # NOTE that we are reading the transpose of the value
       # 
