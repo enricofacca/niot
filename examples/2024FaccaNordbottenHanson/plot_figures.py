@@ -3,6 +3,7 @@ import numpy as np
 import os
 import argparse
 from common import labels, figure1, figure2, figure3, figure4, figure5, figure6, figure7, figure8
+import copy
 
 # this is to use latex see https://github.com/pyvista/pyvista/discussions/2928
 import vtk 
@@ -802,7 +803,7 @@ def plot_figure4(parameters, dir_vtu="./results/"):
         pl.add_mesh(vtu.copy(),
                 scalars=var, 
                 #cmap="hot_r",
-                cmap="gnuplot2_r",
+                cmap="spring_r",
                 opacity=list(0.89*r),
                 clim = clim,
                 #below_color='white',
@@ -1260,7 +1261,7 @@ def plot_figure5(directory):
     pl.add_mesh(mask_vtu,
                 scalars=net_support, 
                 #cmap="hot_r",
-                cmap="gnuplot2_r",
+                cmap="spring_r",
                 opacity=list(0.89*r),
                 clim = clim,
                 #below_color='white',
@@ -1495,12 +1496,13 @@ def plot_figure5(directory):
     r[0]=0
 
     var = vtu.get_array(variable)
-    clim = [1e-6,5e-2] 
+    clim = [1e-6,5e-2]
+    #clim = [1e-6,1e-1] 
     
     pl.add_mesh(vtu.copy(),
             scalars=var, 
             #cmap="hot_r",
-            cmap="gnuplot2_r",
+            cmap="spring_r",
             opacity=list(0.89*r),
             clim = clim,
             #below_color='white',
@@ -1582,15 +1584,30 @@ def plot_figure678(parameters,dir_vtu="./results/"):
         thr = 1e-3
         net_support[net_support>=thr]=1
         net_support[net_support<thr]=0
+
+        var = copy.deepcopy(vtu.get_array(variable))
+        thr=1e-5
+        var[var>=thr]=1.0
+        var[var<thr]=0.0
+
+        net_support = net_support*abs(net_support-var)
+
+        mask_data = mask_vtu.get_array("mask")
         if network == 1:
-            mask_data = mask_vtu.get_array("mask")
+            
             net_support *= (1.0-mask_data)
 
+            
+            
         pl.add_mesh(mask_vtu,
                     scalars=net_support,
+                    #cmap="summer_r",
                     cmap="binary",
-                    opacity = [0,0.2],
+                    #cmap="Wistia",
+                    #cmap="Greens",
+                    opacity = [0,0.9],
                     show_scalar_bar=False)
+
         
     #
     # TDENS
@@ -1620,12 +1637,18 @@ def plot_figure678(parameters,dir_vtu="./results/"):
     r[0]=0
 
     var = vtu.get_array(variable)
+    clim = [1e-6,5e-2]
     clim = [1e-6,5e-2] 
     
     pl.add_mesh(vtu.copy(),
             scalars=var, 
             #cmap="hot_r",
-            cmap="gnuplot2_r",
+            #cmap="summer_r",
+            #    cmap="Reds",
+            cmap="spring_r",
+            #    cmap="rainbow",
+            #    cmap="cubehelix_r",
+            #cmap="GnBu",
             opacity=list(0.89*r),
             clim = clim,
             #below_color='white',
@@ -1633,15 +1656,33 @@ def plot_figure678(parameters,dir_vtu="./results/"):
             show_scalar_bar=True,
             scalar_bar_args=sargs,
             log_scale=True,
-    )
+     )
     
     #
     # MASK
     #
     if mask:
-        contours = mask_vtu.contour(isosurfaces=2, scalars='mask_countour')
-        pl.add_mesh(contours, line_width=2, color="red",show_scalar_bar=False)
-
+        #contours = mask_vtu.contour(isosurfaces=2, scalars='mask_countour')
+        #pl.add_mesh(contours, line_width=2, color="red",show_scalar_bar=False)
+        mask_data[mask_data<1e-1]=0.0
+        pl.add_mesh(mask_vtu.copy(),
+            scalars=mask_data, 
+            #cmap="hot_r",
+            #cmap="summer_r",
+            #    cmap="Reds",
+            cmap="Greens_r",
+            #    cmap="rainbow",
+            #    cmap="cubehelix_r",
+            #cmap="GnBu",
+            opacity=list(0.5*r),
+            clim = clim,
+            #below_color='white',
+            #above_color='black',
+            show_scalar_bar=False,
+            scalar_bar_args=sargs,
+            #log_scale=True,
+     )
+        
 
     if sink:
         file_btp = (directory 

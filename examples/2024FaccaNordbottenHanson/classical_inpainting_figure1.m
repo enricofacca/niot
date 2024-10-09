@@ -17,16 +17,16 @@ clc
 addpath ./MATLAB-Python-inpainting-codes/matlab/lib
 %addpath ./dataset
 
-
-directory = './data/y_net_nref2/';
+example = 'y_net_frog200/'
+directory = strcat('./data/',example);
 
 
 network_name = 'network_artifacts';
 mask_name = 'mask_medium';
 corrupted_name = strcat(mask_name,'_',network_name);
 
-example_dir = strcat('results/y_net_nref2/');
-out_dir = strcat('results/y_net_nref2/',mask_name,'/');
+example_dir = strcat('results/',example);
+out_dir = strcat('results/',example,mask_name,'/');
 
 if ~exist(out_dir, 'dir')
     mkdir(out_dir)
@@ -47,10 +47,11 @@ imwrite(corrupted,corrupted_filename)
 approaches = ["cahn_hilliard","transport","harmonic","mumford_shah"];
 
 for i = 1 : length(approaches)
-    approach = approaches(i);
-    rec = reconstruct(corrupted, mask, approach);
-    reconstruction_filename = strcat(out_dir,corrupted_name,'_',approach','.png');
-    imwrite(rec, reconstruction_filename)
+  approach = approaches(i)
+	
+  rec = reconstruct(corrupted, mask, approach);
+  reconstruction_filename = strcat(out_dir,corrupted_name,'_',approach','.png');
+  imwrite(rec, reconstruction_filename)
 end
 
 
