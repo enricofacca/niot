@@ -14,6 +14,8 @@ from firedrake import COMM_WORLD, COMM_SELF
 #from skimage.morphology import skeletonize
 from firedrake.__future__ import interpolate
 
+from firedrake import RectangleMesh, ExtrudedMesh
+
 import time
 
 ###############################
@@ -25,6 +27,16 @@ import time
 convention_2d_flipud = True
 convention_2d_invert_rows_columns = True
 
+###############################
+# CONVENTIONS
+# x: left axis
+# y: vertical axis
+# z: depth axis
+###############################
+convention_3d_axis_left_right = 0
+convention_3d_axis_bottom_top = 1
+convention_3d_axis_front_back = 2
+
 
 
 def cartesian_grid_3d(
@@ -34,9 +46,9 @@ def cartesian_grid_3d(
    #units="meters"
    ):
    nx,ny,nz = shape_xyz
-   mesh2d = RectangleMesh(nx,ny,lenghts[0],lengths[1],quadrilater=True)
-   mesh = ExtrudedMesh(mesh2d,nz,lenghts[2]/nz)
-   return mesh
+   mesh2d = RectangleMesh(nx,ny,lengths[0],lengths[1],quadrilateral=True)
+   mesh = ExtrudedMesh(mesh2d,nz,lengths[2]/nz)
+   return mesh   
 
 def build_mesh_from_numpy(np_image, 
                           mesh_type='simplicial',
@@ -81,13 +93,27 @@ def build_mesh_from_numpy(np_image,
             
    elif (np_image.ndim == 3):
       height, width, depth = np_image.shape
+
+      if lengths is None:
+         lengths = (height,width,depth)
       
       if (mesh_type == 'simplicial'):
          hexahedral = False
+      
+      
       elif (mesh_type == 'cartesian'):
-         hexahedral = True
-      if lengths is None:
-         lengths = (height,width,depth)
+         mesh = cartesian_grid_3d([height,width,depth],lengths)
+         mesh.nx = height
+         mesh.ny = width
+         mesh.nz = depth
+         mesh.xmin = 0
+         mesh.xmax = lengths[0]
+         mesh.ymin = 0
+         mesh.ymax = lengths[1]
+         mesh.zmin = 0
+         mesh.zmax = lengths[2]
+         return mesh
+         
 
       if label_boundary:
          mesh = fd.BoxMesh(
@@ -278,6 +304,9 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
       lengths = get_lengths(mesh)
       
    nxyz = value.shape#get_box_division(mesh)
+
+   print(f'{lengths=} {mesh.comm.rank=}{nxyz=}')
+
 
    if mesh.geometric_dimension() == 3:    
       hx = lengths[0]/nxyz[0]
