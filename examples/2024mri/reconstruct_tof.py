@@ -22,6 +22,8 @@ import sys
 import itertools
 import argparse
 
+import warnings
+warnings.filterwarnings("ignore")
 
 
 
@@ -30,7 +32,7 @@ def load_data(field, coarseness, data_folder="../../../mri/",mesh_type="simplici
 
     data = np.load(f'{data_folder}/{field}.npy')
 
-   
+    
 
     PETSc.Sys.Print(f"Data shape: {data.shape}") 
 
@@ -40,15 +42,18 @@ def load_data(field, coarseness, data_folder="../../../mri/",mesh_type="simplici
         data = zoom(data, (1/coarseness,1/coarseness,1/coarseness), order=0)
         PETSc.Sys.Print(data.shape)
 
+
+    print(f"Data shape: {data.shape}")
+    
     # create mesh
     PETSc.Sys.Print('building mesh')
     start = time.time()
     lengths = [1.0,data.shape[1]/data.shape[0],data.shape[2]/data.shape[0]]
     mesh = i2d.build_mesh_from_numpy(data, mesh_type=mesh_type,lengths=lengths,label_boundary=True)
-    #if mesh_type == "simplicial":
-    #    cartesian_mesh = i2d.cartesian_grid_3d(data.shape,lengths)
-    #else:
-    #    cartesian_mesh = mesh
+    if mesh_type == "simplicial":
+        cartesian_mesh = i2d.cartesian_grid_3d(data.shape,lengths)
+    else:
+        cartesian_mesh = mesh
     
     #mesh = Mesh("Cube-03.msh")
     #mesh.name = 'mesh'
@@ -63,7 +68,7 @@ def load_data(field, coarseness, data_folder="../../../mri/",mesh_type="simplici
     end = time.time()
     PETSc.Sys.Print(f'image converted {end-start}s')
 
-    return tof_fire#, cartesian_mesh
+    return tof_fire, cartesian_mesh
     
 
 def btp_inputs(tof_fire):
@@ -82,7 +87,7 @@ def btp_inputs(tof_fire):
     mass_source = assemble(source*dx)
     mass_sink = assemble(sink*dx)
 
-    PETSc.Sys.Print(f"{mass_source=} {mass_sink=}")
+    PETSc.Sys.Print(f"{mass_source=:.2e} {mass_sink=:.2e}")
 
 
     source /= mass_source
@@ -219,7 +224,7 @@ def setup_solver(source, sink, corrupted,
 #
 # common setup
 #
-fems = ["CG1DG0"]
+fems = ["DG0DG0"]
 wr = [0.0]
 method = [
     "tdens_mirror_descent_explicit",
@@ -230,7 +235,7 @@ def figure1():
     # Combinations producting the data for Figure 2
     #
     gamma = [0.5] # 
-    wd = [1e0]  # set the discrepancy to zero
+    wd = [1e-1,1e0]  # set the discrepancy to zero
     ini = [0]
     # the following are not influent since wd=weight discrepancy is zero
     conf = ["ONE"]
@@ -261,6 +266,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Reconstruct network')
     parser.add_argument("--field", type=str, default='TOF', help="TOF")
     parser.add_argument("--c", type=int, default=8, help="coarseing factor")
+    parser.add_argument("--mri", type=str, default="./mri/", help="directory with mri data")
     args, unknown = parser.parse_known_args()
 
     field = args.field
@@ -280,25 +286,26 @@ if __name__ == "__main__":
 
     #setup inputs
     mesh_type = "cartesian" if fems[0]=="DG0DG0" else "simplicial"
-    tof =  load_data(field, coarseness, mesh_type=mesh_type)
+    tof, cartesian_mesh =  load_data(field, coarseness, data_folder=args.mri, mesh_type=mesh_type)
 
     source, sink, corrupted = btp_inputs(tof)
 
     out_file = File(f'{out_directory}/inputs.pvd')
     out_file.write(tof,source,sink,corrupted)
 
-    
+    PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs.pvd')
+
       
     #setup controls
     combinations = figure1()
     
     for combination in combinations:
     
-        label = "_".join(labels(*combination))+"4000"
+        label = "_".join(labels(*combination))
 
         PETSc.Sys.Print(label)
 
-        label_dir = sys.join(out_directory,label)
+        label_dir = os.path.join(out_directory,label)
         if not os.path.exists(label_dir):
             os.mkdir(label_dir)
 
@@ -312,8 +319,8 @@ if __name__ == "__main__":
         pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
 
         DQ0 = FunctionSpace(cartesian_mesh,"DQ",0)
-        tdens_grid = Fuction(DQ0, name="tdens_grid")
-        pot_grid = Fuction(DQ0, name="pot_grid")
+        tdens_grid = Function(DQ0, name="tdens_grid")
+        pot_grid = Function(DQ0, name="pot_grid")
 
         tdens_grid.interpolate(tdens)
         pot_grid.interpolate(pot)
@@ -328,15 +335,18 @@ if __name__ == "__main__":
         out_file.write(pot, tdens)
         PETSc.Sys.Print(f"{ierr=}. Saved solution to "+filename)
 
-        numpy_name = f"tdens_{comm.rank:.02d}.npy"
+        numpy_name = f"tdens_{cartesian_mesh.comm.rank:02d}.npy"
+        path = os.path.join(label_dir,numpy_name)
         with tdens_grid.dat.vec_ro as v:
             v_np = v.array
-            v_np.tofile(numpy_name)
+            v_np.tofile(path)
 
-        numpy_name = f"pot_{comm.rank:.02d}.npy"
+        numpy_name = f"pot_{cartesian_mesh.comm.rank:02d}.npy"
+        path = os.path.join(label_dir,numpy_name)
+        print(numpy_name)
         with pot_grid.dat.vec_ro as v:
             v_np = v.array
-            v_np.tofile(numpy_name)
+            v_np.tofile(path)
 
 
 
