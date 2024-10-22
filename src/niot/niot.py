@@ -165,23 +165,40 @@ class SpaceDiscretization:
         Return the Laplacian form for the given space
         with zero-Neumann boundary conditions
         """
+        # detect degree of function space
+        degree = space.ufl_element().degree()
+        # an extruded mesh is used
+        if isinstance(degree, tuple):
+            if all(d == 0 for d in degree):
+                degree = 0
+                d_internal_faces = dS_v + dS_h
 
-        if weight is None:
-            weight = Constant(1.0)
-
+            else:
+                raise ValueError('Only piecewise constant is implemented for extruded meshes')
+        else:
+            degree = degree
+            d_internal_faces = dS
 
         test = TestFunction(space)
         trial = TrialFunction(space)
-        if space.ufl_element().degree() == 0:
+        if degree == 0:
+            # the weight need to be "projected to the facets"
+            if weight is not None:
+                facet_weight = self.cell2face_map(weight, cell2face)
+            else:
+                facet_weight = 1.0
+            
             if space.mesh().ufl_cell().is_simplex():
                 # if the mesh is simplicial, we use the DG0 laplacian taken from
                 # https://www.firedrakeproject.org/demos/saddle_point_systems.py.html
                 # Without scaling the scheme is not consistent.
-                form = self.DG0_scaling * inner(jump(test, self.normal), jump(trial, self.normal)) * dS
+                form = self.DG0_scaling * facet_weigtht * inner(jump(test, self.normal), jump(trial, self.normal)) * d_internal_faces
             else:
-                form = jump(test) * jump(trial) / self.delta_h * dS
-        elif space.ufl_element().degree() == 1:
-            form = inner(grad(test), grad(trial)) * dx
+                form =  facet_weight * jump(test) * jump(trial) / self.delta_h * d_internal_faces
+        elif degree == 1:
+            if weight is None:
+                weight = Constant(1.0)
+            form = weight * inner(grad(test), grad(trial)) * dx
         else:
             raise NotImplementedError('piecewise constant, or linear tdens is implemented')
         return form
@@ -199,18 +216,31 @@ class SpaceDiscretization:
 
         space = u.function_space()
 
-        
-        if space.ufl_element().degree() == 0:
+        # detect degree of function space
+        degree = space.ufl_element().degree()
+        # an extruded mesh is used
+        if isinstance(degree, tuple):
+            if all(d == 0 for d in degree):
+                degree = 0
+                d_internal_faces = dS_v + dS_h
+            else:
+                raise ValueError('Only piecewise constant is implemented for extruded meshes')
+        else:
+            degree = degree
+            d_internal_faces = dS
+
+
+        if degree == 0:
             # the weight need to be "projected to the facets"
             facet_weight = self.cell2face_map(weight, cell2face)
             if space.mesh().ufl_cell().is_simplex():
                 # if the mesh is simplicial, we use the DG0 laplacian taken from
                 # https://www.firedrakeproject.org/demos/saddle_point_systems.py.html
                 # Without scaling the scheme is not consistent.
-                L = 0.5 * self.DG0_scaling * facet_weight * inner(jump(u, self.normal), jump(u, self.normal)) * dS
+                L = 0.5 * self.DG0_scaling * facet_weight * inner(jump(u, self.normal), jump(u, self.normal)) * d_internal_faces
             else:
-                L = 0.5 * facet_weight * jump(u)**2 / self.delta_h * dS
-        elif space.ufl_element().degree() == 1:
+                L = 0.5 * facet_weight * jump(u)**2 / self.delta_h * d_internal_faces
+        elif degree == 1:
             L = 0.5 * weight * inner(grad(u), grad(u)) * dx
         else:
             raise NotImplementedError('piecewise constant, or linear tdens is implemented')
