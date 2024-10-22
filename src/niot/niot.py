@@ -17,32 +17,20 @@ import time
 #from memory_profiler import profile
 
 
-#from . import utilities
-#from . import optimal_transport as ot
-
-#from . import conductivity2image as conductivity2image
-#from . import linear_algebra_utilities as linalg
 from . conductivity2image import IdentityMap, HeatMap, PorousMediaMap
 from . import utilities
 from . import optimal_transport as ot
-
-#from . import conductivity2image as conductivity2image
 from . import linear_algebra_utilities as linalg
 
 
 # function operations
 from firedrake import *
+from firedrake.functionspace import DualSpace
 from firedrake.__future__ import interpolate
-
-#from firedrake_adjoint import ReducedFunctional, Control
-#from pyadjoint.reduced_functional import  ReducedFunctional
-#from pyadjoint.control import Control
-
-#import firedrake.adjoint as fireadj # does not work ...
-#from firedrake.adjoint import * # does give error when interpoalte is called
-#import firedrake.adjoint.ReducedFunctional as ReducedFunctional # does not work ...
 import firedrake.adjoint as fire_adj
-fire_adj.continue_annotation()
+        #fire_adj.continue_annotation()
+
+
 
 from firedrake.tsfc_interface import TSFCKernel
 from pyop2.global_kernel import GlobalKernel
@@ -178,9 +166,6 @@ class SpaceDiscretization:
         with zero-Neumann boundary conditions
         """
 
-        if cell2face is None:
-            cell2face = self.cell2face
-
         if weight is None:
             weight = Constant(1.0)
 
@@ -195,7 +180,7 @@ class SpaceDiscretization:
                 form = self.DG0_scaling * inner(jump(test, self.normal), jump(trial, self.normal)) * dS
             else:
                 form = jump(test) * jump(trial) / self.delta_h * dS
-        elif self.fems.tdens_space.ufl_element().degree() == 1:
+        elif space.ufl_element().degree() == 1:
             form = inner(grad(test), grad(trial)) * dx
         else:
             raise NotImplementedError('piecewise constant, or linear tdens is implemented')
@@ -208,9 +193,7 @@ class SpaceDiscretization:
         The weight is a function of the mesh.
         If the weight is not passed, it is assumed to be 1.0.
         """
-        if cell2face is None:
-            cell2face = self.cell2face
-
+        
         if weight is None:
             weight = Constant(1.0)
 
@@ -227,7 +210,7 @@ class SpaceDiscretization:
                 L = 0.5 * self.DG0_scaling * facet_weight * inner(jump(u, self.normal), jump(u, self.normal)) * dS
             else:
                 L = 0.5 * facet_weight * jump(u)**2 / self.delta_h * dS
-        elif self.fems.tdens_space.ufl_element().degree() == 1:
+        elif space.ufl_element().degree() == 1:
             L = 0.5 * weight * inner(grad(u), grad(u)) * dx
         else:
             raise NotImplementedError('piecewise constant, or linear tdens is implemented')
@@ -256,8 +239,8 @@ def set_step(increment,
         else:
             step = max(min(1.0 / d_max, upper_bound), lower_bound)
     elif (type == 'adaptive2'):
-        order_down = -0.25
-        order_up = 0.5
+        order_down = -1
+        order_up = 1
         r = increment / state
         r_np = r.array
         if np.min(r_np) < 0:
@@ -273,6 +256,7 @@ def set_step(increment,
         else:
             up = upper_bound
         step = min(up,down)
+        PETSc.Sys.Print(f"{down=:.2e} {up:.2e}")
         step = max(step,lower_bound)
         step = min(step,upper_bound)
 
@@ -343,6 +327,8 @@ class NiotSolver:
         'discrepancy_weight': 1.0,
         'regularization_weight': 0.0,
         'penalization_weight': 1.0,
+        # tdens to image mapping
+        "use_adjoint" : False,
         'tdens2image' : {
             'type' : 'identity', # idendity, heat, pm
             'scaling': 1.0,
@@ -450,6 +436,8 @@ class NiotSolver:
         
         if self.spaces == 'CR1DG0':
             self.fems = SpaceDiscretization(self.mesh,'CR', 1, 'DG', 0, cell2face)
+        if self.spaces == 'CG1DG0':
+            self.fems = SpaceDiscretization(self.mesh,'CG', 1, 'DG', 0, cell2face)
         elif self.spaces == 'DG0DG0':
             if self.mesh.ufl_cell().is_simplex():
                 raise ValueError('DG0DG0 only implemented for cartesian grids')
@@ -488,10 +476,14 @@ class NiotSolver:
         # set to initial state
         self.deltat = 0.0
 
-
-        self.gradient_D_P = Function(self.fems.tdens_space)
-        self.rhs_ode = Function(self.fems.tdens_space)
-        self.residuum = Function(self.fems.tdens_space)
+        element = self.fems.tdens_space.ufl_element()
+        self.gradient_D_P = Cofunction(DualSpace(self.mesh,element))
+        self.rhs_ode = Cofunction(DualSpace(self.mesh,element))
+        self.residuum = Cofunction(DualSpace(self.mesh,element))
+        self.gradient_regularization = Cofunction(DualSpace(self.mesh,element))
+        self.gradient_penalization = Cofunction(DualSpace(self.mesh,element))
+        self.gradient_regularization = Cofunction(DualSpace(self.mesh,element))
+        self.gradient_lagrangian = Cofunction(DualSpace(self.mesh,element))
 
         if setup:
             self.setup()
@@ -531,6 +523,21 @@ class NiotSolver:
             #'ksp_monitor_true_residual' : None, 
             'pc_type': 'hypre'
         }
+        if self.mesh.geometric_dimension() == 3:
+            hypre_ctrl_3d = {
+                            # tuning parameters for the multigrid
+                            # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
+                            "pc_hypre_type": "boomeramg",
+                            "pc_hypre_boomeramg_strong_threshold": 0.7,
+                            "pc_hypre_boomeramg_max_iter": 1,
+                            "pc_hypre_boomeramg_agg_nl": 2,
+                            "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
+                        }
+            petsc_controls.update(hypre_ctrl_3d)
+            print(f'USING 3D HYPRE setting')
+            
+            
+
         if self.ctrl_get('verbose') >= 3:
             petsc_controls['ksp_monitor_true_residual'] = None
         
@@ -567,6 +574,8 @@ class NiotSolver:
 
 
         self.print_info(f'Number of cells: {self.mesh.num_cells()}',priority=2,where=['stdout','log'])
+        self.print_info(f'Number of nodes: {self.mesh.num_vertices()}',priority=2,where=['stdout','log'])
+        self.print_info(f'Number of facet: {self.mesh.num_facets()}',priority=2,where=['stdout','log'])
 
     def setup_tdensimage(self):
         """
@@ -581,11 +590,18 @@ class NiotSolver:
         tdens2image = self.ctrl_get(['tdens2image', 'type'])
         scaling = self.ctrl_get(['tdens2image', 'scaling'])
         
+        
+        #if self.ctrl_get("use_adjoint"):
+        #import firedrake.adjoint as fire_adj
+        #fire_adj.continue_annotation()
 
 
         if tdens2image == 'identity':
             self.tdens2image_map = IdentityMap(self.fems.tdens_space, scaling=scaling)
             self.tdens2image = lambda x: self.tdens2image_map(x)
+
+
+
 
         elif tdens2image == 'heat':
             sigma = self.ctrl_get(['tdens2image', 'heat','sigma'])
@@ -614,6 +630,8 @@ class NiotSolver:
         # chaced functions
         self.pot_h = Function(self.fems.pot_space) # used by pot_solver
         self.pot_h.rename('pot_h')
+
+
         self.rhs = (self.btp.source - self.btp.sink) * self.fems.pot_test * dx
         self.pot_PDE = derivative(self.joule(self.pot_h,self.tdens_h),self.pot_h)
         
@@ -693,23 +711,46 @@ class NiotSolver:
 
     def compute_residuum(self, sol):
         """
-        Return the residual of the minimization problem
-        w.r.t to tdens
+        Return the residual of the minimization problem w.r.t to tdens of gfvar.
+        We slip the computation of each component since each component may give us usefull information.
         """
         pot, tdens = sol.subfunctions
 
         self.tdens_h.assign(tdens)
         self.pot_h.assign(pot)
         
+        
         method = self.ctrl_get(['dmk','type'])
+
+        use_adjoint = self.ctrl_get("use_adjoint")
+
+
+
         if "tdens" in method:
             dw = self.ctrl_get('discrepancy_weight')
             pw = self.ctrl_get('penalization_weight')
             rw = self.ctrl_get('regularization_weight')
+
+            # Discrepancy 
             if dw > 0:
-                self.lagrangian_fun = assemble(dw*self.discrepancy(pot,self.tdens_h))   
-                self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
-                self.gradient_discrepancy = self.lagrangian_fun_reduced.derivative()
+                discrepancy_form = dw*self.discrepancy(self.pot_h,self.tdens_h)
+                self.lagrangian_fun = assemble(discrepancy_form)  
+                
+                if use_adjoint :
+                    # The following is required to keep track of the 
+                    # adjoint computation, like when the map from tdens to image is 
+                    # defined as the solution of a PDE (for example the poruous media map).
+                    self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
+                    self.gradient_discrepancy = self.lagrangian_fun_reduced.derivative()
+                else:
+                    # Simple derivative computation
+                    # It uses less memory, but it requires the functional
+                    # as combination of operations manegable by automatic differiantion.
+                    #self.gradient_discrepancy = assemble(derivative(self.lagrangian_fun, self.tdens_h))
+                    self.gradient_discrepancy = assemble(derivative(discrepancy_form, self.tdens_h, coefficient_derivatives=self.tdens2image_map.cd))
+                    
+                
+                
                 with self.gradient_discrepancy.dat.vec_ro as gD:
                     msg = utilities.msg_bounds(gD,'grad discrepancy   ')
                     self.print_info(
@@ -718,12 +759,19 @@ class NiotSolver:
                         where=['stdout','log']
                         )
             else:
-                self.gradient_discrepancy = 0.0
+                self.gradient_discrepancy.assign(0.0)
 
+            # Penalization
             if pw > 0:
-                self.lagrangian_fun = assemble(pw*self.penalization(pot,self.tdens_h))
-                self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
-                self.gradient_penalization = self.lagrangian_fun_reduced.derivative()
+                self.penalization_form = pw*self.penalization(pot,self.tdens_h)
+                
+                if use_adjoint:
+                    self.lagrangian_fun = assemble(self.penalization_form)
+                    self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
+                    self.gradient_penalization = self.lagrangian_fun_reduced.derivative()
+                else:
+                    self.gradient_penalization = assemble(derivative(self.penalization_form, self.tdens_h))
+                
                 with self.gradient_penalization.dat.vec_ro as gP:
                     msg = utilities.msg_bounds(gP,'grad penalty       ')
                     self.print_info(
@@ -732,20 +780,26 @@ class NiotSolver:
                         where=['stdout','log']
                         )
             else:
-                self.gradient_penalization = 0.0
+                self.gradient_penalization.assign(0.0)
 
             if rw > 0:
-                self.lagrangian_fun = assemble(rw*self.regularization(pot,self.tdens_h))
-                self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
-                self.gradient_regularization = self.lagrangian_fun_reduced.derivative()
+                self.regularization_form = rw*self.regularization(pot,self.tdens_h)
+                
+                if use_adjoint: 
+                    self.lagrangian_fun = assemble(self.regularization_form)
+                    self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
+                    self.gradient_regularization = self.lagrangian_fun_reduced.derivative()
+                else:
+                    self.gradient_regularization = assemble(derivative(self.regularization_form,self.tdens_h))
             else:
-                self.gradient_regularization = 0.0
+                self.gradient_regularization.assign(0.0)
 
+            
             self.gradient_D_P.assign(self.gradient_discrepancy + self.gradient_penalization)
-            self.rhs_ode.assign(self.gradient_discrepancy + self.gradient_penalization + self.gradient_regularization)
+            self.gradient_lagrangian.assign(self.gradient_discrepancy + self.gradient_penalization + self.gradient_regularization)
             
             #d = self.fems.tdens_mass_matrix.createVecLeft()
-            self.residuum.assign(self.rhs_ode)
+            self.residuum.assign(self.gradient_lagrangian)
             with self.residuum.dat.vec as res, self.tdens_h.dat.vec as tdens_vec:
                 res *= tdens_vec
 
@@ -761,9 +815,16 @@ class NiotSolver:
             rw = self.ctrl_get('regularization_weight')
 
             if dw > 0:            
-                L = assemble(dw * self.discrepancy(pot,self.tdens_of_gfvar(gfvar)))
-                lagrangian_fun_reduced = fire_adj.ReducedFunctional(L, fire_adj.Control(gfvar))
-                self.gradient_discrepancy = lagrangian_fun_reduced.derivative()
+                self.discrepancy_form = dw * self.discrepancy(pot,self.tdens_of_gfvar(gfvar))
+                if use_adjoint:
+                    lagrangian_fun = assemble(self.discrepancy_form)
+                    lagrangian_fun_reduced = fire_adj.ReducedFunctional(lagrangian_fun, fire_adj.Control(gfvar))
+                    self.gradient_discrepancy = lagrangian_fun_reduced.derivative()
+                else:
+                    self.gradient_discrepancy = assemble(derivative(self.discrepancy_form, gfvar))
+                
+                
+                
                 with self.gradient_discrepancy.dat.vec_ro as gD:
                     msg = utilities.msg_bounds(gD,'grad discrepancy   ')
                     self.print_info(
@@ -776,9 +837,14 @@ class NiotSolver:
                 self.gradient_discrepancy = 0.0
 
             if pw > 0:
-                L = assemble(pw * self.penalization(pot,self.tdens_of_gfvar(gfvar)))
-                lagrangian_fun_reduced = fire_adj.ReducedFunctional(L, fire_adj.Control(gfvar))
-                self.gradient_penalization = lagrangian_fun_reduced.derivative()
+                self.penalization_form = pw * self.penalization(pot,self.tdens_of_gfvar(gfvar))
+                if use_adjoint:
+                    lagrangian_fun = assemble(self.penalization_form)
+                    lagrangian_fun_reduced = fire_adj.ReducedFunctional(lagrangina_fun, fire_adj.Control(gfvar))
+                    self.gradient_penalization = lagrangian_fun_reduced.derivative()
+                else:
+                    self.gradient_penalization = assemble(derivative(self.penalization_form, gfvar))
+
                 with self.gradient_penalization.dat.vec_ro as gP:
                     msg = utilities.msg_bounds(gP,'grad penalty       ')
                     self.print_info(
@@ -791,9 +857,15 @@ class NiotSolver:
                 self.gradient_penalization = 0.0
 
             if rw > 0:
-                L = assemble(rw * self.regularization(pot, gfvar))
-                self.regularization_fun_reduced = fire_adj.ReducedFunctional(L, fire_adj.Control(gfvar))
-                self.gradient_regularization = self.regularization_fun_reduced.derivative()
+                self.regularization_form  = rw * self.regularization(pot, gfvar)
+                if use_adjoint:
+                    lagrangian_fun = assemble(self.regularization_form )
+                    lagrangian_fun_reduced = fire_adj.ReducedFunctional(L, fire_adj.Control(gfvar))
+                    self.gradient_regularization = lagrangian_fun_reduced.derivative()
+                else:
+                    self.gradient_regularization = assemble(derivative(self.regularization_form, gfvar))
+                
+                
                 with self.gradient_regularization.dat.vec_ro as gR:
                     msg = utilities.msg_bounds(gR,'grad regularization')
                     self.print_info(
@@ -805,15 +877,10 @@ class NiotSolver:
                 self.gradient_regularization = 0.0
 
             self.gradient_D_P.assign(self.gradient_discrepancy + self.gradient_penalization)
-            self.rhs_ode.assign(self.gradient_discrepancy + self.gradient_penalization + self.gradient_regularization)
+            self.gradient_lagrangian.assign(self.gradient_discrepancy + self.gradient_penalization + self.gradient_regularization)
             self.gradients_computed = True
 
-            self.residuum.assign(self.rhs_ode)
-            #with self.rhs_ode.dat.vec_ro as rhs_vec:
-                # the derivative contains the mass matrix, 
-                # we just sum to get the L1 norm of the residuum
-            #    residuum = rhs_vec.norm(PETSc.NormType.NORM_1)
-            #return residuum
+            self.residuum.assign(self.self.gradient_lagrangian)
 
         else:
             raise ValueError(f'Wrong optimization type {method=}')
@@ -875,14 +942,19 @@ class NiotSolver:
          ierr : control flag. It is 0 if everthing worked.
         '''
         
-        # Clear tape is required to avoid memory accumalation
-        # It works but I don't know why
-        # see also https://github.com/firedrakeproject/firedrake/issues/3133
-        tape = fire_adj.get_working_tape()
-        
+       
 
         # Initialize the parameter-dependent solvers
         self.setup()
+
+
+        # Clear tape is required to avoid memory accumalation
+        # It works but I don't know why
+        # see also https://github.com/firedrakeproject/firedrake/issues/3133
+        use_adjoint = self.ctrl_get("use_adjoint")
+        #if use_adjoint:
+        tape = fire_adj.get_working_tape()
+        
         # open log file
         #if self.ctrl_get('log_verbose') > 0:
         #    f_log = open(self.ctrl_get('log_file'), 'w')
@@ -916,19 +988,21 @@ class NiotSolver:
     
             ierr = self.iterate(self.sol)
             # clean memory every 10 iterations
-            if self.iteration%5 == 0:
-                # Clear tape is required to avoid memory accumalation
-                # It works but I don't know why
-                # see also https://github.com/firedrakeproject/firedrake/issues/3133
+            
+            if self.iteration%10 == 0:
+                #if use_adjoint :
+                    # Clear tape is required to avoid memory accumalation
+                    # It works but I don't know why
+                    # see also https://github.com/firedrakeproject/firedrake/issues/3133
                 tape.clear_tape()
-                    
+                        
                 # other clean up taken from 
                 # https://github.com/LLNL/pyMMAopt/commit/e2f83bd932207a8adbd60ae793b3e5a3058daecf
                 #TSFCKernel._cache.clear()
                 #GlobalKernel._cache.clear()
-                #gc.collect()
-                #petsc4py.PETSc.garbage_cleanup(self.mesh._comm)
-                #petsc4py.PETSc.garbage_cleanup(self.mesh.comm)
+                gc.collect()
+                petsc4py.PETSc.garbage_cleanup(self.mesh._comm)
+                petsc4py.PETSc.garbage_cleanup(self.mesh.comm)
 
             if (ierr != 0):
                 ierr_dmk = 1
@@ -977,13 +1051,13 @@ class NiotSolver:
 
         #if self.ctrl_get('log_verbose') > 0:
         #    f_log.close()
-
-        tape.clear_tape()
-                    
-        # other clean up taken from 
-        # https://github.com/LLNL/pyMMAopt/commit/e2f83bd932207a8adbd60ae793b3e5a3058daecf
-        TSFCKernel._cache.clear()
-        GlobalKernel._cache.clear()
+        if use_adjoint:
+            tape.clear_tape()
+                        
+            # other clean up taken from 
+            # https://github.com/LLNL/pyMMAopt/commit/e2f83bd932207a8adbd60ae793b3e5a3058daecf
+            #TSFCKernel._cache.clear()
+            #GlobalKernel._cache.clear()
         gc.collect()
         petsc4py.PETSc.garbage_cleanup(self.mesh._comm)
         petsc4py.PETSc.garbage_cleanup(self.mesh.comm)
@@ -996,6 +1070,7 @@ class NiotSolver:
         '''
         # print min and max of tdens
         self.image_h = self.tdens2image_map(tdens)
+        #scaling = self.ctrl_get(['tdens2image', 'scaling'])
         dis = self.confidence * 0.5 * (self.image_h - self.img_observed)**2 * dx
         return dis
     
@@ -1061,6 +1136,7 @@ class NiotSolver:
             Lag += wr * self.regularization(pot,tdens)
         return Lag
     
+    #@profile
     def solve_pot_PDE(self, sol, tol = None):
         '''
         The pot in sol=[pot,tdens] is updated so that it solves the PDE
@@ -1097,9 +1173,7 @@ class NiotSolver:
         
         # solve the problem
         try:
-            # explicitly set the tolerance
-            #if tol is not None:
-            #    self.pot_solver.parameters['ksp_rtol'] = tol
+            
             self.pot_solver.solve()
         except:
             pass
@@ -1124,7 +1198,7 @@ class NiotSolver:
         self.outer_iterations = self.pot_solver.snes.getLinearSolveIterations()
         
         # move the pot solution in sol
-        sol.sub(0).assign(self.pot_h)
+        pot.assign(self.pot_h,annotate=False)
 
         return ierr
     
@@ -1135,7 +1209,7 @@ class NiotSolver:
         # 
         #
         pot, tdens = sol.subfunctions
-        self.pot_h.assign(pot) 
+        self.pot_h.assign(pot,annotate=False) 
         self.tdens_h.assign(tdens)
         
 
@@ -1143,9 +1217,9 @@ class NiotSolver:
         if not self.gradients_computed:
             self.compute_residuum(sol)
         
-        self.rhs_ode.assign(-(self.gradient_discrepancy 
-                                + self.gradient_penalization 
-                                  + self.gradient_regularization))
+        self.rhs_ode.assign(-1.0*self.gradient_lagrangian)
+
+
         with self.rhs_ode.dat.vec as rhs:
             self.print_info(
                 msg=utilities.msg_bounds(rhs,'gradient'),
