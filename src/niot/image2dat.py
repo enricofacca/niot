@@ -5,6 +5,7 @@ import scipy
 from copy import deepcopy as cp
 import firedrake as fd
 import matplotlib.pyplot as plt
+from firedrake import mesh
 
 from firedrake.petsc import PETSc
 from firedrake import COMM_WORLD, COMM_SELF
@@ -16,7 +17,7 @@ from firedrake.__future__ import interpolate
 import time
 
 ###############################
-# CONVENSION
+# CONVENTIONS
 # x: horizontal axis
 # y: vertical axis
 # z: depth axis
@@ -24,15 +25,33 @@ import time
 convention_2d_flipud = True
 convention_2d_invert_rows_columns = True
 
-def build_mesh_from_numpy(np_image, mesh_type='simplicial',lengths=None,comm=COMM_WORLD): 
+
+
+def cartesian_grid_3d(
+   shape_xyz,
+   lengths=[1.0,1.0,1.0],
+   #origin=[0.0,0.0,0.0],
+   #units="meters"
+   ):
+   nx,ny,nz = shape_xyz
+   mesh2d = RectangleMesh(nx,ny,lenghts[0],lengths[1],quadrilater=True)
+   mesh = ExtrudedMesh(mesh2d,nz,lenghts[2]/nz)
+   return mesh
+
+def build_mesh_from_numpy(np_image, 
+                          mesh_type='simplicial',
+                          lengths=None,
+                          comm=COMM_WORLD,
+                          label_boundary=False): 
    '''
    Create a mesh (first axis size=1) from a numpy array
    '''
+   print("rank",comm.rank)
    if (np_image.ndim == 2):
       if (mesh_type == 'simplicial'):
-            quadrilateral = False
+         quadrilateral = False
       elif (mesh_type == 'cartesian'):
-            quadrilateral = True
+         quadrilateral = True
       
       # here we swap the axes because the image is 
       # read from left, right, top to bottom
@@ -62,16 +81,16 @@ def build_mesh_from_numpy(np_image, mesh_type='simplicial',lengths=None,comm=COM
             
    elif (np_image.ndim == 3):
       height, width, depth = np_image.shape
-      #depth, width, height = np_image.shape
       
       if (mesh_type == 'simplicial'):
-            hexahedral = False
+         hexahedral = False
       elif (mesh_type == 'cartesian'):
-            hexahedral = True
+         hexahedral = True
       if lengths is None:
          lengths = (height,width,depth)
-         #lengths = (1,height/width,height/depth)
-      mesh = fd.BoxMesh(
+
+      if label_boundary:
+         mesh = fd.BoxMesh(
             nx=height,
             ny=width, 
             nz=depth,  
@@ -80,9 +99,25 @@ def build_mesh_from_numpy(np_image, mesh_type='simplicial',lengths=None,comm=COM
             Lz=lengths[2],
             hexahedral=hexahedral,
             reorder=False,
-         comm=comm
-      )
-      
+            comm=comm
+         )
+      else:
+         xcoords = np.linspace(0, lengths[0], height + 1, dtype=np.double)
+         ycoords = np.linspace(0, lengths[1], width + 1, dtype=np.double)
+         zcoords = np.linspace(0, lengths[2], depth + 1, dtype=np.double)  
+
+         mesh = TensorBoxMesh(
+            xcoords,
+               ycoords,
+               zcoords,
+               reorder=None,
+               distribution_parameters=None,
+               diagonal="default",
+               comm=comm,
+               name="mesh",
+               distribution_name=None,
+               permutation_name=None,
+            )   
    else:
       raise ValueError('Only 2D and 3D images are supported')
 
@@ -93,7 +128,10 @@ def build_mesh_from_numpy(np_image, mesh_type='simplicial',lengths=None,comm=COM
    example accessing a property of the mesh directly after
    constructing it) you need to call this manually.
    """
-   mesh.init()
+   t = time.time()
+   #mesh.init()
+   dt=time.time()-t
+   PETSc.Sys.Print(f"init mesh {dt}")
   
    # we attach this info to the mesh
    if (np_image.ndim == 2):
@@ -232,14 +270,14 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
 
    The code is based on https://www.firedrakeproject.org/interpolation.html#id6
    '''
-   if (not compatible(mesh, value) ):
-      raise ValueError('Mesh and image are not compatible')   
+   #if (not compatible(mesh, value) ):
+   #   raise ValueError('Mesh and image are not compatible')   
    DG0 = fd.FunctionSpace(mesh,'DG',0)
    img_function = fd.Function(DG0)
    if lengths is None:
       lengths = get_lengths(mesh)
       
-   nxyz = get_box_division(mesh)
+   nxyz = value.shape#get_box_division(mesh)
 
    if mesh.geometric_dimension() == 3:    
       hx = lengths[0]/nxyz[0]
@@ -445,3 +483,113 @@ def skeleton(network):
    skeleton = skeletonize(network)
    return skeleton
 
+def TensorBoxMesh(
+   xcoords,
+   ycoords,
+   zcoords,
+   reorder=None,
+   distribution_parameters=None,
+   diagonal="default",
+   comm=COMM_WORLD,
+   name="mesh",
+   distribution_name=None,
+   permutation_name=None,
+):
+   """Generate a mesh of a 3D box.
+
+   :arg xcoords: Location of nodes in the x direction
+   :arg ycoords: Location of nodes in the y direction
+   :arg zcoords: Location of nodes in the z direction
+   :kwarg distribution_parameters: options controlling mesh
+         distribution, see :func:`.Mesh` for details.
+   :kwarg diagonal: Two ways of cutting hexadra, should be cut into 6
+      tetrahedra (``"default"``), or 5 tetrahedra thus less biased
+      (``"crossed"``)
+   :kwarg reorder: (optional), should the mesh be reordered?
+   :kwarg comm: Optional communicator to build the mesh on.
+
+   The boundary surfaces are numbered as follows:
+
+   * 1: plane x == xcoords[0]
+   * 2: plane x == xcoords[-1]
+   * 3: plane y == ycoords[0]
+   * 4: plane y == ycoords[-1]
+   * 5: plane z == zcoords[0]
+   * 6: plane z == zcoords[-1]
+   """
+   xcoords = np.unique(xcoords)
+   ycoords = np.unique(ycoords)
+   zcoords = np.unique(zcoords)
+   nx = np.size(xcoords)-1
+   ny = np.size(ycoords)-1
+   nz = np.size(zcoords)-1
+
+   for n in (nx, ny, nz):
+      if n <= 0 or n % 1:
+         raise ValueError("Number of cells must be a postive integer")
+   # X moves fastest, then Y, then Z
+   coords = (
+      np.asarray(np.meshgrid(xcoords, ycoords, zcoords)).swapaxes(0, 3).reshape(-1, 3)
+   )
+   i, j, k = np.meshgrid(
+      np.arange(nx, dtype=np.int32),
+      np.arange(ny, dtype=np.int32),
+      np.arange(nz, dtype=np.int32),
+   )
+   if diagonal == "default":
+      v0 = k * (nx + 1) * (ny + 1) + j * (nx + 1) + i
+      v1 = v0 + 1
+      v2 = v0 + (nx + 1)
+      v3 = v1 + (nx + 1)
+      v4 = v0 + (nx + 1) * (ny + 1)
+      v5 = v1 + (nx + 1) * (ny + 1)
+      v6 = v2 + (nx + 1) * (ny + 1)
+      v7 = v3 + (nx + 1) * (ny + 1)
+
+      cells = [
+         [v0, v1, v3, v7],
+         [v0, v1, v7, v5],
+         [v0, v5, v7, v4],
+         [v0, v3, v2, v7],
+         [v0, v6, v4, v7],
+         [v0, v2, v6, v7],
+      ]
+      cells = np.asarray(cells).reshape(-1, ny, nx, nz).swapaxes(0, 3).reshape(-1, 4)
+   elif diagonal == "crossed":
+      v0 = k * (nx + 1) * (ny + 1) + j * (nx + 1) + i
+      v1 = v0 + 1
+      v2 = v0 + (nx + 1)
+      v3 = v1 + (nx + 1)
+      v4 = v0 + (nx + 1) * (ny + 1)
+      v5 = v1 + (nx + 1) * (ny + 1)
+      v6 = v2 + (nx + 1) * (ny + 1)
+      v7 = v3 + (nx + 1) * (ny + 1)
+
+      # There are only five tetrahedra in this cutting of hexahedra
+      cells = [
+         [v0, v1, v2, v4],
+         [v1, v7, v5, v4],
+         [v1, v2, v3, v7],
+         [v2, v4, v6, v7],
+         [v1, v2, v7, v4],
+      ]
+      cells = np.asarray(cells).reshape(-1, ny, nx, nz).swapaxes(0, 3).reshape(-1, 4)
+      raise NotImplementedError(
+         "The crossed cutting of hexahedra has a broken connectivity issue for Pk (k>1) elements"
+      )
+   else:
+      raise ValueError("Unrecognised value for diagonal '%r'", diagonal)
+   plex = mesh.plex_from_cell_list(
+      3, cells, coords, comm, mesh._generate_default_mesh_topology_name(name)
+   )
+
+   m = mesh.Mesh(
+      plex,
+      reorder=reorder,
+      distribution_parameters=distribution_parameters,
+      name=name,
+      distribution_name=distribution_name,
+      permutation_name=permutation_name,
+      comm=comm,
+   )
+   return m

@@ -53,8 +53,10 @@ class IdentityMap(Conductivity2ImageMap):
         self.space = space
         self.scaling = scaling
         self.image_h = Function(space)
+        self.cd = {self.image_h: self.scaling}
     def __call__(self, conductivity, **kargs) -> Function:
-        self.image_h = assemble(interpolate(self.scaling * conductivity, self.space))
+        #self.image_h = assemble(interpolate(self.scaling * conductivity, self.space))
+        self.image_h.assign(self.scaling * conductivity)#
         return self.image_h
         
 class HeatMap(Conductivity2ImageMap):
