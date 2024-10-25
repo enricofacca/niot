@@ -191,7 +191,7 @@ def setup_solver(source, sink, corrupted,
     # optimization
     niot_solver.ctrl_set('optimization_tol', 1e-5)
     niot_solver.ctrl_set('constraint_tol', 1e-5)
-    niot_solver.ctrl_set('max_iter', 10000)
+    niot_solver.ctrl_set('max_iter', 4000)
     niot_solver.ctrl_set('max_restart', 4)
     niot_solver.ctrl_set('verbose', 2)
 
@@ -347,7 +347,3 @@ if __name__ == "__main__":
         with pot_grid.dat.vec_ro as v:
             v_np = v.array
             v_np.tofile(path)
-
-
-
-
