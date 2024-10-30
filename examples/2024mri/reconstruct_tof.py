@@ -26,7 +26,18 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-
+def build_meshes_from_numpy(data, mesh_type="simplicial",lengths=[1.0,1.0,1.0],label_boundary=False):
+     # create mesh
+    PETSc.Sys.Print('building mesh')
+    start = time.time()
+    if lengths is None:
+        lengths = [1.0,data.shape[1]/data.shape[0],data.shape[2]/data.shape[0]]
+    mesh = i2d.build_mesh_from_numpy(data, mesh_type=mesh_type,lengths=lengths,label_boundary=True)
+    if mesh_type == "simplicial":
+        cartesian_mesh = i2d.cartesian_grid_3d(data.shape,lengths)
+    else:
+        cartesian_mesh = mesh
+    return mesh, cartesian_mesh
 
 def load_data(field, coarseness, data_folder="../../../mri/",mesh_type="simplicial"):
 
@@ -258,7 +269,30 @@ def figure1():
     return combinations
 
 
+def downsample(data,coarseness):
+    if coarseness > 1:
+        PETSc.Sys.Print('coarsening image')
+        data = zoom(data, (1/coarseness,1/coarseness,1/coarseness), order=0)
+        PETSc.Sys.Print(data.shape)
+    return data
+
+def restrict(data,indices_bounds=None,xyz_bounds=None):
+    """ 
+    Assuming that LX=1
+    """
+    if indices_bounds is not None and xyz_bounds is not None:
+        raise ValueError("indices_bounds and xyz_bounds cannot be both set")
+    if indices_bounds is None:
+        shape = data.shape
+        print(shape)
+        nx=shape[0]
+        indices_bounds = [[max(0,int(bounds[0]*nx)),min(bounds[1]*nx,s)] for bounds,s in zip(xyz_bounds,shape)]
+    data = data[indices_bounds[0][0]:indices_bounds[1][1],
+                indices_bounds[1][0]:indices_bounds[1][1],
+                indices_bounds[2][0]:indices_bounds[2][1]]
     
+
+    return data
      
 
 if __name__ == "__main__":
@@ -281,20 +315,42 @@ if __name__ == "__main__":
     if not os.path.exists(out_directory):
         os.mkdir(out_directory)
 
+    # load data
+    t1_np = np.load(f'{args.mri}/T1.npy')
+    tof_np = np.load(f'{args.mri}/TOF.npy')
 
-
-
-    #setup inputs
+    # coarsen data
+    tof_np = downsample(tof_np,coarseness)
+    t1_np = downsample(t1_np,coarseness)
+    PETSc.Sys.Print(f"Data shape: {t1_np.shape}")
+   
+    
+    # restrict data
+    for d in [t1_np,tof_np]:
+        d = restrict(d,xyz_bounds=[[0,1],[0,1],[0,1]])
+    PETSc.Sys.Print(f"Data shape: {t1_np.shape}")
+   
+    # create mesh
+    time0 = time.time()
     mesh_type = "cartesian" if fems[0]=="DG0DG0" else "simplicial"
-    tof, cartesian_mesh =  load_data(field, coarseness, data_folder=args.mri, mesh_type=mesh_type)
+    mesh, cartesian_mesh =  build_meshes_from_numpy(tof_np, mesh_type=mesh_type)
+    PETSc.Sys.Print(f"Mesh built in {time.time()-time0:.2f}s")
+
+
+    PETSc.Sys.Print("converting into firedrake")
+    tof = i2d.numpy2firedrake(cartesian_mesh, tof_np, name="TOF")
+    t1 = i2d.numpy2firedrake(cartesian_mesh, t1_np, name="T1")
+    PETSc.Sys.Print(f"converted into firedrake in {time.time()-time0:.2f}s")
+
 
     source, sink, corrupted = btp_inputs(tof)
 
+    PETSc.Sys.Print("start saving inputs")
     out_file = File(f'{out_directory}/inputs.pvd')
-    out_file.write(tof,source,sink,corrupted)
+    out_file.write(tof,source,sink,corrupted,t1)
 
     PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs.pvd')
-
+    exit()
       
     #setup controls
     combinations = figure1()
