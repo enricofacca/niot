@@ -16,6 +16,10 @@ from firedrake.__future__ import interpolate
 
 from firedrake import RectangleMesh, ExtrudedMesh
 
+from mpi4py.MPI import SUM
+
+
+from pyevtk.hl import gridToVTK, imageToVTK
 import time
 
 ###############################
@@ -39,12 +43,7 @@ convention_3d_axis_front_back = 2
 
 
 
-def cartesian_grid_3d(
-   shape_xyz,
-   lengths=[1.0,1.0,1.0],
-   #origin=[0.0,0.0,0.0],
-   #units="meters"
-   ):
+def cartesian_grid_3d(shape_xyz, lengths=[1.0,1.0,1.0]):
    nx,ny,nz = shape_xyz
    mesh2d = RectangleMesh(nx,ny,lengths[0],lengths[1],quadrilateral=True)
    mesh = ExtrudedMesh(mesh2d,nz,lengths[2]/nz)
@@ -58,7 +57,6 @@ def build_mesh_from_numpy(np_image,
    '''
    Create a mesh (first axis size=1) from a numpy array
    '''
-   print("rank",comm.rank)
    if (np_image.ndim == 2):
       if (mesh_type == 'simplicial'):
          quadrilateral = False
@@ -155,7 +153,7 @@ def build_mesh_from_numpy(np_image,
    constructing it) you need to call this manually.
    """
    t = time.time()
-   #mesh.init()
+   mesh.init()
    dt=time.time()-t
    PETSc.Sys.Print(f"init mesh {dt}")
   
@@ -275,11 +273,11 @@ def compatible(mesh, value):
    check = True
    if (len(np_shape) == 2):
       if (mesh_shape[0] != np_shape[1]) or (mesh_shape[1] != np_shape[0]):
-         print('Mesh and image have different shapes', mesh_shape, np_shape)
+         PETSc.Sys.Print('Mesh and image have different shapes', mesh_shape, np_shape)
          check = False
    elif (len(np_shape) == 3):
       if (mesh_shape[0] != np_shape[0]) or (mesh_shape[1] != np_shape[1]) or (mesh_shape[2] != np_shape[2]):
-         print('Mesh and image have different shapes', mesh_shape, np_shape)
+         PETSc.Sys.Print('Mesh and image have different shapes', mesh_shape, np_shape)
          check = False
    else:
       raise ValueError('Only 2D and 3D images are supported')
@@ -304,8 +302,6 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
       lengths = get_lengths(mesh)
       
    nxyz = value.shape#get_box_division(mesh)
-
-   print(f'{lengths=} {mesh.comm.rank=}{nxyz=}')
 
 
    if mesh.geometric_dimension() == 3:    
@@ -338,6 +334,7 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
    # Get current coordinates
    W = fd.VectorFunctionSpace(DG0.ufl_domain(), DG0.ufl_element())
    coordinates = fd.assemble(interpolate(DG0.ufl_domain().coordinates, W))
+   
    img_function = fd.Function(DG0,name=name)
    img_function.dat.data[:] = my_data(coordinates.dat.data)
 
@@ -345,6 +342,17 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
    if (name is not None):
       img_function.rename(name,name)
    return img_function
+
+
+def simplex2cartesian(function, cartesian_mesh):
+   """
+   Return a function defined on a cartesian mesh from a function defined on a simplex mesh.
+   """
+   DQ0 = fd.FunctionSpace(cartesian_mesh, 'DG', 0)
+   cartesian_function = fd.Function(DQ0)
+   # interpolate the function
+   fd.interpolate(function, cartesian_function)
+   return cartesian_function
 
 
 def firedrake2numpy(function):
@@ -356,9 +364,46 @@ def firedrake2numpy(function):
    TODO: deduced dimensions from mesh. Probably from numbe of boundary facets.
    """
    mesh = function.function_space().mesh()
-   if COMM_WORLD.Get_rank() > 0:
-      raise ValueError('Only serial meshes are supported')
+   #if COMM_WORLD.Get_rank() > 0:
+   #   raise ValueError('Only serial meshes are supported')
+
+   if mesh.ufl_cell().is_simplex():
+      raise ValueError('Only cartesian meshes are supported. Use simplex2cartesian first')
    
+   shape = get_box_division(mesh)
+   
+   np_data = np.zeros(shape)
+   
+   def get_local_to_grid_indices_map(mesh):
+      """
+      build a map list of indices from the local
+      index cell to the correspondence ij(k) index in the numpy array
+      """
+      # Get the centroid coordinates
+      DQ0 = fd.FunctionSpace(mesh, 'DQ', 0)
+      W = fd.VectorFunctionSpace(DQ0.ufl_domain(), DQ0.ufl_element())
+      centroid_coordinates = fd.assemble(interpolate(DQ0.ufl_domain().coordinates, W))
+      # Get the lengths of the box
+      lengths = get_lengths(mesh)
+
+      shape = get_box_division(mesh)
+      indices = (centroid_coordinates.dat.data/lengths*shape).astype(int)
+      return indices
+   
+   # Get current coordinates
+   indices = get_local_to_grid_indices_map(mesh)
+   # TODO: check if this is this the most efficient way to do this
+   np_data[tuple(np.transpose(indices)[:])] = function.dat.data_ro[:]
+
+   
+
+   #global_data = mesh.comm.reduce(np_data, op=SUM,root=0)
+   
+   # with the following we create an array in all processes 
+   global_data = mesh.comm.allreduce(np_data, op=SUM)
+
+   return global_data
+
    if mesh.ufl_cell().is_simplex():
       # Each pixel is splitted in two triangles.
       if mesh.geometric_dimension() == 2:
@@ -379,7 +424,7 @@ def firedrake2numpy(function):
          raise NotImplementedError('3D mesh not implemented yet')
    else:
       if (mesh.ufl_cell().cellname() != 'quadrilateral'):
-            raise ValueError('Only simplicial and quadrilateral meshes are supported')
+         raise ValueError('Only simplicial and quadrilateral meshes are supported')
       # get the values of the function
       with function.dat.vec_ro as f:
          value = f.getArray(readonly=True)
@@ -388,6 +433,31 @@ def firedrake2numpy(function):
          new_shape = get_box_division(mesh)
          value = value.reshape((new_shape[1],new_shape[0]), order='F')
          return value
+      
+
+def numpy2vtr(np_image, lengths, vtk_file, name='image'):
+   """
+   Given a numpy array, save it to a vtk file.
+   """
+   # Create a grid
+   if COMM_WORLD.rank == 0:
+      if (len(np_image.shape) == 2):
+         reshaped = np_image.reshape((np_image.shape[0],np_image.shape[1],1))
+         #imageToVTK(vtk_file, cellData={name: reshaped})
+         x = np.linspace(0, lengths[0], np_image.shape[0]+1)
+         y = np.linspace(0, lengths[1], np_image.shape[1]+1)      
+         z = np.array([0])
+
+         gridToVTK(vtk_file, x, y, z, cellData={name: reshaped})
+   
+      if (len(np_image.shape) == 3):
+         x = np.linspace(0, lengths[0], np_image.shape[0]+1)
+         y = np.linspace(0, lengths[1], np_image.shape[1]+1)
+         z = np.linspace(0, lengths[2], np_image.shape[2]+1)   
+         gridToVTK(vtk_file, x, y, z, cellData={name: np_image})
+
+
+   
 
 
 def image2numpy(img_name, normalize=True, invert=True):
