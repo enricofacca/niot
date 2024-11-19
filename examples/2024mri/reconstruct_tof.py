@@ -21,18 +21,19 @@ import sys
 
 import itertools
 import argparse
+import nibabel
 
 import warnings
 warnings.filterwarnings("ignore")
 
-
-def build_meshes_from_numpy(data, mesh_type="simplicial",lengths=[1.0,1.0,1.0],label_boundary=False):
+def build_meshes_from_numpy(data, mesh_type="simplicial",lengths=None,label_boundary=False):
      # create mesh
     PETSc.Sys.Print('building mesh')
     start = time.time()
     if lengths is None:
         lengths = [1.0,data.shape[1]/data.shape[0],data.shape[2]/data.shape[0]]
-    mesh = i2d.build_mesh_from_numpy(data, mesh_type=mesh_type,lengths=lengths,label_boundary=True)
+    
+    mesh = i2d.build_mesh_from_numpy(data, mesh_type=mesh_type,lengths=lengths,label_boundary=label_boundary)
     if mesh_type == "simplicial":
         cartesian_mesh = i2d.cartesian_grid_3d(data.shape,lengths)
     else:
@@ -85,14 +86,21 @@ def load_data(field, coarseness, data_folder="../../../mri/",mesh_type="simplici
 def btp_inputs(tof_fire):
     mesh = tof_fire.function_space().mesh()
     
+    threshold_domain = 150
+    threshold_network = 250
+    
     
     # convert to firedrake
     DG0 = FunctionSpace(mesh,"DG",0)
     source = Function(DG0,name="source")
     sink = Function(DG0,name="sink")
     x,y,z = SpatialCoordinate(mesh)
-    source.interpolate(conditional(z<0.1,1,0)*conditional(tof_fire>250,1,0))
-    sink.interpolate(conditional(tof_fire>150,1,0))
+    #source.interpolate(conditional(z<15,1,0)*conditional(tof_fire>250,1,0))
+    source.assign(0.0)
+    # above 150 define the approximate support of absortion
+    # above 250 is remove beacuse where we know we have blood vessels
+    sink.interpolate(conditional(tof_fire>threshold_domain,1,0) 
+                     * conditional(tof_fire<threshold_network,1,0))
 
 
     mass_source = assemble(source*dx)
@@ -106,7 +114,7 @@ def btp_inputs(tof_fire):
 
     
     corrupted = Function(DG0,name="corrupted")
-    corrupted.interpolate(conditional(tof_fire>250,1,0)*tof_fire)
+    corrupted.interpolate(conditional(tof_fire> threshold_network,1,0)* tof_fire)
 
     return source, sink, corrupted
 
@@ -153,7 +161,8 @@ def labels(fem,
 
 
 
-def setup_solver(source, sink, corrupted,
+def setup_solver(source, sink, inlet,
+                 corrupted, 
                  fem="DG0DG0",
                  gamma=0.5, 
                  wd=1e-2,
@@ -172,7 +181,7 @@ def setup_solver(source, sink, corrupted,
 
 
    
-    
+    mesh = source.function_space().mesh()
 
     confidence = Function(source.function_space())
     confidence.assign(1.0)
@@ -181,7 +190,13 @@ def setup_solver(source, sink, corrupted,
     # Define the branched transport problem
     ot.balance(source, sink)
     gamma=0.5
-    btp = ot.BranchedTransportProblem(source, sink, gamma=gamma)
+    
+    inlet_pressure = Function(inlet.function_space())
+    inlet_pressure.assign(0.0)
+    weak_Dirichlet = [(inlet, inlet_pressure, Measure("ds_t", domain=mesh))]
+    btp = ot.BranchedTransportProblem(source, sink, gamma=gamma, 
+                                      Dirichlet=None,
+                                      weak_Dirichlet=weak_Dirichlet)
 
 
     niot_solver = NiotSolver(btp, 
@@ -189,7 +204,8 @@ def setup_solver(source, sink, corrupted,
                              confidence=confidence, 
                              spaces = fem,
                              cell2face = 'harmonic_mean',
-                             setup=False)
+                             setup=False,
+                             )
 
 
     # Setup the solver's parameters
@@ -202,7 +218,7 @@ def setup_solver(source, sink, corrupted,
     # optimization
     niot_solver.ctrl_set('optimization_tol', 1e-5)
     niot_solver.ctrl_set('constraint_tol', 1e-5)
-    niot_solver.ctrl_set('max_iter', 4000)
+    niot_solver.ctrl_set('max_iter', 1)
     niot_solver.ctrl_set('max_restart', 4)
     niot_solver.ctrl_set('verbose', 2)
 
@@ -276,37 +292,65 @@ def downsample(data,coarseness):
         PETSc.Sys.Print(data.shape)
     return data
 
-def restrict(data,indices_bounds=None,xyz_bounds=None):
+def indices_restrict(data, lengths, xyz_bounds):
     """ 
     Assuming that LX=1
     """
-    if indices_bounds is not None and xyz_bounds is not None:
-        raise ValueError("indices_bounds and xyz_bounds cannot be both set")
-    if indices_bounds is None:
-        shape = data.shape
-        print(shape)
-        nx=shape[0]
-        indices_bounds = [[max(0,int(bounds[0]*nx)),min(bounds[1]*nx,s)] for bounds,s in zip(xyz_bounds,shape)]
+    indices_bounds = []
+    for axis_index in range(len(data.shape)):
+        n_axis = data.shape[axis_index]
+        len_axis = lengths[axis_index]
+        print(f"{n_axis=}, {len_axis=}")
+        if xyz_bounds[axis_index] is None:
+            indices_bounds.append([0,n_axis])
+        else:
+            lower, upper = xyz_bounds[axis_index]
+            indices_bounds.append([max(0,int(lower/len_axis*n_axis)),min(int(upper/len_axis*n_axis),n_axis)])
+
+    return np.array(indices_bounds)
+
+def restrict(data, indices_bounds):
+    """ 
+    Assuming that LX=1
+    """
     data = data[indices_bounds[0][0]:indices_bounds[1][1],
                 indices_bounds[1][0]:indices_bounds[1][1],
                 indices_bounds[2][0]:indices_bounds[2][1]]
+    data = np.ascontiguousarray(data)
     
-
+    print(f"{data.shape=}")
     return data
-     
+
+
+def select_slice():
+    # get bottom slice of tof
+    tof_bottom_np = np.flipud(tof_np[:,:,0])
+    tof_bottom_np /= tof_bottom_np.max()
+    tof_bottom_np[tof_bottom_np<0.25] = 0
+    # save as vtr and png
+    #i2d.numpy2vtr(tof_bottom_np, lengths[0:2], f"{out_directory}/tof", name='tof')
+    i2d.numpy2image(tof_bottom_np, f"{out_directory}/tof_bottom.png") 
 
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description='Reconstruct network')
-    parser.add_argument("--field", type=str, default='TOF', help="TOF")
+    #parser.add_argument("--field", type=str, default='TOF', help="TOF")
     parser.add_argument("--c", type=int, default=8, help="coarseing factor")
     parser.add_argument("--mri", type=str, default="./mri/", help="directory with mri data")
+    parser.add_argument("--out", type=str, default="./results_dirichlet/", help="output directory")
+    parser.add_argument("--xmin", type=float, default=0.0, help="Lower bound x")
+    parser.add_argument("--xmax", type=float, default=1000.0, help="Upper bound x")
+    parser.add_argument("--ymin", type=float, default=0.0, help="Lower bound y")
+    parser.add_argument("--ymax", type=float, default=1000.0, help="Upper bound y")
+    parser.add_argument("--zmin", type=float, default=0.0, help="Lower bound z")
+    parser.add_argument("--zmax", type=float, default=1000.0, help="Upper bound z")
+    
     args, unknown = parser.parse_known_args()
 
-    field = args.field
+    field = "TOF"
     coarseness = args.c
 
-    results = "./results_dg0/"
+    results = args.out
     if not  os.path.exists(results):
         os.mkdir(results)
 
@@ -315,42 +359,99 @@ if __name__ == "__main__":
     if not os.path.exists(out_directory):
         os.mkdir(out_directory)
 
-    # load data
-    t1_np = np.load(f'{args.mri}/T1.npy')
-    tof_np = np.load(f'{args.mri}/TOF.npy')
+    # load tof data
+    tof_data = nibabel.load(args.mri+'TOF.nii.gz')
+    tof_np = tof_data.get_fdata()
+    hx, hy, hz = tof_data.header['pixdim'][1:4]
+    lengths = [float(tof_np.shape[0]*hx), float(tof_np.shape[1]*hy), float(tof_np.shape[2]*hz)]
+    
+    # load t1 data
+    t1_data = nibabel.load(args.mri+'/T1.nii.gz')
+    t1_np = t1_data.get_fdata() 
+    PETSc.Sys.Print(f"Data shape: {tof_np.shape}")
+    PETSc.Sys.Print(f"Data lengths: {lengths}")
 
+    # load inlet data
+    tof_inlet_np = i2d.image2numpy(f"{args.mri}/tof_inlets.png")
+    tof_inlet_np = np.flipud(tof_inlet_np)
+    tof_inlet_np = tof_inlet_np.reshape((tof_inlet_np.shape[0],tof_inlet_np.shape[1],1),order='F', copy=True)
+    
+    
     # coarsen data
-    tof_np = downsample(tof_np,coarseness)
-    t1_np = downsample(t1_np,coarseness)
-    PETSc.Sys.Print(f"Data shape: {t1_np.shape}")
+    if coarseness > 1:
+        tof_np = downsample(tof_np,coarseness)
+        t1_np = downsample(t1_np,coarseness)
+        tof_inlet_np = downsample(tof_inlet_np,coarseness)
+        PETSc.Sys.Print(f"Coarse Data shape: {t1_np.shape}")
+     
+
+    # restrict data
+    restrict_domain = True
+    if restrict_domain:
+        indices_bounds = indices_restrict(tof_np,
+                                          lengths=lengths,
+                                          xyz_bounds=[
+                                              [args.xmin,args.xmax],
+                                              [args.ymin,args.ymax],
+                                              [args.zmin,args.zmax]
+                                          ])    
+        print(f"{indices_bounds=}")
+
+        tof_np = restrict(tof_np,indices_bounds)
+        t1_np = restrict(t1_np,indices_bounds)
+        tof_inlet_np = restrict(tof_inlet_np,indices_bounds)  
+        
+        
+        lengths = np.array(tof_np.shape)*np.array([hx,hy,hz])
+        
+        PETSc.Sys.Print(f"Data shape after restriction: {t1_np.shape}")
+        PETSc.Sys.Print(f"Data lengths after restriction: {lengths}")
+
    
     
-    # restrict data
-    for d in [t1_np,tof_np]:
-        d = restrict(d,xyz_bounds=[[0,1],[0,1],[0,1]])
-    PETSc.Sys.Print(f"Data shape: {t1_np.shape}")
+    
+    
+    # saving inputs in vtr
+    PETSc.Sys.Print("start saving inputs")
+    start = time.time()
+    i2d.numpy2vtr(t1_np, lengths, f"{out_directory}/t1", name='t1')
+    i2d.numpy2vtr(tof_np, lengths, f"{out_directory}/tof", name='tof')
+    i2d.numpy2vtr(tof_inlet_np, 
+                  [lengths[0],lengths[1],hz],
+                  f"{out_directory}/tof_inlet", name='tof_inlet')
+    PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs'+f" in {time.time()-start:.2f}s")
+
    
+    
     # create mesh
     time0 = time.time()
     mesh_type = "cartesian" if fems[0]=="DG0DG0" else "simplicial"
-    mesh, cartesian_mesh =  build_meshes_from_numpy(tof_np, mesh_type=mesh_type)
+    mesh, cartesian_mesh =  build_meshes_from_numpy(tof_np, mesh_type=mesh_type,lengths=lengths)
     PETSc.Sys.Print(f"Mesh built in {time.time()-time0:.2f}s")
 
 
     PETSc.Sys.Print("converting into firedrake")
     tof = i2d.numpy2firedrake(cartesian_mesh, tof_np, name="TOF")
     t1 = i2d.numpy2firedrake(cartesian_mesh, t1_np, name="T1")
+    tof_inlet_3d_np = np.zeros_like(tof_np)
+    tof_inlet_3d_np[:,:,0] = tof_inlet_np[:,:,0]
+    inlets = i2d.numpy2firedrake(cartesian_mesh, tof_inlet_3d_np, name="Inlets")
     PETSc.Sys.Print(f"converted into firedrake in {time.time()-time0:.2f}s")
+
+    # convert back to numpy
+    #tof_np = i2d.firedrake2numpy(tof)
+    #t1_np = i2d.firedrake2numpy(t1)
+
 
 
     source, sink, corrupted = btp_inputs(tof)
 
     PETSc.Sys.Print("start saving inputs")
+    start = time.time()
     out_file = File(f'{out_directory}/inputs.pvd')
     out_file.write(tof,source,sink,corrupted,t1)
-
-    PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs.pvd')
-    exit()
+    PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs.pvd'+f" in {time.time()-start:.2f}s")
+    
       
     #setup controls
     combinations = figure1()
@@ -367,7 +468,7 @@ if __name__ == "__main__":
 
         
         # setup solvers
-        niot_solver = setup_solver( source, sink, corrupted, *combinations[0])
+        niot_solver = setup_solver( source, sink, inlets, corrupted, *combinations[0])
 
         ierr = niot_solver.solve()
 
@@ -391,6 +492,14 @@ if __name__ == "__main__":
         out_file.write(pot, tdens)
         PETSc.Sys.Print(f"{ierr=}. Saved solution to "+filename)
 
+        tdens_np = i2d.firedrake2numpy(tdens)
+        pot_np = i2d.firedrake2numpy(pot)
+
+        i2d.numpy2vtr(tdens_np, lengths, f"{out_directory}/tdens", name='tdens')
+        i2d.numpy2vtr(pot_np, lengths, f"{out_directory}/pot", name='pot')
+
+
+        exit()
         numpy_name = f"tdens_{cartesian_mesh.comm.rank:02d}.npy"
         path = os.path.join(label_dir,numpy_name)
         with tdens_grid.dat.vec_ro as v:
