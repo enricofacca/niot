@@ -2,14 +2,15 @@ import nibabel as nib
 import matplotlib.pyplot as plt
 import numpy as np
 from pyevtk.hl import gridToVTK, writeParallelVTKGrid
+from niot import image2dat as i2d
 
 #epi_img = nib.load('T1.nii.gz')
 #epi_img_data = epi_img.get_fdata()
 #print(epi_img_data.shape)
 #np.save('T1.npy',epi_img_data)
-epi_img = nib.load('TOF.nii.gz')
+epi_img = nib.load('../../../tests/mri/TOF.nii.gz')
 epi_img_data = epi_img.get_fdata()
-np.save('TOF.npy',epi_img_data)
+#np.save('TOF.npy',epi_img_data)
 hdr = epi_img.header
 print(hdr)
 
@@ -19,26 +20,8 @@ nx, ny, nz = epi_img_data.shape
 dx, dy, dz = epi_img.header['pixdim'][1:4]
 lx, ly, lz = nx * dx, ny * dy, nz * dz
 
-ncells = nx * ny * nz
-npoints = (nx + 1) * (ny + 1) * (nz + 1)
-
 # Coordinates
-x = np.arange(0, lx + 0.1 * dx, dx, dtype="float64")
-y = np.arange(0, ly + 0.1 * dy, dy, dtype="float64")
-z = np.arange(0, lz + 0.1 * dz, dz, dtype="float64")
-
-# Variables
-pressure = np.random.rand(ncells).reshape((nx, ny, nz))
-temp = np.random.rand(npoints).reshape((nx + 1, ny + 1, nz + 1))
-
-gridToVTK(
-    "./rectilinear",
-    x,
-    y,
-    z,
-    cellData={"tof": epi_img_data },
-    #pointData={"temp": temp},
-)
+i2d.numpy2vtr(epi_img_data, [lx, ly, lz], "TOF", name='tof')
 exit()
 
 
