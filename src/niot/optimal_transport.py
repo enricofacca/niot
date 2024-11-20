@@ -47,7 +47,8 @@ class OTPInputs():
     def __init__(self,
                   source, sink, 
                   Neumann=None,
-                  Dirichlet=None, 
+                  Dirichlet=None,
+                  weak_Dirichlet=None, 
                   kappa=1.0, 
                   tolerance_imbalance=1e-12):
         
@@ -62,6 +63,7 @@ class OTPInputs():
         self.source = source
         self.sink = sink
         self.Dirichlet = Dirichlet
+        self.weak_Dirichlet = weak_Dirichlet
         self.kappa = kappa
 
 class BranchedTransportProblem():
@@ -70,7 +72,8 @@ class BranchedTransportProblem():
     """
     def __init__(self, source, sink, 
                   Neumann=None,
-                  Dirichlet=None, 
+                  Dirichlet=None,
+                  weak_Dirichlet=None, 
                   kappa=1.0, 
                   tolerance_imbalance=1e-11,
                   gamma=0.5):
@@ -85,6 +88,7 @@ class BranchedTransportProblem():
         self.source = source
         self.sink = sink
         self.Dirichlet = Dirichlet
+        self.weak_Dirichlet = weak_Dirichlet
         if isinstance(kappa,float):
             R = FunctionSpace(self.mesh, 'R', 0)
             self.kappa = Function(R,val=1,name='kappa')
@@ -97,6 +101,7 @@ class BranchedTransportProblem():
         mass_Neumann = compute_mass_Neumann(self.mesh, self.Neumann)
         mass_balance = (mass_source - mass_sink + mass_Neumann)/max(mass_source,mass_sink)
         if ( self.Dirichlet is None 
+            and self.weak_Dirichlet is None
             and abs(mass_balance) > tolerance_imbalance):
             raise ValueError(f'Source, sink, and Neumann terms are not balanced {mass_balance}')
         
