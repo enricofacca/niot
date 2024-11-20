@@ -12,11 +12,18 @@ import itertools
 penalty = 1e1
 ndiv0 = 8
 
-def define_problem_inputs(test_case_number, nref):
+def define_problem_inputs(test_case_number, nref, mesh_type="cartesian"):
+    if mesh_type == "cartesian":
+        quadrilateral = True
+        hexahedral = True
+    else:
+        quadrilateral = False
+        hexahedral = False
+
     if test_case_number == 0:
         #description = "Domain=[0,1]\time[0,1], zero Dirichlet BCs on x=0, x=1"
         ndiv = ndiv0 * 2**nref
-        mesh = RectangleMesh(ndiv, 4*ndiv, Lx=1.0, Ly=1.0, quadrilateral=True)
+        mesh = RectangleMesh(ndiv, 4*ndiv, Lx=1.0, Ly=1.0, quadrilateral=quadrilateral)
         x,y = SpatialCoordinate(mesh)
         u_exact = u_exact = sin(2 * pi * x) * cos(2 * pi *y)
         f = -div(grad(u_exact))
@@ -36,7 +43,7 @@ def define_problem_inputs(test_case_number, nref):
         ndiv = ndiv0 * 2**nref
         mesh1d = UnitIntervalMesh(ndiv)
         mesh = ExtrudedMesh(mesh1d, ndiv, layer_height=1.0/ndiv)
-        #mesh = UnitSquareMesh(ndiv, ndiv, quadrilateral=True)
+
         x,y = SpatialCoordinate(mesh)
         u_exact = u_exact = sin(2 * pi * x) * cos(2 * pi *y)
         f = -div(grad(u_exact))
@@ -55,7 +62,7 @@ def define_problem_inputs(test_case_number, nref):
     if test_case_number == 2:
         # description = "Domain=[0,1]\time[0,1], zero Dirichlet BCs on x=0, x=1"
         ndiv = ndiv0 * 2**nref
-        mesh = RectangleMesh(ndiv, ndiv, Lx=1.0, Ly=1.0, quadrilateral=True)
+        mesh = RectangleMesh(ndiv, ndiv, Lx=1.0, Ly=1.0, quadrilateral=quadrilateral)
 
         x,y = SpatialCoordinate(mesh)
         u_exact = cos(2 * pi * x) * cos(2 * pi *y)
@@ -69,7 +76,7 @@ def define_problem_inputs(test_case_number, nref):
     if test_case_number == 3:
         # description = "Domain=[0,1]\time[0,1], zero Dirichlet BCs on x=0, x=1"
         ndiv = ndiv0 * 2**nref
-        mesh = RectangleMesh(ndiv, ndiv, Lx=1.0, Ly=1.0, quadrilateral=True)
+        mesh = RectangleMesh(ndiv, ndiv, Lx=1.0, Ly=1.0, quadrilateral=quadrilateral)
 
         x,y = SpatialCoordinate(mesh)
         u_exact = x**2/2 - x**3/3 - 1/12 + y**2/2 - y**3/3 - 1/12
@@ -81,11 +88,13 @@ def define_problem_inputs(test_case_number, nref):
         return mesh, u_exact, f, strong_Dirichlet, weak_Dirichlet
     
     if test_case_number == 4:
+        if mesh_type == "simplicial":
+            return None
+        
         # description = "Domain=[0,1]\time[0,1], zero Dirichlet BCs on x=0, x=1"
         ndiv = 4 * 2**nref
         mesh2d = UnitSquareMesh(ndiv, ndiv, quadrilateral=True)
         mesh = ExtrudedMesh(mesh2d, ndiv, layer_height=1.0/ndiv)
-        #mesh = BoxMesh(ndiv, ndiv, ndiv, Lx=1.0, Ly=1.0, Lz=1.0, hexahedral=True)
 
         x,y,z = SpatialCoordinate(mesh)
         u_exact = x**2/2 - x**3/3 - 1/12 + y**2/2 - y**3/3 - 1/12 + z**2/2 - z**3/3 - 1/12
@@ -98,8 +107,10 @@ def define_problem_inputs(test_case_number, nref):
     
     if test_case_number == 5:
         # description = "Domain=[0,1]\time[0,1], zero Dirichlet BCs on x=0, x=1"
+        if mesh_type == "simplicial":
+            return None
         ndiv = 4 * 2**nref
-        mesh2d = UnitSquareMesh(ndiv, ndiv, quadrilateral=True)
+        mesh2d = UnitSquareMesh(ndiv, ndiv, quadrilateral=quadrilateral)
         mesh = ExtrudedMesh(mesh2d, ndiv, layer_height=1.0/ndiv)
         #mesh = BoxMesh(ndiv, ndiv, ndiv, Lx=1.0, Ly=1.0, Lz=1.0, hexahedral=True)
 
@@ -115,7 +126,7 @@ def define_problem_inputs(test_case_number, nref):
     if test_case_number == 6:
         # description = "Domain=[0,1]\time[0,1], zero Dirichlet BCs on x=0, x=1"
         ndiv = 4 * 2**nref
-        mesh = BoxMesh(ndiv, ndiv, ndiv, Lx=1.0, Ly=1.0, Lz=1.0, hexahedral=True)
+        mesh = BoxMesh(ndiv, ndiv, ndiv, Lx=1.0, Ly=1.0, Lz=1.0, hexahedral=hexahedral)
 
         x,y,z = SpatialCoordinate(mesh)
         u_exact = x**2/2 - x**3/3 - 1/12 + y**2/2 - y**3/3 - 1/12 + z**2/2 - z**3/3 - 1/12
@@ -146,27 +157,40 @@ def check_convergences(hs,errors,expected_rate):
     assert slope > expected_rate - 0.1
     
 verbose = 0
-pot_fems = [("DG",0), ("CG",1)]
-test_cases = list(range(7))
+mesh_types = ["cartesian", "simplicial"]
+pot_fems = [("DG",0), ("CG",1), ("CR",1), ]
+test_cases = list(range(6))
 save_output = False
+@pytest.mark.parametrize("mesh_type", mesh_types)
 @pytest.mark.parametrize("pot_fem", pot_fems)
 @pytest.mark.parametrize("test_case_number", test_cases) 
-def test_case(pot_fem, test_case_number):
+def test_case(mesh_type, pot_fem, test_case_number):
     beta = penalty*10**(2)
-
-    PETSc.Sys.Print("beta:", beta)
+    PETSc.Sys.Print(f"Test case number: {test_case_number} - Mesh type: {mesh_type} - Space: {pot_fem}")
+    #PETSc.Sys.Print("beta:", beta)
     hs=[]
     errorsL2 = []
-    for nref in range(5):
+    for nref in range(4):
         hs.append(1.0/(ndiv0 * 2**nref))
         
         # define problem inputs and reference solution
-        mesh, u_exact, f, strong_Dirichlet, weak_Dirichlet = define_problem_inputs(test_case_number, nref)
+        inputs = define_problem_inputs(test_case_number, nref, mesh_type=mesh_type)
+        if inputs is None:
+            break
+        else:
+            mesh, u_exact, f, strong_Dirichlet, weak_Dirichlet = inputs
         
         # define space discretization
         space, degree = pot_fem
         if degree > 0 and hasattr(mesh,"extruded"):
             break
+        
+        if mesh.ufl_cell().is_simplex():
+            if degree==0:
+                break
+        else:
+            if degree>0:
+                break
         SD = SpaceDiscretization(mesh, space, degree)
         
 
@@ -246,9 +270,9 @@ def test_case(pot_fem, test_case_number):
 
 
 if __name__ == "__main__":
-    combinations = itertools.product(pot_fems, test_cases)
-    for pot_fem, test_case_number in combinations:
-        test_case(pot_fem, test_case_number)
+    combinations = itertools.product(mesh_types, pot_fems, test_cases)
+    for mesh_type, pot_fem, test_case_number in combinations:
+        test_case(mesh_type, pot_fem, test_case_number)
 
 
 
