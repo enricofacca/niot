@@ -8,7 +8,7 @@ from firedrake import Function, TestFunction, TrialFunction
 from firedrake import assemble
 from firedrake import dx
 from firedrake import conditional
-from firedrake import File
+from firedrake import VTKFile
 from firedrake import solving_utils
 
 from firedrake import sqrt, jump, avg, conditional, gt
@@ -59,7 +59,7 @@ def save2pvd(functions,filename):
 
     if (type(functions) != list):
         functions = [functions]
-    out_file = File(filename)
+    out_file = VTKFile(filename)
     out_file.write(*functions)
 
     # get directory 
