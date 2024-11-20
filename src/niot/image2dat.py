@@ -52,17 +52,20 @@ def cartesian_grid_3d(shape_xyz, lengths=[1.0,1.0,1.0]):
 def build_mesh_from_numpy(np_image, 
                           mesh_type='simplicial',
                           lengths=None,
+                          extrude=True,
                           comm=COMM_WORLD,
                           label_boundary=False): 
    '''
    Create a mesh (first axis size=1) from a numpy array
    '''
+   if not ( (np_image.ndim == 2) or (np_image.ndim == 3)):
+      raise ValueError('Only 2D and 3D images are supported')
+   
+   if not( ( mesh_type == 'simplicial') or (mesh_type == 'cartesian')):
+      raise ValueError('Only simplicial and cartesian meshes are supported')
+
+
    if (np_image.ndim == 2):
-      if (mesh_type == 'simplicial'):
-         quadrilateral = False
-      elif (mesh_type == 'cartesian'):
-         quadrilateral = True
-      
       # here we swap the axes because the image is 
       # read from left, right, top to bottom
       if convention_2d_invert_rows_columns:
@@ -77,6 +80,10 @@ def build_mesh_from_numpy(np_image,
 
       #PETSc.Sys.Print(f'npixel = {width*height} {comm.size=}', comm=comm)
       # create mesh
+      quadrilateral = True
+      if mesh_type == 'simplicial':
+         quadrilateral = False
+
       mesh = fd.RectangleMesh(
             nx=width,
             ny=height,
@@ -85,100 +92,128 @@ def build_mesh_from_numpy(np_image,
             quadrilateral = quadrilateral,
             reorder=False,
             diagonal="right",
-         comm=comm
-            )
-      #print(f'{comm.size=} {comm.rank=} {mesh.comm.size=} {mesh.comm.rank=}' )
-            
-   elif (np_image.ndim == 3):
-      height, width, depth = np_image.shape
-
-      if lengths is None:
-         lengths = (height,width,depth)
-      
-      if (mesh_type == 'simplicial'):
-         hexahedral = False
-      
-      
-      elif (mesh_type == 'cartesian'):
-         mesh = cartesian_grid_3d([height,width,depth],lengths)
-         mesh.nx = height
-         mesh.ny = width
-         mesh.nz = depth
-         mesh.xmin = 0
-         mesh.xmax = lengths[0]
-         mesh.ymin = 0
-         mesh.ymax = lengths[1]
-         mesh.zmin = 0
-         mesh.zmax = lengths[2]
-         return mesh
-         
-
-      if label_boundary:
-         mesh = fd.BoxMesh(
-            nx=height,
-            ny=width, 
-            nz=depth,  
-            Lx=lengths[0], 
-            Ly=lengths[1],
-            Lz=lengths[2],
-            hexahedral=hexahedral,
-            reorder=False,
             comm=comm
-         )
-      else:
-         xcoords = np.linspace(0, lengths[0], height + 1, dtype=np.double)
-         ycoords = np.linspace(0, lengths[1], width + 1, dtype=np.double)
-         zcoords = np.linspace(0, lengths[2], depth + 1, dtype=np.double)  
-
-         mesh = TensorBoxMesh(
-            xcoords,
-               ycoords,
-               zcoords,
-               reorder=None,
-               distribution_parameters=None,
-               diagonal="default",
-               comm=comm,
-               name="mesh",
-               distribution_name=None,
-               permutation_name=None,
-            )   
-   else:
-      raise ValueError('Only 2D and 3D images are supported')
-
-   # the following is needed because (from Firedrake documentation)
-   """
-   Finish the initialisation of the mesh.  Most of the time
-   this is carried out automatically, however, in some cases (for
-   example accessing a property of the mesh directly after
-   constructing it) you need to call this manually.
-   """
-   t = time.time()
-   mesh.init()
-   dt=time.time()-t
-   PETSc.Sys.Print(f"init mesh {dt}")
-  
-   # we attach this info to the mesh
-   if (np_image.ndim == 2):
+            )
       mesh.nx = width
       mesh.ny = height
       mesh.xmin = 0
       mesh.xmax = lengths[0]
       mesh.ymin = 0
       mesh.ymax = lengths[1]
-   if (np_image.ndim == 3):
-      mesh.nx = height
-      mesh.ny = width
-      mesh.nz = depth
-      mesh.xmin = 0
-      mesh.xmax = lengths[0]
-      mesh.ymin = 0
-      mesh.ymax = lengths[1] 
-      mesh.zmin = 0
-      mesh.zmax = lengths[2]
+      return mesh
+      #print(f'{comm.size=} {comm.rank=} {mesh.comm.size=} {mesh.comm.rank=}' )
+            
+   elif (np_image.ndim == 3):
+      nx, ny, nz = np_image.shape
+      
+      if lengths is None:
+         lengths = (nx,ny,nz)
 
+      print(f"mesh_type {mesh_type}")
+      if mesh_type == 'cartesian':
+         if extrude:
+            mesh = cartesian_grid_3d([nx,ny,nz],lengths)
+            mesh.nx = nx
+            mesh.ny = ny
+            mesh.nz = nz
+            mesh.xmin = 0
+            mesh.xmax = lengths[0]
+            mesh.ymin = 0
+            mesh.ymax = lengths[1]
+            mesh.zmin = 0
+            mesh.zmax = lengths[2]
+            return mesh
+         else:
+            mesh = fd.BoxMesh(
+               nx=nx,
+               ny=ny, 
+               nz=nz,  
+               Lx=lengths[0], 
+               Ly=lengths[1],
+               Lz=lengths[2],
+               hexahedral=True,
+               reorder=False,
+               comm=comm
+               )  
+            mesh.nx = nx
+            mesh.ny = ny
+            mesh.nz = nz
+            mesh.xmin = 0
+            mesh.xmax = lengths[0]
+            mesh.ymin = 0
+            mesh.ymax = lengths[1] 
+            mesh.zmin = 0
+            mesh.zmax = lengths[2]
+            return mesh
+      
+      if (mesh_type == 'simplicial'):        
+         if label_boundary:
+            mesh = fd.BoxMesh(
+               nx=nx,
+               ny=ny, 
+               nz=nz,  
+               Lx=lengths[0], 
+               Ly=lengths[1],
+               Lz=lengths[2],
+               hexahedral=False,
+               reorder=False,
+               comm=comm
+            )  
+            mesh.nx = nx
+            mesh.ny = ny
+            mesh.nz = nz
+            mesh.xmin = 0
+            mesh.xmax = lengths[0]
+            mesh.ymin = 0
+            mesh.ymax = lengths[1] 
+            mesh.zmin = 0
+            mesh.zmax = lengths[2]
+            return mesh
 
+         else:
+         
+            xcoords = np.linspace(0, lengths[0], nx + 1, dtype=np.double)
+            ycoords = np.linspace(0, lengths[1], ny + 1, dtype=np.double)
+            zcoords = np.linspace(0, lengths[2], nz + 1, dtype=np.double)  
 
-   return mesh
+            mesh = TensorBoxMesh(
+                  xcoords,
+                  ycoords,
+                  zcoords,
+                  reorder=None,
+                  distribution_parameters=None,
+                  diagonal="default",
+                  comm=comm,
+                  name="mesh",
+                  distribution_name=None,
+                  permutation_name=None,
+               )
+               
+            mesh.nx = nx
+            mesh.ny = ny
+            mesh.nz = nz
+            mesh.xmin = 0
+            mesh.xmax = lengths[0]
+            mesh.ymin = 0
+            mesh.ymax = lengths[1] 
+            mesh.zmin = 0
+            mesh.zmax = lengths[2]
+
+            return mesh
+   # # the following is needed because (from Firedrake documentation)
+   # """
+   # Finish the initialisation of the mesh.  Most of the time
+   # this is carried out automatically, however, in some cases (for
+   # example accessing a property of the mesh directly after
+   # constructing it) you need to call this manually.
+   # """
+   # t = time.time()
+   # mesh.init()
+   # dt=time.time()-t
+   # PETSc.Sys.Print(f"init mesh {dt}")
+  
+
+   #return mesh
 
 def get_box_division(mesh):
    """ 
@@ -272,7 +307,12 @@ def compatible(mesh, value):
 
    check = True
    if (len(np_shape) == 2):
-      if (mesh_shape[0] != np_shape[1]) or (mesh_shape[1] != np_shape[0]):
+      if convention_2d_invert_rows_columns:
+         height, width  = np_shape
+      else:
+         width, height = np_shape
+
+      if (mesh_shape[0] != width) or (mesh_shape[1] != height):
          PETSc.Sys.Print('Mesh and image have different shapes', mesh_shape, np_shape)
          check = False
    elif (len(np_shape) == 3):
@@ -301,8 +341,7 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
    if lengths is None:
       lengths = get_lengths(mesh)
       
-   nxyz = value.shape#get_box_division(mesh)
-
+   nxyz = get_box_division(mesh)
 
    if mesh.geometric_dimension() == 3:    
       hx = lengths[0]/nxyz[0]
@@ -319,15 +358,26 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
    elif mesh.geometric_dimension() == 2:
       #   
       # NOTE that we are reading the transpose of the value
-      # 
-      hx = lengths[0]/nxyz[0]
-      hy = lengths[1]/nxyz[1]
-      def my_data(xyz): 
-         x = xyz[:,0]
-         y = xyz[:,1]
-         i = np.fix(x/hx).astype(int)
-         j = np.fix(y/hx).astype(int)
-         return value[j,i]
+      #
+      if convention_2d_invert_rows_columns: 
+         hx = lengths[0]/nxyz[0]
+         hy = lengths[1]/nxyz[1]
+         def my_data(xyz): 
+            x = xyz[:,0]
+            y = xyz[:,1]
+            i = np.fix(x/hx).astype(int)
+            j = np.fix(y/hy).astype(int)
+            return value[j,i]
+      else:
+         hx = lengths[0]/nxyz[0]
+         hy = lengths[1]/nxyz[1]
+         def my_data(xyz): 
+            x = xyz[:,0]
+            y = xyz[:,1]
+            i = np.fix(x/hx).astype(int)
+            j = np.fix(y/hy).astype(int)
+            return value[i,j]
+         
    else:
       raise ValueError('Only 2d and 3d images are supported')
    
@@ -372,7 +422,7 @@ def firedrake2numpy(function):
    
    shape = get_box_division(mesh)
    
-   np_data = np.zeros(shape)
+   
    
    def get_local_to_grid_indices_map(mesh):
       """
@@ -385,54 +435,31 @@ def firedrake2numpy(function):
       centroid_coordinates = fd.assemble(interpolate(DQ0.ufl_domain().coordinates, W))
       # Get the lengths of the box
       lengths = get_lengths(mesh)
-
       shape = get_box_division(mesh)
+     
       indices = (centroid_coordinates.dat.data/lengths*shape).astype(int)
       return indices
    
    # Get current coordinates
    indices = get_local_to_grid_indices_map(mesh)
-   # TODO: check if this is this the most efficient way to do this
-   np_data[tuple(np.transpose(indices)[:])] = function.dat.data_ro[:]
-
    
-
-   #global_data = mesh.comm.reduce(np_data, op=SUM,root=0)
    
+   if mesh.geometric_dimension() == 3:
+      np_data = np.zeros(shape)
+      # TODO: check if this is this the most efficient way to do this
+      np_data[tuple(np.transpose(indices)[:])] = function.dat.data_ro[:]
+   elif mesh.geometric_dimension() == 2:
+      np_data = np.zeros(shape)
+      np_data[tuple(np.transpose(indices)[:])] = function.dat.data_ro[:]
+      if convention_2d_invert_rows_columns:
+         np_data = np.transpose(np_data)
+      
+
+
    # with the following we create an array in all processes 
    global_data = mesh.comm.allreduce(np_data, op=SUM)
 
    return global_data
-
-   if mesh.ufl_cell().is_simplex():
-      # Each pixel is splitted in two triangles.
-      if mesh.geometric_dimension() == 2:
-         nx, ny = get_box_division(mesh)
-         # get the values of the function
-         with function.dat.vec_ro as f:
-            value = f.array
-            # reshape the values in a matrix of size (2,nx*ny)
-            value = value.reshape([-1,2])
-            # average the values along the first dimension
-            value = np.mean(value,1)
-            # reshape the values in a matrix of size ()
-            value = value.reshape([ny,nx],order='F')
-
-            return value
-            
-      elif mesh.geometric_dimension() == 3:
-         raise NotImplementedError('3D mesh not implemented yet')
-   else:
-      if (mesh.ufl_cell().cellname() != 'quadrilateral'):
-         raise ValueError('Only simplicial and quadrilateral meshes are supported')
-      # get the values of the function
-      with function.dat.vec_ro as f:
-         value = f.getArray(readonly=True)
-         
-         # reshape the values in a matrix of size (nx,ny)
-         new_shape = get_box_division(mesh)
-         value = value.reshape((new_shape[1],new_shape[0]), order='F')
-         return value
       
 
 def numpy2vtr(np_image, lengths, vtk_file, name='image'):
@@ -472,7 +499,7 @@ def image2numpy(img_name, normalize=True, invert=True):
 
    # get original image parameters...
    width, height = img_file.size
-
+   
    # Make image Greyscale
    img_grey = img_file.convert('L')
 
@@ -488,7 +515,7 @@ def image2numpy(img_name, normalize=True, invert=True):
    
    if normalize:
       value = value/255
-   
+
    return value
 
 

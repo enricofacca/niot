@@ -73,8 +73,52 @@ def get_step_lenght(x,increment,x_lower_bound=0.0,step_lower_bound=1e-16):
     else:
         return 1
 
+def Laplacian_facet_weight(mesh, mode = "center_distance"):
+    '''
+    Return a facet-based quantity that scales as h, the mesh typical length
+    '''
+    if mode == "center_distance":
+        DG0 = FunctionSpace(mesh, 'DG', 0)
+        if mesh.geometric_dimension() == 2:
+            x,y = mesh.coordinates
+            x_func = assemble(interpolate(x, DG0))
+            y_func = assemble(interpolate(y, DG0))
+            delta_h = sqrt(jump(x_func)**2 + jump(y_func)**2)
+        elif mesh.geometric_dimension() == 3:
+            x,y,z = mesh.coordinates
+            x_func = assemble(interpolate(x, DG0))
+            y_func = assemble(interpolate(y, DG0))
+            z_func = assemble(interpolate(z, DG0))
+            delta_h = sqrt(jump(x_func)**2 
+                                + jump(y_func)**2 
+                                + jump(z_func)**2)
+    elif mode == "face_over_cell":
+        delta_h = 1.0 / avg(FacetArea(mesh) / CellVolume(mesh))
+    else:
+        raise ValueError('mode must be - center_distance or face_over_cell')
+    return delta_h
 
 
+def h_size(mesh, mode = "cellSize"):
+    if mode == "cellSize":
+        return CellSize(mesh)
+    elif mode == "face_over_cell":
+        return FacetArea(mesh) / CellVolume(mesh)
+
+
+def d_face_interior(mesh):
+    if mesh.extruded:
+        d_interior = dS_v + dS_h
+    else:
+        d_interior = dS
+    return d_interior
+
+def d_face_exterior(mesh):
+    if mesh.extruded:
+        d_exterior = ds_b + ds_t + ds_v
+    else:
+        d_exterior = ds
+    return d_exterior
 
 
 class SpaceDiscretization:
@@ -97,21 +141,8 @@ class SpaceDiscretization:
         self.pot_trial = TrialFunction(self.pot_space)
         self.pot_test = TestFunction(self.pot_space)
 
-        if (pot_space=='DG') and (pot_deg == 0):
-            if mesh.geometric_dimension() == 2:
-                x,y = mesh.coordinates
-                x_func = assemble(interpolate(x, self.pot_space))
-                y_func = assemble(interpolate(y, self.pot_space))
-                self.delta_h = sqrt(jump(x_func)**2 + jump(y_func)**2)
-            elif mesh.geometric_dimension() == 3:
-                x,y,z = mesh.coordinates
-                x_func = assemble(interpolate(x, self.pot_space))
-                y_func = assemble(interpolate(y, self.pot_space))
-                z_func = assemble(interpolate(z, self.pot_space))
-                self.delta_h = sqrt(jump(x_func)**2 
-                                    + jump(y_func)**2 
-                                    + jump(z_func)**2)
-            
+        if ((pot_space=='DG') or (pot_space =="DQ") ) and (pot_deg == 0):
+            self.delta_h = Laplacian_facet_weight(mesh, mode = "face_over_cell")
             self.cell2face = cell2face
 
 
@@ -122,10 +153,27 @@ class SpaceDiscretization:
         self.tdens_trial = TrialFunction(self.tdens_space)
         self.tdens_test = TestFunction(self.tdens_space)
 
+
+        # # velocity field
+        # if pot_deg >= 1:
+        #     self.velocity_space = VectorFunctionSpace(mesh, 'DG', 0)
+        # else:
+        #     # deg=0
+        #     if space.mesh().ufl_cell().is_simplex():
+        #         raise NotImplementedError('Only piecewise constant is implemented for simplicial meshes')
+            
+        #     if mesh.extruded:
+        #         raiseself.velocity_space = FunctionSpace(mesh, 'DG', 0)
+        #     else:
+        #         if (mesh.cell_type().cellname() == 'quadrilateral'
+        #                 or mesh.cell_type().cellname() == 'hexahedron'):
+                    
+        #         self.velocity_space = VectorFunctionSpace(mesh, 'RTCF', 0)
+
         # quantities for DG0 laplacian
         alpha = Constant(4.0)
-        h = CellSize(mesh)
-        h_avg = (h('+') + h('-'))/2.0
+        self.h = h_size(mesh, mode = "face_over_cell")
+        h_avg = (self.h('+') + self.h('-'))/2.0
         self.DG0_scaling = alpha/h_avg
         self.normal = FacetNormal(mesh)
 
@@ -167,17 +215,17 @@ class SpaceDiscretization:
         """
         # detect degree of function space
         degree = space.ufl_element().degree()
-        # an extruded mesh is used
+        
+        # detect an extruded mesh is used
         if isinstance(degree, tuple):
             if all(d == 0 for d in degree):
                 degree = 0
-                d_internal_faces = dS_v + dS_h
-
             else:
                 raise ValueError('Only piecewise constant is implemented for extruded meshes')
         else:
             degree = degree
-            d_internal_faces = dS
+
+        d_internal_faces = d_face_interior(space.mesh())
 
         test = TestFunction(space)
         trial = TrialFunction(space)
@@ -204,7 +252,13 @@ class SpaceDiscretization:
         return form
     
     
-    def Laplacian_Lagrangian(self, u, weight=None, cell2face=None):
+            
+
+
+    def Laplacian_Lagrangian(self, 
+                             u, 
+                             weight=None, 
+                             cell2face=None):
         """
         Return the Lagrangian of a weighted-Laplacian equation for u.
         The weight is a function of the mesh.
@@ -222,13 +276,13 @@ class SpaceDiscretization:
         if isinstance(degree, tuple):
             if all(d == 0 for d in degree):
                 degree = 0
-                d_internal_faces = dS_v + dS_h
             else:
                 raise ValueError('Only piecewise constant is implemented for extruded meshes')
         else:
             degree = degree
-            d_internal_faces = dS
+            
 
+        d_internal_faces = d_face_interior(space.mesh())
 
         if degree == 0:
             # the weight need to be "projected to the facets"
@@ -245,7 +299,45 @@ class SpaceDiscretization:
         else:
             raise NotImplementedError('piecewise constant, or linear tdens is implemented')
         return L
+    
+    def apply_weak_Dirichlet_lhs(self, 
+                             weak_Dirichlet, 
+                             Laplacian_form,
+                             penalty=16):
+        """
+        Apply weak Dirichlet boundary conditions to the form L.
+        Args:
+        weak_Dirichlet: list of tuples (marker_function, values_function, boundary_measure)
+                        marker_function: A DG function that is 1.0 on the boundary
+                        values_function: A function that contains the values of the Dirichlet boundary
+                        boundary_measure: the measure of the boundary
+        A_form: the bilinear form to which the boundary conditions are applied
+        """
+        # Dirichlet boundary conditions are imposed weakly, using a penalty method.
+        # See:
+        # https://bitbucket.org/fenics-project/dolfin/src/master/python/demo/undocumented/dg-poisson/demo_dg-poisson.py
+        # https://fenicsproject.org/pub/course/lectures/2017-nordic-phdcourse/lecture_10_discontinuous_galerkin.pdf
+        
+        function_space = Laplacian_form.arguments()[0].function_space()
+        test = TestFunction(function_space)
+        trial = TrialFunction(function_space)
 
+        for values_function, d_boundary_measure in weak_Dirichlet:
+            Laplacian_form += penalty * self.h * test * trial * d_boundary_measure
+        return Laplacian_form
+            
+    def apply_weak_Dirichlet_rhs(self,
+                                 weak_Dirichlet,
+                                 rhs_form,
+                                 penalty=16):
+            
+        function_space = rhs_form.arguments()[0].function_space()
+        test = TestFunction(function_space)
+        for values_function, d_boundary_measure in weak_Dirichlet:
+            rhs_form += penalty * values_function * self.h * test * d_boundary_measure
+        return rhs_form
+
+    
 
 
             
@@ -451,14 +543,16 @@ class NiotSolver:
                  confidence=1.0, 
                  spaces='DG0DG0',
                  cell2face='harmonic_mean',
-                 setup=False):
+                 setup=False,
+                 Dirichlet_penalty=0.0,
+                 ):
         '''
         Initialize solver (spatial discretization)
         '''
         ###########################
         # SETUP FEM DISCRETIZATION
         ###########################
-        
+                          
         self.mesh = btp.mesh
         self.comm  = self.mesh.comm
         self.spaces = spaces
@@ -476,7 +570,7 @@ class NiotSolver:
             raise ValueError('Wrong spaces only (pot,tdens) in (CR1,DG0) or (DG0,DG0) implemented')
         self.ConstansSpace = FunctionSpace(self.mesh, 'R', 0)
 
-
+        self.Dirichlet_penalty = Dirichlet_penalty
 
         # initialize the solution
         self.sol = self.create_solution()
@@ -542,6 +636,7 @@ class NiotSolver:
 
         # solver of poisson equation
         petsc_controls ={
+            #"snes_monitor": None,
             # krylov solver controls
             'ksp_type': 'cg',
             'ksp_atol': 1e-16,
@@ -657,40 +752,73 @@ class NiotSolver:
 
         
     def setup_pot_solver(self, petsc_controls):
+        print(petsc_controls)
+
+
         # chaced functions
         self.pot_h = Function(self.fems.pot_space) # used by pot_solver
         self.pot_h.rename('pot_h')
 
 
-        self.rhs = (self.btp.source - self.btp.sink) * self.fems.pot_test * dx
-        self.pot_PDE = derivative(self.joule(self.pot_h,self.tdens_h),self.pot_h)
-        
         # the minus sign is to get -\div(\tdens \grad \pot)-f = 0
+        self.pot_PDE = derivative(self.joule(self.pot_h,self.tdens_h),self.pot_h)
         self.weighted_Laplacian = derivative(-self.pot_PDE,self.pot_h)
 
+        # the forcing term
+        self.rhs = (self.btp.source - self.btp.sink) * self.fems.pot_test * dx
+        
+        #self.weighted_Laplacian = self.fems.Laplacian_form(self.pot_space, weight=self.tdens_h, cell2face=None)
+
+        if self.btp.weak_Dirichlet is not None:
+            self.fems.apply_weak_Dirichlet(self.btp.weak_Dirichlet,
+                                        self.weighted_Laplacian,
+                                        self.rhs)
+        
+        b = assemble(self.rhs)
+        rhs_function = Function(self.fems.pot_space, name='rhs_function')
+        with rhs_function.dat.vec as v, b.dat.vec_ro as bvec:
+            bvec.copy(v)
+        outfile = VTKFile('rhs.pvd')
+        cellsize = Function(self.fems.pot_space, name='cellsize')
+        test = TestFunction(self.fems.pot_space)
+        c = assemble(test*self.fems.h*ds_b)
+        with cellsize.dat.vec as v, c.dat.vec_ro as cvec:
+            cvec.copy(v)
+        outfile.write(rhs_function, cellsize)
+
+        if self.btp.Dirichlet is not None:
+            raise NotImplementedError('Strong Dirichlet boundary conditions not implemented')
+        else:
+            pot_bcs = None
+
         min_tdens = self.ctrl_get('min_tdens')
-        self.pot_PDE_relaxed = derivative(self.joule(self.pot_h,self.tdens_h+10*min_tdens),self.pot_h)
-        self.weighted_Laplacian_relaxed = self.weighted_Laplacian + 10*min_tdens * self.fems.Laplacian_form(self.fems.pot_space)
-
+        relax_preconditioner = False
+        if relax_preconditioner:
+            self.weighted_Laplacian_relaxed = self.weighted_Laplacian + 10*min_tdens * self.fems.Laplacian_form(self.fems.pot_space)
+        else:
+            self.weighted_Laplacian_relaxed = None
         
-        #test = TestFunction(self.fems.pot_space)
-        
-        #pot_PDE = self.forcing * test * dx + tdens * inner(grad(pot_unknown), grad(test)) * dx 
-        # Define the Nonlinear variational problem (it is linear in this case)
-        #self.u_prob = NonlinearVariationalProblem(self.pot_PDE, self.pot_h)#, bcs=pot_bcs)
-        self.u_prob = LinearVariationalProblem(self.weighted_Laplacian, self.rhs, self.pot_h, aP=self.weighted_Laplacian_relaxed)#, bcs=pot_bcs)
+        # setup the linear variational problem
+        self.u_prob = LinearVariationalProblem(self.weighted_Laplacian, # bilinear form
+                                               self.rhs, # linear form
+                                               self.pot_h, # solution
+                                               aP = self.weighted_Laplacian_relaxed, # preconditioner form
+                                               bcs = pot_bcs # boundary conditions
+                                               ) 
 
-        context ={} # left to pass information to the solver
-        if self.btp.Dirichlet is None:
+        # setup the nullspace
+        if self.btp.Dirichlet is None and self.btp.weak_Dirichlet is None:
             nullspace = VectorSpaceBasis(constant=True,comm=self.comm)
+        else:
+            nullspace = None
             
         
-        #self.pot_solver = NonlPDEinearVariationalSolver(self.u_prob,
+        context = {} # use this to pass information to the solver
         self.pot_solver = LinearVariationalSolver(self.u_prob,
-                                                solver_parameters=petsc_controls,
-                                                nullspace=nullspace,
-                                                appctx=context,
-                                                options_prefix='pot_solver_')
+                                                solver_parameters = petsc_controls,
+                                                nullspace = nullspace,
+                                                appctx = context,
+                                                options_prefix = 'pot_solver_')
         self.pot_solver.snes.ksp.setConvergenceHistory()
 
     def setup_increment_solver(self, shift=0.0):
@@ -1202,13 +1330,14 @@ class NiotSolver:
 
         
         # solve the problem
-        try:
-            
-            self.pot_solver.solve()
-        except:
-            pass
+        #try:     
+        self.pot_solver.solve()
+        #except:
+        #    pass
         ierr = self.pot_solver.snes.getConvergedReason()
-        #self.pot_solver.snes.ksp.view()
+        self.pot_solver.snes.ksp.view()
+        print(f'{ierr=}')
+        print(f"{SNESReasons[ierr]=}")
         
         msg =  linalg.info_ksp(self.pot_solver.snes.ksp)
         self.print_info(
