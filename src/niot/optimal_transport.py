@@ -96,14 +96,14 @@ class BranchedTransportProblem():
             self.kappa = kappa
         
         # Check data consistency
-        mass_source = assemble(self.source * dx)
-        mass_sink = assemble(self.sink * dx)
-        mass_Neumann = compute_mass_Neumann(self.mesh, self.Neumann)
-        mass_balance = (mass_source - mass_sink + mass_Neumann)/max(mass_source,mass_sink)
-        if ( self.Dirichlet is None 
-            and self.weak_Dirichlet is None
-            and abs(mass_balance) > tolerance_imbalance):
-            raise ValueError(f'Source, sink, and Neumann terms are not balanced {mass_balance}')
+        if ( self.Dirichlet is None and self.weak_Dirichlet is None):
+            mass_source = assemble(self.source * dx)
+            mass_sink = assemble(self.sink * dx)
+            mass_Neumann = compute_mass_Neumann(self.mesh, self.Neumann)
+            mass_balance = (mass_source - mass_sink + mass_Neumann)/max(mass_source,mass_sink)
+        
+            if abs(mass_balance) > tolerance_imbalance:
+                raise ValueError(f'Source, sink, and Neumann terms are not balanced {mass_balance}')
         
         # branched transport exponent
         self.gamma = gamma

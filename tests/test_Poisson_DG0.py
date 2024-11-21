@@ -33,8 +33,8 @@ def define_problem_inputs(test_case_number, nref, mesh_type="cartesian"):
             (u_exact, 2),
         ]
         weak_Dirichlet = [
-            (u_exact, ds(1)),
-            (u_exact, ds(2)),
+            (u_exact, ds(1), 1.0),
+            (u_exact, ds(2), 1.0),
         ]
         return mesh, u_exact, f, strong_Dirichlet, weak_Dirichlet
     
@@ -53,8 +53,8 @@ def define_problem_inputs(test_case_number, nref, mesh_type="cartesian"):
             (u_exact, "top"),
         ]
         weak_Dirichlet = [
-            (u_exact, ds_v(1)),
-            (u_exact, ds_v(2)),
+            (u_exact, ds_v(1),1.0),
+            (u_exact, ds_v(2),1.0),
         ]
         
         return mesh, u_exact, f, strong_Dirichlet, weak_Dirichlet
