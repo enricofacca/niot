@@ -27,9 +27,6 @@ import warnings
 warnings.filterwarnings("ignore")
 
 def build_meshes_from_numpy(data, mesh_type="simplicial",lengths=None,label_boundary=False):
-     # create mesh
-    PETSc.Sys.Print('building mesh')
-    start = time.time()
     if lengths is None:
         lengths = [1.0,data.shape[1]/data.shape[0],data.shape[2]/data.shape[0]]
     
@@ -106,12 +103,14 @@ def btp_inputs(tof_fire):
     mass_source = assemble(source*dx)
     mass_sink = assemble(sink*dx)
 
+    #source /= mass_source
+    sink /= mass_sink
+
+
     PETSc.Sys.Print(f"{mass_source=:.2e} {mass_sink=:.2e}")
 
 
-    source /= mass_source
-    sink /= mass_sink
-
+    
     
     corrupted = Function(DG0,name="corrupted")
     corrupted.interpolate(conditional(tof_fire> threshold_network,1,0)* tof_fire)
@@ -159,9 +158,24 @@ def labels(fem,
     label.append(f'method{short_method}')
     return label
 
+def setup_problem(source, sink, inlet):
+    
+    mesh = source.function_space().mesh()
+    
+    # Define the branched transport problem
+    gamma=0.5
+    
+    inlet_pressure = Function(inlet.function_space())
+    inlet_pressure.assign(0.0)
+    weak_Dirichlet = [(Constant(0.0), ds_b, inlet)]
+    btp = ot.BranchedTransportProblem(source, sink, gamma=gamma, 
+                                      Dirichlet = None,
+                                      weak_Dirichlet = weak_Dirichlet)
+
+    return btp
 
 
-def setup_solver(source, sink, inlet,
+def setup_solver(btp, 
                  corrupted, 
                  fem="DG0DG0",
                  gamma=0.5, 
@@ -181,23 +195,13 @@ def setup_solver(source, sink, inlet,
 
 
    
-    mesh = source.function_space().mesh()
+    mesh = btp.source.function_space().mesh()
 
-    confidence = Function(source.function_space())
+    confidence = Function(btp.source.function_space())
     confidence.assign(1.0)
 
 
-    # Define the branched transport problem
-    ot.balance(source, sink)
-    gamma=0.5
     
-    inlet_pressure = Function(inlet.function_space())
-    inlet_pressure.assign(0.0)
-    weak_Dirichlet = [(inlet, inlet_pressure, Measure("ds_t", domain=mesh))]
-    btp = ot.BranchedTransportProblem(source, sink, gamma=gamma, 
-                                      Dirichlet=None,
-                                      weak_Dirichlet=weak_Dirichlet)
-
 
     niot_solver = NiotSolver(btp, 
                              corrupted,  
@@ -286,9 +290,10 @@ def figure1():
 
 
 def downsample(data,coarseness):
-    if coarseness > 1:
+    if coarseness > 1:  
         PETSc.Sys.Print('coarsening image')
-        data = zoom(data, (1/coarseness,1/coarseness,1/coarseness), order=0)
+        factors = tuple([1 if n==1 else 1/coarseness for n in data.shape])
+        data = zoom(data, factors, order=0)
         PETSc.Sys.Print(data.shape)
     return data
 
@@ -300,12 +305,12 @@ def indices_restrict(data, lengths, xyz_bounds):
     for axis_index in range(len(data.shape)):
         n_axis = data.shape[axis_index]
         len_axis = lengths[axis_index]
-        print(f"{n_axis=}, {len_axis=}")
         if xyz_bounds[axis_index] is None:
             indices_bounds.append([0,n_axis])
         else:
             lower, upper = xyz_bounds[axis_index]
-            indices_bounds.append([max(0,int(lower/len_axis*n_axis)),min(int(upper/len_axis*n_axis),n_axis)])
+            indices_bounds.append(
+                [max(0,int(lower/len_axis*n_axis)),min(int(upper/len_axis*n_axis),n_axis)])
 
     return np.array(indices_bounds)
 
@@ -317,8 +322,6 @@ def restrict(data, indices_bounds):
                 indices_bounds[1][0]:indices_bounds[1][1],
                 indices_bounds[2][0]:indices_bounds[2][1]]
     data = np.ascontiguousarray(data)
-    
-    print(f"{data.shape=}")
     return data
 
 
@@ -335,7 +338,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description='Reconstruct network')
     #parser.add_argument("--field", type=str, default='TOF', help="TOF")
-    parser.add_argument("--c", type=int, default=8, help="coarseing factor")
+    parser.add_argument("--c", type=int, default=1, help="coarseing factor")
     parser.add_argument("--mri", type=str, default="./mri/", help="directory with mri data")
     parser.add_argument("--out", type=str, default="./results_dirichlet/", help="output directory")
     parser.add_argument("--xmin", type=float, default=0.0, help="Lower bound x")
@@ -368,8 +371,7 @@ if __name__ == "__main__":
     # load t1 data
     t1_data = nibabel.load(args.mri+'/T1.nii.gz')
     t1_np = t1_data.get_fdata() 
-    PETSc.Sys.Print(f"Data shape: {tof_np.shape}")
-    PETSc.Sys.Print(f"Data lengths: {lengths}")
+    PETSc.Sys.Print(f"Data shape: {tof_np.shape} Lengths: {lengths}")
 
     # load inlet data
     tof_inlet_np = i2d.image2numpy(f"{args.mri}/tof_inlets.png")
@@ -377,12 +379,7 @@ if __name__ == "__main__":
     tof_inlet_np = tof_inlet_np.reshape((tof_inlet_np.shape[0],tof_inlet_np.shape[1],1),order='F', copy=True)
     
     
-    # coarsen data
-    if coarseness > 1:
-        tof_np = downsample(tof_np,coarseness)
-        t1_np = downsample(t1_np,coarseness)
-        tof_inlet_np = downsample(tof_inlet_np,coarseness)
-        PETSc.Sys.Print(f"Coarse Data shape: {t1_np.shape}")
+    
      
 
     # restrict data
@@ -395,8 +392,6 @@ if __name__ == "__main__":
                                               [args.ymin,args.ymax],
                                               [args.zmin,args.zmax]
                                           ])    
-        print(f"{indices_bounds=}")
-
         tof_np = restrict(tof_np,indices_bounds)
         t1_np = restrict(t1_np,indices_bounds)
         tof_inlet_np = restrict(tof_inlet_np,indices_bounds)  
@@ -404,15 +399,19 @@ if __name__ == "__main__":
         
         lengths = np.array(tof_np.shape)*np.array([hx,hy,hz])
         
-        PETSc.Sys.Print(f"Data shape after restriction: {t1_np.shape}")
-        PETSc.Sys.Print(f"Data lengths after restriction: {lengths}")
+        PETSc.Sys.Print(f"Data shape: {tof_np.shape} Lengths: {lengths}")
 
-   
+    # coarsen data
+    if coarseness > 1:
+        tof_np = downsample(tof_np,coarseness)
+        t1_np = downsample(t1_np,coarseness)
+        tof_inlet_np = downsample(tof_inlet_np,coarseness)
+        PETSc.Sys.Print(f"Coarse Data shape: {t1_np.shape}")
     
     
     
     # saving inputs in vtr
-    PETSc.Sys.Print("start saving inputs")
+    PETSc.Sys.Print("start saving inputs as vtr")
     start = time.time()
     i2d.numpy2vtr(t1_np, lengths, f"{out_directory}/t1", name='t1')
     i2d.numpy2vtr(tof_np, lengths, f"{out_directory}/tof", name='tof')
@@ -438,21 +437,20 @@ if __name__ == "__main__":
     inlets = i2d.numpy2firedrake(cartesian_mesh, tof_inlet_3d_np, name="Inlets")
     PETSc.Sys.Print(f"converted into firedrake in {time.time()-time0:.2f}s")
 
-    # convert back to numpy
-    #tof_np = i2d.firedrake2numpy(tof)
-    #t1_np = i2d.firedrake2numpy(t1)
 
-
-
+    # setup problem
     source, sink, corrupted = btp_inputs(tof)
+    btp = setup_problem(source, sink, inlets)
 
-    PETSc.Sys.Print("start saving inputs")
-    start = time.time()
-    out_file = File(f'{out_directory}/inputs.pvd')
-    out_file.write(tof,source,sink,corrupted,t1)
-    PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs.pvd'+f" in {time.time()-start:.2f}s")
+    save_inputs_as_pvd = False
+    if save_inputs_as_pvd:
+        PETSc.Sys.Print("start saving inputs as pvd")
+        start = time.time()
+        out_file = File(f'{out_directory}/inputs.pvd')
+        out_file.write(tof,source,sink,corrupted,t1)
+        PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs.pvd'+f" in {time.time()-start:.2f}s")
     
-      
+
     #setup controls
     combinations = figure1()
     
@@ -468,7 +466,7 @@ if __name__ == "__main__":
 
         
         # setup solvers
-        niot_solver = setup_solver( source, sink, inlets, corrupted, *combinations[0])
+        niot_solver = setup_solver( btp, corrupted, *combinations[0])
 
         ierr = niot_solver.solve()
 
@@ -487,10 +485,10 @@ if __name__ == "__main__":
         reconstruction.interpolate(niot_solver.tdens2image(tdens) )
         reconstruction.rename('reconstruction','Reconstruction')
 
-        filename = f'{label_dir}/reconstruction.pvd'
-        out_file = VTKFile(filename,mode='w')
-        out_file.write(pot, tdens)
-        PETSc.Sys.Print(f"{ierr=}. Saved solution to "+filename)
+        #filename = f'{label_dir}/reconstruction.pvd'
+        #out_file = VTKFile(filename,mode='w')
+        #out_file.write(pot, tdens)
+        #PETSc.Sys.Print(f"{ierr=}. Saved solution to "+filename)
 
         tdens_np = i2d.firedrake2numpy(tdens)
         pot_np = i2d.firedrake2numpy(pot)
