@@ -109,7 +109,6 @@ def build_mesh_from_numpy(np_image,
       if lengths is None:
          lengths = (nx,ny,nz)
 
-      print(f"mesh_type {mesh_type}")
       if mesh_type == 'cartesian':
          if extrude:
             mesh = cartesian_grid_3d([nx,ny,nz],lengths)

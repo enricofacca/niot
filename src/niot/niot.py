@@ -21,6 +21,7 @@ from . conductivity2image import IdentityMap, HeatMap, PorousMediaMap
 from . import utilities
 from . import optimal_transport as ot
 from . import linear_algebra_utilities as linalg
+from . import image2dat as i2d
 
 
 # function operations
@@ -35,6 +36,8 @@ import firedrake.adjoint as fire_adj
 from firedrake.tsfc_interface import TSFCKernel
 from pyop2.global_kernel import GlobalKernel
 from firedrake.petsc import PETSc
+from firedrake.petsc import flatten_parameters
+
 SNESReasons = utilities._make_reasons(PETSc.SNES.ConvergedReason())
 
 
@@ -144,7 +147,12 @@ class SpaceDiscretization:
         if ((pot_space=='DG') or (pot_space =="DQ") ) and (pot_deg == 0):
             self.delta_h = Laplacian_facet_weight(mesh, mode = "face_over_cell")
             self.cell2face = cell2face
-
+            # quantities for DG0 laplacian
+            alpha = Constant(4.0)
+            self.h = h_size(mesh, mode = "face_over_cell")
+            h_avg = (self.h('+') + self.h('-'))/2.0
+            self.DG0_scaling = alpha/h_avg
+            self.normal = FacetNormal(mesh)
 
         # For Tdens unknow, create fem, function space, test and trial
         # space
@@ -170,12 +178,7 @@ class SpaceDiscretization:
                     
         #         self.velocity_space = VectorFunctionSpace(mesh, 'RTCF', 0)
 
-        # quantities for DG0 laplacian
-        alpha = Constant(4.0)
-        self.h = h_size(mesh, mode = "face_over_cell")
-        h_avg = (self.h('+') + self.h('-'))/2.0
-        self.DG0_scaling = alpha/h_avg
-        self.normal = FacetNormal(mesh)
+        
 
         
         # create mass matrix $M_i,j=\int_{\xhi_l,\xhi_m}$ with
@@ -322,8 +325,8 @@ class SpaceDiscretization:
         test = TestFunction(function_space)
         trial = TrialFunction(function_space)
 
-        for values_function, d_boundary_measure in weak_Dirichlet:
-            Laplacian_form += penalty * self.h * test * trial * d_boundary_measure
+        for values_function, d_boundary_measure, marker in weak_Dirichlet:
+            Laplacian_form += penalty * self.h * test * trial * marker * d_boundary_measure
         return Laplacian_form
             
     def apply_weak_Dirichlet_rhs(self,
@@ -333,8 +336,8 @@ class SpaceDiscretization:
             
         function_space = rhs_form.arguments()[0].function_space()
         test = TestFunction(function_space)
-        for values_function, d_boundary_measure in weak_Dirichlet:
-            rhs_form += penalty * values_function * self.h * test * d_boundary_measure
+        for values_function, d_boundary_measure, marker in weak_Dirichlet:
+            rhs_form += penalty * values_function * self.h * test * marker * d_boundary_measure
         return rhs_form
 
     
@@ -378,7 +381,6 @@ def set_step(increment,
         else:
             up = upper_bound
         step = min(up,down)
-        PETSc.Sys.Print(f"{down=:.2e} {up:.2e}")
         step = max(step,lower_bound)
         step = min(step,upper_bound)
 
@@ -636,17 +638,17 @@ class NiotSolver:
 
         # solver of poisson equation
         petsc_controls ={
-            #"snes_monitor": None,
+            "snes_monitor": None,
             # krylov solver controls
             'ksp_type': 'cg',
+            'pc_type': 'hypre',
             'ksp_atol': 1e-16,
             'ksp_rtol': self.ctrl_get('constraint_tol'),
-            'ksp_divtol': 1e10,
+            'ksp_dtol': 1e5,
             'ksp_max_it' : 1000,
             'ksp_initial_guess_nonzero': True, 
             'ksp_norm_type': 'unpreconditioned',
             #'ksp_monitor_true_residual' : None, 
-            'pc_type': 'hypre'
         }
         if self.mesh.geometric_dimension() == 3:
             hypre_ctrl_3d = {
@@ -659,7 +661,6 @@ class NiotSolver:
                             "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
                         }
             petsc_controls.update(hypre_ctrl_3d)
-            print(f'USING 3D HYPRE setting')
             
             
 
@@ -697,10 +698,20 @@ class NiotSolver:
         #                         'pc_type': 'hypre'},
         #                         options_prefix='increment_solver_')
 
+        if hasattr(self.mesh,'extruded'):
+            num_cells = self.mesh.num_cells() * (self.mesh.layers-1)
+            num_vertices = self.mesh.num_vertices() * self.mesh.layers
+            num_facets = ( self.mesh.num_cells() * (self.mesh.layers) # horizontal facets
+                          + self.mesh.num_facets() * (self.mesh.layers-1) ) # vertical facets
+        else:
+            num_cells = self.mesh.num_cells()
+            num_vertices = self.mesh.num_vertices()
+            num_facets = self.mesh.num_facets()
 
-        self.print_info(f'Number of cells: {self.mesh.num_cells()}',priority=2,where=['stdout','log'])
-        self.print_info(f'Number of nodes: {self.mesh.num_vertices()}',priority=2,where=['stdout','log'])
-        self.print_info(f'Number of facet: {self.mesh.num_facets()}',priority=2,where=['stdout','log'])
+
+        self.print_info(f'Number of cells: {num_cells}',priority=2, where=['stdout','log'])
+        self.print_info(f'Number of nodes: {num_vertices}',priority=2, where=['stdout','log'])
+        self.print_info(f'Number of facet: {num_facets}',priority=2, where=['stdout','log'])
 
     def setup_tdensimage(self):
         """
@@ -724,8 +735,6 @@ class NiotSolver:
         if tdens2image == 'identity':
             self.tdens2image_map = IdentityMap(self.fems.tdens_space, scaling=scaling)
             self.tdens2image = lambda x: self.tdens2image_map(x)
-
-
 
 
         elif tdens2image == 'heat':
@@ -752,12 +761,10 @@ class NiotSolver:
 
         
     def setup_pot_solver(self, petsc_controls):
-        print(petsc_controls)
-
-
         # chaced functions
         self.pot_h = Function(self.fems.pot_space) # used by pot_solver
         self.pot_h.rename('pot_h')
+        self.pot_h.assign(0.0)
 
 
         # the minus sign is to get -\div(\tdens \grad \pot)-f = 0
@@ -767,37 +774,43 @@ class NiotSolver:
         # the forcing term
         self.rhs = (self.btp.source - self.btp.sink) * self.fems.pot_test * dx
         
-        #self.weighted_Laplacian = self.fems.Laplacian_form(self.pot_space, weight=self.tdens_h, cell2face=None)
-
-        if self.btp.weak_Dirichlet is not None:
-            self.fems.apply_weak_Dirichlet(self.btp.weak_Dirichlet,
-                                        self.weighted_Laplacian,
-                                        self.rhs)
+        # Set Weighted Laplacian
+        #self.weighted_Laplacian = self.fems.Laplacian_form(self.fems.pot_space, weight=self.tdens_h, cell2face=self.fems.cell2face)
         
-        b = assemble(self.rhs)
-        rhs_function = Function(self.fems.pot_space, name='rhs_function')
-        with rhs_function.dat.vec as v, b.dat.vec_ro as bvec:
-            bvec.copy(v)
-        outfile = VTKFile('rhs.pvd')
-        cellsize = Function(self.fems.pot_space, name='cellsize')
-        test = TestFunction(self.fems.pot_space)
-        c = assemble(test*self.fems.h*ds_b)
-        with cellsize.dat.vec as v, c.dat.vec_ro as cvec:
-            cvec.copy(v)
-        outfile.write(rhs_function, cellsize)
-
+        
+        # 
+        # Boundary conditions
+        # 
+        if self.btp.weak_Dirichlet is not None:
+            self.weighted_Laplacian = self.fems.apply_weak_Dirichlet_lhs(
+                self.btp.weak_Dirichlet, self.weighted_Laplacian)
+            self.rhs = self.fems.apply_weak_Dirichlet_rhs(
+                self.btp.weak_Dirichlet, self.rhs)
+        else:
+            raise NotImplementedError('Strong Dirichlet boundary conditions not implemented')
+        
         if self.btp.Dirichlet is not None:
             raise NotImplementedError('Strong Dirichlet boundary conditions not implemented')
         else:
             pot_bcs = None
 
+        # setup the nullspace
+        if self.btp.Dirichlet is None and self.btp.weak_Dirichlet is None:
+            nullspace = VectorSpaceBasis(constant=True,comm=self.comm)
+        else:
+            nullspace = None
+
+        #
+        # Setup Linear Variational Problem
+        #
         min_tdens = self.ctrl_get('min_tdens')
         relax_preconditioner = False
         if relax_preconditioner:
             self.weighted_Laplacian_relaxed = self.weighted_Laplacian + 10*min_tdens * self.fems.Laplacian_form(self.fems.pot_space)
         else:
             self.weighted_Laplacian_relaxed = None
-        
+
+
         # setup the linear variational problem
         self.u_prob = LinearVariationalProblem(self.weighted_Laplacian, # bilinear form
                                                self.rhs, # linear form
@@ -806,11 +819,7 @@ class NiotSolver:
                                                bcs = pot_bcs # boundary conditions
                                                ) 
 
-        # setup the nullspace
-        if self.btp.Dirichlet is None and self.btp.weak_Dirichlet is None:
-            nullspace = VectorSpaceBasis(constant=True,comm=self.comm)
-        else:
-            nullspace = None
+        
             
         
         context = {} # use this to pass information to the solver
@@ -820,6 +829,7 @@ class NiotSolver:
                                                 appctx = context,
                                                 options_prefix = 'pot_solver_')
         self.pot_solver.snes.ksp.setConvergenceHistory()
+        
 
     def setup_increment_solver(self, shift=0.0):
         test = TestFunction(self.fems.tdens_space)  
@@ -1330,23 +1340,19 @@ class NiotSolver:
 
         
         # solve the problem
-        #try:     
-        self.pot_solver.solve()
-        #except:
-        #    pass
+        try:     
+            self.pot_solver.solve()
+        except:
+            pass
         ierr = self.pot_solver.snes.getConvergedReason()
-        self.pot_solver.snes.ksp.view()
-        print(f'{ierr=}')
-        print(f"{SNESReasons[ierr]=}")
         
         msg =  linalg.info_ksp(self.pot_solver.snes.ksp)
         self.print_info(
-            msg, 
-            priority=2, 
-            where=['stdout','log'], 
-            color='black')
+           msg, 
+           priority=2, 
+           where=['stdout','log'], 
+           color='black')
            
-            
         if (ierr < 0):
             self.print_info(msg)
         else:
