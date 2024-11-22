@@ -26,6 +26,9 @@ import nibabel
 import warnings
 warnings.filterwarnings("ignore")
 
+np.set_printoptions(formatter={'float': '{:0.2e}'.format})
+
+
 def build_meshes_from_numpy(data, mesh_type="simplicial",lengths=None,label_boundary=False):
     if lengths is None:
         lengths = [1.0,data.shape[1]/data.shape[0],data.shape[2]/data.shape[0]]
@@ -222,7 +225,7 @@ def setup_solver(btp,
     # optimization
     niot_solver.ctrl_set('optimization_tol', 1e-5)
     niot_solver.ctrl_set('constraint_tol', 1e-5)
-    niot_solver.ctrl_set('max_iter', 1)
+    niot_solver.ctrl_set('max_iter', 1000)
     niot_solver.ctrl_set('max_restart', 4)
     niot_solver.ctrl_set('verbose', 2)
 
@@ -289,13 +292,44 @@ def figure1():
     return combinations
 
 
-def downsample(data,coarseness):
-    if coarseness > 1:  
-        PETSc.Sys.Print('coarsening image')
+def downsample(data,coarseness,mode="zoom"):
+    """
+    Downsample data by a factor of coarseness
+    Args:
+    data: numpy 2d or 3d array
+    coarseness: int
+    mode: str
+        "zoom": uses scipy.ndimage.zoom
+        "max" : uses max of neighbours cells
+    Returns:
+        data: numpy 2d or 3d array
+    """
+    if coarseness <= 1:
+        return data
+      
+    PETSc.Sys.Print('coarsening image')
+    if mode == "zoom":
         factors = tuple([1 if n==1 else 1/coarseness for n in data.shape])
         data = zoom(data, factors, order=0)
         PETSc.Sys.Print(data.shape)
-    return data
+        return data
+
+    elif mode == "max":
+        pad_shape = tuple([(0, n%coarseness) for n in data.shape])
+        # pad with -inf
+        data = np.pad(data, pad_shape, mode='constant', constant_values=-np.inf)
+        
+        # coarseness = 2
+        # (nx//2,2,ny//2,2,nz//2,2)
+        reshaped_shape = sum([[n//coarseness,coarseness] for n in data.shape],[])
+        
+        
+        # reshape gathering neighbours cells and get the max
+        extra_dim = tuple([2*i+1 for i in range(data.ndim)])
+        print(extra_dim)
+        data = data.reshape(reshaped_shape).max(axis=extra_dim)
+        
+        return data
 
 def indices_restrict(data, lengths, xyz_bounds):
     """ 
@@ -323,6 +357,8 @@ def restrict(data, indices_bounds):
                 indices_bounds[2][0]:indices_bounds[2][1]]
     data = np.ascontiguousarray(data)
     return data
+
+
 
 
 def select_slice():
@@ -366,7 +402,7 @@ if __name__ == "__main__":
     tof_data = nibabel.load(args.mri+'TOF.nii.gz')
     tof_np = tof_data.get_fdata()
     hx, hy, hz = tof_data.header['pixdim'][1:4]
-    lengths = [float(tof_np.shape[0]*hx), float(tof_np.shape[1]*hy), float(tof_np.shape[2]*hz)]
+    lengths = np.array([float(tof_np.shape[0]*hx), float(tof_np.shape[1]*hy), float(tof_np.shape[2]*hz)])
     
     # load t1 data
     t1_data = nibabel.load(args.mri+'/T1.nii.gz')
@@ -402,10 +438,11 @@ if __name__ == "__main__":
         PETSc.Sys.Print(f"Data shape: {tof_np.shape} Lengths: {lengths}")
 
     # coarsen data
+    mode = "max"
     if coarseness > 1:
-        tof_np = downsample(tof_np,coarseness)
-        t1_np = downsample(t1_np,coarseness)
-        tof_inlet_np = downsample(tof_inlet_np,coarseness)
+        tof_np = downsample(tof_np,coarseness,mode)
+        t1_np = downsample(t1_np,coarseness,mode)
+        tof_inlet_np = downsample(tof_inlet_np,coarseness,mode)
         PETSc.Sys.Print(f"Coarse Data shape: {t1_np.shape}")
     
     
@@ -420,8 +457,6 @@ if __name__ == "__main__":
                   f"{out_directory}/tof_inlet", name='tof_inlet')
     PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs'+f" in {time.time()-start:.2f}s")
 
-   
-    
     # create mesh
     time0 = time.time()
     mesh_type = "cartesian" if fems[0]=="DG0DG0" else "simplicial"
