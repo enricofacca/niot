@@ -1100,7 +1100,7 @@ class NiotSolver:
         
         return pot, tdens, vel
     
-    #@profile  
+    @profile  
     def solve(self, callbacks=[]):
         '''
         Args:
