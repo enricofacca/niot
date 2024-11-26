@@ -509,6 +509,9 @@ def experiment(args):
         # save solution
         pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
 
+        
+
+
         DQ0 = FunctionSpace(cartesian_mesh,"DQ",0)
         tdens_grid = Function(DQ0, name="tdens_grid")
         pot_grid = Function(DQ0, name="pot_grid")
@@ -520,6 +523,8 @@ def experiment(args):
         reconstruction = Function(niot_solver.fems.tdens_space)
         reconstruction.interpolate(niot_solver.tdens2image(tdens) )
         reconstruction.rename('reconstruction','Reconstruction')
+
+        niot_solver = None
 
         #filename = f'{label_dir}/reconstruction.pvd'
         #out_file = VTKFile(filename,mode='w')
