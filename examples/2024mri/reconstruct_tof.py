@@ -8,6 +8,7 @@ from niot import image2dat as i2d
 from niot import utilities
 from niot import optimal_transport as ot
 from niot import NiotSolver
+from memory_profiler import profile
 
 
 from firedrake import *
@@ -225,7 +226,7 @@ def setup_solver(btp,
     # optimization
     niot_solver.ctrl_set('optimization_tol', 1e-5)
     niot_solver.ctrl_set('constraint_tol', 1e-5)
-    niot_solver.ctrl_set('max_iter', 1000)
+    niot_solver.ctrl_set('max_iter', 1)
     niot_solver.ctrl_set('max_restart', 4)
     niot_solver.ctrl_set('verbose', 2)
 
@@ -315,18 +316,22 @@ def downsample(data,coarseness,mode="zoom"):
         return data
 
     elif mode == "max":
-        pad_shape = tuple([(0, n%coarseness) for n in data.shape])
+        # the extra boundary required
+        pad_shape = tuple([(0, int(coarseness*np.ceil(n/coarseness)-n)) for n in data.shape])
+
         # pad with -inf
         data = np.pad(data, pad_shape, mode='constant', constant_values=-np.inf)
         
+
         # coarseness = 2
         # (nx//2,2,ny//2,2,nz//2,2)
-        reshaped_shape = sum([[n//coarseness,coarseness] for n in data.shape],[])
+        dim = data.ndim
+        reshaped_shape = sum([[n//coarseness, coarseness] for n in data.shape],[])
         
         
         # reshape gathering neighbours cells and get the max
         extra_dim = tuple([2*i+1 for i in range(data.ndim)])
-        print(extra_dim)
+        
         data = data.reshape(reshaped_shape).max(axis=extra_dim)
         
         return data
@@ -343,8 +348,9 @@ def indices_restrict(data, lengths, xyz_bounds):
             indices_bounds.append([0,n_axis])
         else:
             lower, upper = xyz_bounds[axis_index]
-            indices_bounds.append(
-                [max(0,int(lower/len_axis*n_axis)),min(int(upper/len_axis*n_axis),n_axis)])
+            indices_bound = [max(0,int(lower/len_axis*n_axis)),min(int(upper/len_axis*n_axis),n_axis)]
+            indices_bounds.append( indices_bound)
+                
 
     return np.array(indices_bounds)
 
@@ -352,7 +358,7 @@ def restrict(data, indices_bounds):
     """ 
     Assuming that LX=1
     """
-    data = data[indices_bounds[0][0]:indices_bounds[1][1],
+    data = data[indices_bounds[0][0]:indices_bounds[0][1],
                 indices_bounds[1][0]:indices_bounds[1][1],
                 indices_bounds[2][0]:indices_bounds[2][1]]
     data = np.ascontiguousarray(data)
@@ -370,24 +376,14 @@ def select_slice():
     #i2d.numpy2vtr(tof_bottom_np, lengths[0:2], f"{out_directory}/tof", name='tof')
     i2d.numpy2image(tof_bottom_np, f"{out_directory}/tof_bottom.png") 
 
-if __name__ == "__main__":
-    
-    parser = argparse.ArgumentParser(description='Reconstruct network')
-    #parser.add_argument("--field", type=str, default='TOF', help="TOF")
-    parser.add_argument("--c", type=int, default=1, help="coarseing factor")
-    parser.add_argument("--mri", type=str, default="./mri/", help="directory with mri data")
-    parser.add_argument("--out", type=str, default="./results_dirichlet/", help="output directory")
-    parser.add_argument("--xmin", type=float, default=0.0, help="Lower bound x")
-    parser.add_argument("--xmax", type=float, default=1000.0, help="Upper bound x")
-    parser.add_argument("--ymin", type=float, default=0.0, help="Lower bound y")
-    parser.add_argument("--ymax", type=float, default=1000.0, help="Upper bound y")
-    parser.add_argument("--zmin", type=float, default=0.0, help="Lower bound z")
-    parser.add_argument("--zmax", type=float, default=1000.0, help="Upper bound z")
-    
-    args, unknown = parser.parse_known_args()
+
+@profile
+def experiment(args):
 
     field = "TOF"
     coarseness = args.c
+
+
 
     results = args.out
     if not  os.path.exists(results):
@@ -416,18 +412,18 @@ if __name__ == "__main__":
     
     
     
-     
+    
 
     # restrict data
     restrict_domain = True
     if restrict_domain:
         indices_bounds = indices_restrict(tof_np,
-                                          lengths=lengths,
-                                          xyz_bounds=[
-                                              [args.xmin,args.xmax],
-                                              [args.ymin,args.ymax],
-                                              [args.zmin,args.zmax]
-                                          ])    
+                                        lengths=lengths,
+                                        xyz_bounds=[
+                                            [args.xmin,args.xmax],
+                                            [args.ymin,args.ymax],
+                                            [args.zmin,args.zmax]
+                                        ])    
         tof_np = restrict(tof_np,indices_bounds)
         t1_np = restrict(t1_np,indices_bounds)
         tof_inlet_np = restrict(tof_inlet_np,indices_bounds)  
@@ -435,7 +431,7 @@ if __name__ == "__main__":
         
         lengths = np.array(tof_np.shape)*np.array([hx,hy,hz])
         
-        PETSc.Sys.Print(f"Data shape: {tof_np.shape} Lengths: {lengths}")
+        PETSc.Sys.Print(f"Data shape: {tof_np.shape} Lengths: {lengths} After restriction ")
 
     # coarsen data
     mode = "max"
@@ -453,8 +449,8 @@ if __name__ == "__main__":
     i2d.numpy2vtr(t1_np, lengths, f"{out_directory}/t1", name='t1')
     i2d.numpy2vtr(tof_np, lengths, f"{out_directory}/tof", name='tof')
     i2d.numpy2vtr(tof_inlet_np, 
-                  [lengths[0],lengths[1],hz],
-                  f"{out_directory}/tof_inlet", name='tof_inlet')
+                [lengths[0],lengths[1],hz],
+                f"{out_directory}/tof_inlet", name='tof_inlet')
     PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs'+f" in {time.time()-start:.2f}s")
 
     # create mesh
@@ -471,6 +467,11 @@ if __name__ == "__main__":
     tof_inlet_3d_np[:,:,0] = tof_inlet_np[:,:,0]
     inlets = i2d.numpy2firedrake(cartesian_mesh, tof_inlet_3d_np, name="Inlets")
     PETSc.Sys.Print(f"converted into firedrake in {time.time()-time0:.2f}s")
+
+    # free memory
+    tof_np = None
+    t1_np = None
+    tof_inlet_np = None
 
 
     # setup problem
@@ -545,3 +546,23 @@ if __name__ == "__main__":
         with pot_grid.dat.vec_ro as v:
             v_np = v.array
             v_np.tofile(path)
+
+if __name__ == "__main__":
+    
+    parser = argparse.ArgumentParser(description='Reconstruct network')
+    #parser.add_argument("--field", type=str, default='TOF', help="TOF")
+    parser.add_argument("--c", type=int, default=1, help="coarseing factor")
+    parser.add_argument("--mri", type=str, default="./mri/", help="directory with mri data")
+    parser.add_argument("--out", type=str, default="./results_dirichlet/", help="output directory")
+    parser.add_argument("--xmin", type=float, default=0.0, help="Lower bound x")
+    parser.add_argument("--xmax", type=float, default=1000.0, help="Upper bound x")
+    parser.add_argument("--ymin", type=float, default=0.0, help="Lower bound y")
+    parser.add_argument("--ymax", type=float, default=1000.0, help="Upper bound y")
+    parser.add_argument("--zmin", type=float, default=0.0, help="Lower bound z")
+    parser.add_argument("--zmax", type=float, default=1000.0, help="Upper bound z")
+    
+    args, unknown = parser.parse_known_args()
+
+    
+
+    experiment(args)
