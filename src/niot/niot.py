@@ -658,9 +658,10 @@ class NiotSolver:
                             "pc_hypre_type": "boomeramg",
                             "pc_hypre_boomeramg_strong_threshold": 0.7,
                             "pc_hypre_boomeramg_max_iter": 1,
-                            "pc_hypre_boomeramg_agg_nl": 2,
+                            "pc_hypre_boomeramg_agg_nl": 3,
                             "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
                         }
+            self.print_info(f"Using 3d hypre ",priority=1, where=['stdout','log'])
             petsc_controls.update(hypre_ctrl_3d)
             
             
@@ -1100,7 +1101,7 @@ class NiotSolver:
         
         return pot, tdens, vel
     
-    @profile  
+    #@profile  
     def solve(self, callbacks=[]):
         '''
         Args:
