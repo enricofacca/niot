@@ -661,7 +661,6 @@ class NiotSolver:
                             "pc_hypre_boomeramg_agg_nl": 3,
                             "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
                         }
-            self.print_info(f"Using 3d hypre ",priority=1, where=['stdout','log'])
             petsc_controls.update(hypre_ctrl_3d)
             
             
