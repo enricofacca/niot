@@ -14,7 +14,7 @@ import os
 
 import petsc4py
 import time 
-#from memory_profiler import profile
+from memory_profiler import profile
 
 
 from . conductivity2image import IdentityMap, HeatMap, PorousMediaMap
@@ -541,6 +541,7 @@ class NiotSolver:
 
     # register citations using Citations class in firedrake
     Citations().register('FCP2021')
+    #@profile
     def __init__(self, btp, observed, 
                  confidence=1.0, 
                  spaces='DG0DG0',
@@ -614,7 +615,7 @@ class NiotSolver:
         if setup:
             self.setup()
 
-
+    #@profile
     def setup(self):
         """
         Initialize all controls-dependent variables:
@@ -1157,7 +1158,7 @@ class NiotSolver:
             ierr = self.iterate(self.sol)
             # clean memory every 10 iterations
             
-            if self.iteration%10 == 0:
+            if self.iteration%5 == 0:
                 #if use_adjoint :
                     # Clear tape is required to avoid memory accumalation
                     # It works but I don't know why
