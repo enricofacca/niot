@@ -574,9 +574,10 @@ def experiment(args):
         PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs.pvd'+f" in {time.time()-start:.2f}s")
 
 
-    test_poisson = False
+    test_poisson = True
     if test_poisson:
         poisson(cartesian_mesh, btp)
+        exit()
 
 
     #setup controls
