@@ -223,7 +223,7 @@ def setup_solver(btp,
     # optimization
     niot_solver.ctrl_set('optimization_tol', 1e-5)
     niot_solver.ctrl_set('constraint_tol', 1e-5)
-    niot_solver.ctrl_set('max_iter', 1)
+    niot_solver.ctrl_set('max_iter', 1000)
     niot_solver.ctrl_set('max_restart', 4)
     niot_solver.ctrl_set('verbose', 2)
 
@@ -574,7 +574,7 @@ def experiment(args):
         PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs.pvd'+f" in {time.time()-start:.2f}s")
 
 
-    test_poisson = True
+    test_poisson = False
     if test_poisson:
         poisson(cartesian_mesh, btp)
         exit()
