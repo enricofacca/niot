@@ -2,3 +2,4 @@ numpy
 pyevtk
 siphash24
 nibabel
+memory_profiler
