@@ -24,6 +24,8 @@ import itertools
 import argparse
 import nibabel
 
+from scipy.ndimage import gaussian_filter
+
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -84,20 +86,20 @@ def load_data(field, coarseness, data_folder="../../../mri/",mesh_type="simplici
     return tof_fire, cartesian_mesh
     
 
-def btp_inputs(tof_fire):
+def setup_btp(tof_fire, inlets):
     mesh = tof_fire.function_space().mesh()
     
-    threshold_domain = 150
+    threshold_domain = 100
     threshold_network = 250
     
     
     # convert to firedrake
     DG0 = FunctionSpace(mesh,"DG",0)
-    source = Function(DG0,name="source")
     sink = Function(DG0,name="sink")
-    x,y,z = SpatialCoordinate(mesh)
+   
     #source.interpolate(conditional(z<15,1,0)*conditional(tof_fire>250,1,0))
-    source.assign(0.0)
+    R = FunctionSpace(mesh,"R",0)
+    source = Function(R,val=0.0, name="source")
     # above 150 define the approximate support of absortion
     # above 250 is remove beacuse where we know we have blood vessels
     sink.interpolate(conditional(tof_fire>threshold_domain,1,0) 
@@ -114,13 +116,24 @@ def btp_inputs(tof_fire):
     PETSc.Sys.Print(f"{mass_source=:.2e} {mass_sink=:.2e}")
 
 
-    
-    
-    corrupted = Function(DG0,name="corrupted")
-    corrupted.interpolate(conditional(tof_fire> threshold_network,1,0)* tof_fire)
+    threshold_bones = 50
+    kappa = Function(R,val=1.0,name="kappa")
+    #kappa = Function(DG0,name="kappa")
+    #kappa.interpolate(conditional(tof_fire < threshold_bones,0.1,1.0))
 
-    return source, sink, corrupted
+    # Define the branched transport problem
+    gamma=0.5
+    
+    inlet_pressure = Function(inlets.function_space())
+    inlet_pressure.assign(0.0)
+    weak_Dirichlet = [(Constant(0.0), ds_b, inlets)]
+    btp = ot.BranchedTransportProblem(source, sink, 
+                                      gamma=gamma, 
+                                      Dirichlet = None,
+                                      weak_Dirichlet = weak_Dirichlet,
+                                      kappa=kappa)
 
+    return btp
     
 
 
@@ -161,22 +174,6 @@ def labels(fem,
             raise ValueError(f'Unknown method {method}')
     label.append(f'method{short_method}')
     return label
-
-def setup_problem(source, sink, inlet):
-    
-    mesh = source.function_space().mesh()
-    
-    # Define the branched transport problem
-    gamma=0.5
-    
-    inlet_pressure = Function(inlet.function_space())
-    inlet_pressure.assign(0.0)
-    weak_Dirichlet = [(Constant(0.0), ds_b, inlet)]
-    btp = ot.BranchedTransportProblem(source, sink, gamma=gamma, 
-                                      Dirichlet = None,
-                                      weak_Dirichlet = weak_Dirichlet)
-
-    return btp
 
 
 def setup_solver(btp, 
@@ -270,7 +267,7 @@ def figure1():
     # Combinations producting the data for Figure 2
     #
     gamma = [0.5] # 
-    wd = [1e-1,1e0]  # set the discrepancy to zero
+    wd = [0.0]  # set the discrepancy to zero
     ini = [0]
     # the following are not influent since wd=weight discrepancy is zero
     conf = ["ONE"]
@@ -367,7 +364,7 @@ def restrict(data, indices_bounds):
 
 
 
-def select_slice():
+def select_slice(tof_np, out_directory):
     # get bottom slice of tof
     tof_bottom_np = np.flipud(tof_np[:,:,0])
     tof_bottom_np /= tof_bottom_np.max()
@@ -378,14 +375,82 @@ def select_slice():
 
 
 @profile
+def poisson(cartesian_mesh, btp):
+    """
+    Test solver for possion equation
+    """
+
+        
+    # the forcing term
+    pot_space = FunctionSpace(cartesian_mesh,"DG",0)
+    pot_test = TestFunction(pot_space)
+    pot_trial = TrialFunction(pot_space)
+    rhs = (btp.source - btp.sink) * pot_test * dx
+
+    pot_h = Function(pot_space, name="pot_h")
+
+    delta_h = avg(FacetArea(cartesian_mesh) / CellVolume(cartesian_mesh))
+    d_internal_faces = dS_v + dS_h
+    weighted_Laplacian = jump(pot_test) * jump(pot_trial) * delta_h * d_internal_faces
+
+
+    # setup the linear variational problem
+    u_prob = LinearVariationalProblem(weighted_Laplacian, # bilinear form
+                                            rhs, # linear form
+                                            pot_h, # solution
+                                            ) 
+
+
+    # solver of poisson equation
+    petsc_controls ={
+        "snes_monitor": None,
+        # krylov solver controls
+        'ksp_type': 'cg',
+        'pc_type': 'hypre',
+        'ksp_atol': 1e-16,
+        'ksp_rtol': 1e-5,
+        'ksp_dtol': 1e5,
+        'ksp_max_it' : 1000,
+        'ksp_initial_guess_nonzero': True, 
+        'ksp_norm_type': 'unpreconditioned',
+        #'ksp_monitor_true_residual' : None, 
+    }
+    if cartesian_mesh.geometric_dimension() == 3:
+        hypre_ctrl_3d = {
+                        # tuning parameters for the multigrid
+                        # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
+                        "pc_hypre_type": "boomeramg",
+                        "pc_hypre_boomeramg_strong_threshold": 0.75,
+                        "pc_hypre_boomeramg_max_iter": 1,
+                        "pc_hypre_boomeramg_agg_nl": 3,
+                        "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
+                    }
+        petsc_controls.update(hypre_ctrl_3d)
+        
+            
+    nullspace = None
+    context = {} # use this to pass information to the solver
+    pot_solver = LinearVariationalSolver(u_prob,
+                                            solver_parameters = petsc_controls,
+                                            nullspace = nullspace,
+                                            appctx = context,
+                                            options_prefix = 'pot_solver_')
+    pot_solver.snes.ksp.setConvergenceHistory()
+
+
+    pot_solver.solve()
+
+
+
+@profile
 def experiment(args):
 
     field = "TOF"
     coarseness = args.c
-
-
-
     results = args.out
+
+
+    # make directories
     if not  os.path.exists(results):
         os.mkdir(results)
 
@@ -393,6 +458,8 @@ def experiment(args):
     out_directory = results+test_case
     if not os.path.exists(out_directory):
         os.mkdir(out_directory)
+
+
 
     # load tof data
     tof_data = nibabel.load(args.mri+'TOF.nii.gz')
@@ -411,9 +478,6 @@ def experiment(args):
     tof_inlet_np = tof_inlet_np.reshape((tof_inlet_np.shape[0],tof_inlet_np.shape[1],1),order='F', copy=True)
     
     
-    
-    
-
     # restrict data
     restrict_domain = True
     if restrict_domain:
@@ -443,15 +507,18 @@ def experiment(args):
     
     
     
+
+
+
     # saving inputs in vtr
     PETSc.Sys.Print("start saving inputs as vtr")
     start = time.time()
-    i2d.numpy2vtr(t1_np, lengths, f"{out_directory}/t1", name='t1')
-    i2d.numpy2vtr(tof_np, lengths, f"{out_directory}/tof", name='tof')
-    i2d.numpy2vtr(tof_inlet_np, 
+    i2d.numpy2vtr([t1_np,tof_np], lengths, f"{out_directory}/mri", names=['t1','tof'])
+    i2d.numpy2vtr([tof_inlet_np], 
                 [lengths[0],lengths[1],hz],
-                f"{out_directory}/tof_inlet", name='tof_inlet')
+                f"{out_directory}/tof_inlet", names=['tof_inlet'])
     PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs'+f" in {time.time()-start:.2f}s")
+
 
     # create mesh
     time0 = time.time()
@@ -468,24 +535,49 @@ def experiment(args):
     inlets = i2d.numpy2firedrake(cartesian_mesh, tof_inlet_3d_np, name="Inlets")
     PETSc.Sys.Print(f"converted into firedrake in {time.time()-time0:.2f}s")
 
-    # free memory
-    tof_np = None
+
+    # free memor
     t1_np = None
     tof_inlet_np = None
 
 
     # setup problem
-    source, sink, corrupted = btp_inputs(tof)
-    btp = setup_problem(source, sink, inlets)
+    btp = setup_btp(tof, inlets)
+    
+    # corrupted data
+    threshold_network = 100.0
+    corrupted_np = tof_np.copy()
+    corrupted_np[corrupted_np < threshold_network] = 0
+    corrupted = i2d.numpy2firedrake(cartesian_mesh, corrupted_np, name="corrupted")
+
+    # initial guess
+    sigma = 0.5
+    low = gaussian_filter(corrupted_np, sigma=sigma)
+    medium = gaussian_filter(low, sigma=sigma)
+    high = gaussian_filter(medium, sigma=sigma)
+
+    tof_np = None
+
+    # save tof_low
+    i2d.numpy2vtr([low, medium, high],
+                   lengths, 
+                  f"{out_directory}/initial_data",
+                    names=['tof_low','tof_medium','tof_high'])
+    
 
     save_inputs_as_pvd = False
     if save_inputs_as_pvd:
         PETSc.Sys.Print("start saving inputs as pvd")
         start = time.time()
         out_file = File(f'{out_directory}/inputs.pvd')
-        out_file.write(tof,source,sink,corrupted,t1)
+        out_file.write(tof,btp.source,btp.sink,corrupted,t1)
         PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs.pvd'+f" in {time.time()-start:.2f}s")
-    
+
+
+    test_poisson = False
+    if test_poisson:
+        poisson(cartesian_mesh, btp)
+
 
     #setup controls
     combinations = figure1()
@@ -524,7 +616,7 @@ def experiment(args):
         reconstruction.interpolate(niot_solver.tdens2image(tdens) )
         reconstruction.rename('reconstruction','Reconstruction')
 
-        niot_solver = None
+        #niot_solver = None
 
         #filename = f'{label_dir}/reconstruction.pvd'
         #out_file = VTKFile(filename,mode='w')
@@ -538,19 +630,7 @@ def experiment(args):
         i2d.numpy2vtr(pot_np, lengths, f"{out_directory}/pot", name='pot')
 
 
-        exit()
-        numpy_name = f"tdens_{cartesian_mesh.comm.rank:02d}.npy"
-        path = os.path.join(label_dir,numpy_name)
-        with tdens_grid.dat.vec_ro as v:
-            v_np = v.array
-            v_np.tofile(path)
-
-        numpy_name = f"pot_{cartesian_mesh.comm.rank:02d}.npy"
-        path = os.path.join(label_dir,numpy_name)
-        print(numpy_name)
-        with pot_grid.dat.vec_ro as v:
-            v_np = v.array
-            v_np.tofile(path)
+        
 
 if __name__ == "__main__":
     

@@ -461,26 +461,50 @@ def firedrake2numpy(function):
    return global_data
       
 
-def numpy2vtr(np_image, lengths, vtk_file, name='image'):
+def numpy2vtr(np_images, lengths, vtk_file, names):
    """
    Given a numpy array, save it to a vtk file.
    """
    # Create a grid
    if COMM_WORLD.rank == 0:
-      if (len(np_image.shape) == 2):
-         reshaped = np_image.reshape((np_image.shape[0],np_image.shape[1],1))
+      if len(np_images) == 0:
+         np_images = [np_images]
+      if len(names) == 0:
+         names = [names]
+
+      if len(np_images) != len(names):
+         raise ValueError('The number of images and names must be the same')
+      
+
+
+
+      data_shape = np_images[0].shape
+      dim = len(data_shape)
+      if ( dim == 2):
+         
          #imageToVTK(vtk_file, cellData={name: reshaped})
-         x = np.linspace(0, lengths[0], np_image.shape[0]+1)
-         y = np.linspace(0, lengths[1], np_image.shape[1]+1)      
+         x = np.linspace(0, lengths[0], data_shape[0]+1)
+         y = np.linspace(0, lengths[1], data_shape[1]+1)      
          z = np.array([0])
 
+         cellData = {}
+         for i in range(len(np_images)):
+            np_image = np_images[i]
+            name = names[i]
+            reshaped = np_image.reshape((np_image.shape[0],np_image.shape[1],1))
+            cellData.update({name: reshaped})
+         #imageToVTK(vtk_file, pointData={name: reshaped})
+         #reshaped = np_image.reshape((np_image.shape[0],np_image.shape[1],1))
          gridToVTK(vtk_file, x, y, z, cellData={name: reshaped})
    
-      if (len(np_image.shape) == 3):
-         x = np.linspace(0, lengths[0], np_image.shape[0]+1)
-         y = np.linspace(0, lengths[1], np_image.shape[1]+1)
-         z = np.linspace(0, lengths[2], np_image.shape[2]+1)   
-         gridToVTK(vtk_file, x, y, z, cellData={name: np_image})
+      elif ( dim == 3):
+         x = np.linspace(0, lengths[0], data_shape[0]+1)
+         y = np.linspace(0, lengths[1], data_shape[1]+1)
+         z = np.linspace(0, lengths[2], data_shape[2]+1)   
+         cellData = {}
+         for i in range(len(np_images)):
+            cellData.update({names[i]: np_images[i]})
+         gridToVTK(vtk_file, x, y, z, cellData=cellData)
 
 
    
