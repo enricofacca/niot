@@ -608,6 +608,7 @@ class NiotSolver:
         self.rhs_ode = Cofunction(DualSpace(self.mesh,element))
         self.residuum = Cofunction(DualSpace(self.mesh,element))
         self.gradient_regularization = Cofunction(DualSpace(self.mesh,element))
+        self.gradient_discrepancy = Cofunction(DualSpace(self.mesh,element))        
         self.gradient_penalization = Cofunction(DualSpace(self.mesh,element))
         self.gradient_regularization = Cofunction(DualSpace(self.mesh,element))
         self.gradient_lagrangian = Cofunction(DualSpace(self.mesh,element))
