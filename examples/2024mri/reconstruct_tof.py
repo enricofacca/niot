@@ -627,8 +627,7 @@ def experiment(args):
         tdens_np = i2d.firedrake2numpy(tdens)
         pot_np = i2d.firedrake2numpy(pot)
 
-        i2d.numpy2vtr(tdens_np, lengths, f"{out_directory}/tdens", name='tdens')
-        i2d.numpy2vtr(pot_np, lengths, f"{out_directory}/pot", name='pot')
+        i2d.numpy2vtr([tdens_np,pot_np], lengths, f"{out_directory}/tdens_pot", names=['tdens','pot'])
 
 
         
