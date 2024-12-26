@@ -3,6 +3,7 @@ import glob
 import os
 from copy import deepcopy as cp
 
+import cc3d
 import numpy as np
 from niot import image2dat as i2d
 from niot import utilities
@@ -86,12 +87,8 @@ def load_data(field, coarseness, data_folder="../../../mri/",mesh_type="simplici
     return tof_fire, cartesian_mesh
     
 
-def setup_btp(tof_fire, inlets):
-    mesh = tof_fire.function_space().mesh()
-    
-    threshold_domain = 100
-    threshold_network = 250
-    
+def setup_btp(brain_mask, inlets):
+    mesh = brain_mask.function_space().mesh()
     
     # convert to firedrake
     DG0 = FunctionSpace(mesh,"DG",0)
@@ -102,8 +99,10 @@ def setup_btp(tof_fire, inlets):
     source = Function(R,val=0.0, name="source")
     # above 150 define the approximate support of absortion
     # above 250 is remove beacuse where we know we have blood vessels
-    sink.interpolate(conditional(tof_fire>threshold_domain,1,0) 
-                     * conditional(tof_fire<threshold_network,1,0))
+    #sink.interpolate(conditional(tof_fire>threshold_domain,1,0) 
+    #                 * conditional(tof_fire<threshold_network,1,0))
+    
+    sink.interpolate(conditional(brain_mask>1e-10,1,0)) 
 
 
     mass_source = assemble(source*dx)
@@ -111,8 +110,6 @@ def setup_btp(tof_fire, inlets):
 
     #source /= mass_source
     sink /= mass_sink
-
-
     PETSc.Sys.Print(f"{mass_source=:.2e} {mass_sink=:.2e}")
 
 
@@ -120,6 +117,7 @@ def setup_btp(tof_fire, inlets):
     kappa = Function(R,val=1.0,name="kappa")
     #kappa = Function(DG0,name="kappa")
     #kappa.interpolate(conditional(tof_fire < threshold_bones,0.1,1.0))
+
 
     # Define the branched transport problem
     gamma=0.5
@@ -448,6 +446,7 @@ def experiment(args):
     field = "TOF"
     coarseness = args.c
     results = args.out
+    threshold_network = 250.0
 
 
     # make directories
@@ -472,10 +471,43 @@ def experiment(args):
     t1_np = t1_data.get_fdata() 
     PETSc.Sys.Print(f"Data shape: {tof_np.shape} Lengths: {lengths}")
 
+    # load brain mask
+    brain_mask_data = nibabel.load(args.mri+'/brain_resampled.nii.gz')
+    brain_mask_np = brain_mask_data.get_fdata() 
+    PETSc.Sys.Print(f"Data shape: {brain_mask_np.shape} Lengths: {lengths}")
+
     # load inlet data
-    tof_inlet_np = i2d.image2numpy(f"{args.mri}/tof_inlets.png")
-    tof_inlet_np = np.flipud(tof_inlet_np)
+    #tof_inlet_np = i2d.image2numpy(f"{args.mri}/labels.png",normalize=False)
+    #tof_inlet_np = np.flipud(tof_inlet_np)
+    # read from file inlets.npy
+    tof_inlet_np = np.load(f"{args.mri}/inlets.npy")
     tof_inlet_np = tof_inlet_np.reshape((tof_inlet_np.shape[0],tof_inlet_np.shape[1],1),order='F', copy=True)
+    
+    # load labels
+    labels_data = nibabel.load(args.mri+'/labels.nii.gz')
+    labels_np = labels_data.get_fdata()
+
+    # setup problem
+    main_network = np.zeros_like(labels_np)
+    main_network[labels_np == 60000] = 1
+    external_network = np.zeros_like(labels_np)
+    for value in [50000,40000,30000,20000]:
+        external_network[labels_np == value] = 1
+    
+    corrupted_np = np.copy(tof_np)
+    corrupted_np[tof_np < threshold_network] = 0.0
+    # remove blood vessels outside the mask
+    corrupted_np[brain_mask_np < 1e-10] = 0.0
+    # re-integrate main network outise the mask
+    corrupted_np[main_network == 1] = tof_np[main_network == 1]
+    # remove external network inside the mask
+    corrupted_np[external_network == 1] = 0
+
+
+    # inlets points
+    inlets_np = np.zeros_like(tof_inlet_np)
+    for value in [5,7,14,17]:
+        inlets_np[tof_inlet_np == value] = 1
     
     
     # restrict data
@@ -490,9 +522,13 @@ def experiment(args):
                                         ])    
         tof_np = restrict(tof_np,indices_bounds)
         t1_np = restrict(t1_np,indices_bounds)
-        tof_inlet_np = restrict(tof_inlet_np,indices_bounds)  
-        
-        
+        tof_inlet_np = restrict(tof_inlet_np,indices_bounds)
+        inlets_np = restrict(inlets_np,indices_bounds)
+        brain_mask_np = restrict(brain_mask_np,indices_bounds)  
+        main_network = restrict(main_network,indices_bounds)
+        external_network = restrict(external_network,indices_bounds)
+        corrupted_np = restrict(corrupted_np,indices_bounds)
+
         lengths = np.array(tof_np.shape)*np.array([hx,hy,hz])
         
         PETSc.Sys.Print(f"Data shape: {tof_np.shape} Lengths: {lengths} After restriction ")
@@ -503,51 +539,62 @@ def experiment(args):
         tof_np = downsample(tof_np,coarseness,mode)
         t1_np = downsample(t1_np,coarseness,mode)
         tof_inlet_np = downsample(tof_inlet_np,coarseness,mode)
+        inlets_np = downsample(inlets_np,coarseness,mode)
+        corrupted_np = downsample(corrupted_np,coarseness,mode)
+        brain_mask_np = downsample(brain_mask_np,coarseness,mode)
+        main_network = downsample(main_network,coarseness,mode)
+        external_network = downsample(external_network,coarseness,mode)
         PETSc.Sys.Print(f"Coarse Data shape: {t1_np.shape}")
     
-    
-    
 
+    support_corrupted = np.zeros_like(corrupted_np)
+    support_corrupted[corrupted_np > 0] = 1
+    cc_corrupted, n_cc_corrupted = cc3d.connected_components(
+        support_corrupted, 
+        connectivity=26, 
+        binary_image=True, 
+        return_N=True)
+    PETSc.Sys.Print(f"{n_cc_corrupted=}")
 
 
     # saving inputs in vtr
     PETSc.Sys.Print("start saving inputs as vtr")
     start = time.time()
-    i2d.numpy2vtr([t1_np,tof_np], lengths, f"{out_directory}/mri", names=['t1','tof'])
-    i2d.numpy2vtr([tof_inlet_np], 
+    i2d.numpy2vtr([t1_np,tof_np, corrupted_np,main_network,external_network,brain_mask_np,cc_corrupted], 
+                  lengths, f"{out_directory}/mri", 
+                  names=['t1','tof','corrupted','main_network','external_network','brain_mask','cc_corrupted'])
+    i2d.numpy2vtr([tof_inlet_np,inlets_np], 
                 [lengths[0],lengths[1],hz],
-                f"{out_directory}/tof_inlet", names=['tof_inlet'])
+                f"{out_directory}/inlets", names=['tof_inlets','inlets'])
     PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs'+f" in {time.time()-start:.2f}s")
+
+    # free memor
+    tof_np = None
+    t1_np = None
+    tof_inlet_np = None
+    tof_inlet_np = None
+    main_network = None
+    external_network = None
+    cc_corrupted = None
+    support_corrupted = None
 
 
     # create mesh
     time0 = time.time()
     mesh_type = "cartesian" if fems[0]=="DG0DG0" else "simplicial"
-    mesh, cartesian_mesh =  build_meshes_from_numpy(tof_np, mesh_type=mesh_type,lengths=lengths)
+    mesh, cartesian_mesh =  build_meshes_from_numpy(brain_mask_np, mesh_type=mesh_type,lengths=lengths)
     PETSc.Sys.Print(f"Mesh built in {time.time()-time0:.2f}s")
 
 
     PETSc.Sys.Print("converting into firedrake")
-    tof = i2d.numpy2firedrake(cartesian_mesh, tof_np, name="TOF")
-    t1 = i2d.numpy2firedrake(cartesian_mesh, t1_np, name="T1")
-    tof_inlet_3d_np = np.zeros_like(tof_np)
-    tof_inlet_3d_np[:,:,0] = tof_inlet_np[:,:,0]
-    inlets = i2d.numpy2firedrake(cartesian_mesh, tof_inlet_3d_np, name="Inlets")
+    inlets_3d_np = np.zeros_like(brain_mask_np)
+    inlets_3d_np[:,:,0] = inlets_np[:,:,0]
+    inlets = i2d.numpy2firedrake(cartesian_mesh, inlets_3d_np, name="Inlets")
+    brain_mask = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name="Brain_mask")
     PETSc.Sys.Print(f"converted into firedrake in {time.time()-time0:.2f}s")
 
 
-    # free memor
-    t1_np = None
-    tof_inlet_np = None
-
-
-    # setup problem
-    btp = setup_btp(tof, inlets)
-    
     # corrupted data
-    threshold_network = 100.0
-    corrupted_np = tof_np.copy()
-    corrupted_np[corrupted_np < threshold_network] = 0
     corrupted = i2d.numpy2firedrake(cartesian_mesh, corrupted_np, name="corrupted")
 
     # initial guess
@@ -556,8 +603,28 @@ def experiment(args):
     medium = gaussian_filter(low, sigma=sigma)
     high = gaussian_filter(medium, sigma=sigma)
 
-    tof_np = None
 
+    # free memor
+    tof_np = None
+    t1_np = None
+    tof_inlet_np = None
+    tof_inlet_np = None
+    inlets_np = None
+    corrupted_np = None
+    brain_mask_np = None
+    main_network = None
+    external_network = None
+    cc_corrupted = None
+    support_corrupted = None
+
+    
+
+    # btp inputs
+    btp = setup_btp(brain_mask, inlets)
+    
+    
+
+    
     # save tof_low
     i2d.numpy2vtr([low, medium, high],
                    lengths, 
@@ -570,7 +637,7 @@ def experiment(args):
         PETSc.Sys.Print("start saving inputs as pvd")
         start = time.time()
         out_file = File(f'{out_directory}/inputs.pvd')
-        out_file.write(tof,btp.source,btp.sink,corrupted,t1)
+        out_file.write(btp.source,btp.sink,corrupted)
         PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs.pvd'+f" in {time.time()-start:.2f}s")
 
 
