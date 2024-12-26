@@ -467,9 +467,10 @@ def numpy2vtr(np_images, lengths, vtk_file, names):
    """
    # Create a grid
    if COMM_WORLD.rank == 0:
-      if len(np_images) == 0:
+      print(len(np_images), len(names))
+      if not isinstance(np_images, list):
          np_images = [np_images]
-      if len(names) == 0:
+      if not isinstance(names, list):
          names = [names]
 
       if len(np_images) != len(names):
