@@ -44,7 +44,7 @@ def explicit_expression(x,y,z, lengths):
 
 
 # save numpy array to vtr
-i2d.numpy2vtr(example, lengths, "test3d_np", name='source')
+i2d.numpy2vtr(example, lengths, "test3d_np", names='source')
 
 # define cartesian mesh
 def check_3d_numpy_simplicial_mesh(mesh, example):
@@ -137,25 +137,25 @@ def h_length(V,mode):
     return h_len
 
         
-        check_3d_numpy_cartesian_mesh(mesh, example)
-        check_coordinates(mesh, lengths)
+    # check_3d_numpy_cartesian_mesh(mesh, example)
+    # check_coordinates(mesh, lengths)
 
-    # convert to firedrake
-    source_fire = i2d.numpy2firedrake(mesh, example, 'source',lengths=lengths)
-    cartesian_mesh = i2d.build_mesh_from_numpy(example, mesh_type='cartesian',lengths=lengths)
-    test_source = Function(FunctionSpace(cartesian_mesh, "DG", 0))
-    source_fire_dg0 = Function(FunctionSpace(cartesian_mesh, "DG", 0))
-    source_fire_dg0.interpolate(source_fire)
+    # # convert to firedrake
+    # source_fire = i2d.numpy2firedrake(mesh, example, 'source',lengths=lengths)
+    # cartesian_mesh = i2d.build_mesh_from_numpy(example, mesh_type='cartesian',lengths=lengths)
+    # test_source = Function(FunctionSpace(cartesian_mesh, "DG", 0))
+    # source_fire_dg0 = Function(FunctionSpace(cartesian_mesh, "DG", 0))
+    # source_fire_dg0.interpolate(source_fire)
 
-    # test against explicit expression
-    x,y,z = SpatialCoordinate(cartesian_mesh)
-    test_source.interpolate( explicit_expression(x,y,z,lengths) )   
-    assert (np.isclose( assemble((source_fire_dg0 - test_source)**2*dx), 0.0))
+    # # test against explicit expression
+    # x,y,z = SpatialCoordinate(cartesian_mesh)
+    # test_source.interpolate( explicit_expression(x,y,z,lengths) )   
+    # assert (np.isclose( assemble((source_fire_dg0 - test_source)**2*dx), 0.0))
 
-    # convert to numpy
-    source_numpy = i2d.firedrake2numpy(source_fire_dg0)
+    # # convert to numpy
+    # source_numpy = i2d.firedrake2numpy(source_fire_dg0)
 
-    assert(np.allclose(example,source_numpy))
+    # assert(np.allclose(example,source_numpy))
 
 
 if __name__ == '__main__':
@@ -185,7 +185,7 @@ if __name__ == '__main__':
 
     # test against explicit expression
     x,y,z = SpatialCoordinate(cartesian_mesh)
-    test_source.interpolate( explicit_expression(x,y,z) )   
+    test_source.interpolate( explicit_expression(x,y,z,lengths) )   
     assert (np.isclose( assemble((source_fire_dg0 - test_source)**2*dx), 0.0))
 
 
@@ -200,5 +200,5 @@ if __name__ == '__main__':
 
 
     if save_vtr:
-        i2d.numpy2vtr(source_numpy, [1,1,1], "test3d_npfiredrakenp", name='image')
+        i2d.numpy2vtr(source_numpy, [1,1,1], "test3d_npfiredrakenp", names='image')
 
