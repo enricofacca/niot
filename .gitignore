@@ -41,3 +41,7 @@ test/*/runs/
 *.aux
 *.soc
 *.loc
+# vtr 
+*.vtr
+# nibabel
+*.nii.gz
