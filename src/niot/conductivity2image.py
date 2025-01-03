@@ -17,6 +17,7 @@ from firedrake import derivative
 from firedrake import LinearVariationalProblem, LinearVariationalSolver
 from firedrake import NonlinearVariationalProblem, NonlinearVariationalSolver
 from firedrake import File
+from firedrake import *
 
 from pyadjoint import Block
 from pyadjoint.overloaded_function import overload_function
@@ -58,7 +59,108 @@ class IdentityMap(Conductivity2ImageMap):
         #self.image_h = assemble(interpolate(self.scaling * conductivity, self.space))
         self.image_h.assign(self.scaling * conductivity)#
         return self.image_h
-        
+
+
+def h_size(mesh, mode = "cellSize"):
+    if mode == "cellSize":
+        return CellSize(mesh)
+    elif mode == "face_over_cell":
+        return FacetArea(mesh) / CellVolume(mesh)
+
+
+def d_face_interior(mesh):
+    if mesh.extruded:
+        d_interior = dS_v + dS_h
+    else:
+        d_interior = dS
+    return d_interior
+
+def d_face_exterior(mesh):
+    if mesh.extruded:
+        d_exterior = ds_b + ds_t + ds_v
+    else:
+        d_exterior = ds
+    return d_exterior
+
+def simplex_DG0_scaling(mesh):
+    # quantities for DG0 laplacian
+    alpha = 4.0
+    h = h_size(mesh, mode = "face_over_cell")
+    h_avg = (h('+') + h('-'))/2.0
+    DG0_scaling = alpha(4.0)/h_avg
+
+    return DG0_scaling
+
+
+def Laplacian_facet_weight(mesh, mode = "center_distance"):
+    '''
+    Return a facet-based quantity that scales as h, the mesh typical length
+    '''
+    if mode == "center_distance":
+        DG0 = FunctionSpace(mesh, 'DG', 0)
+        if mesh.geometric_dimension() == 2:
+            x,y = mesh.coordinates
+            x_func = assemble(interpolate(x, DG0))
+            y_func = assemble(interpolate(y, DG0))
+            delta_h = sqrt(jump(x_func)**2 + jump(y_func)**2)
+        elif mesh.geometric_dimension() == 3:
+            x,y,z = mesh.coordinates
+            x_func = assemble(interpolate(x, DG0))
+            y_func = assemble(interpolate(y, DG0))
+            z_func = assemble(interpolate(z, DG0))
+            delta_h = sqrt(jump(x_func)**2 
+                                + jump(y_func)**2 
+                                + jump(z_func)**2)
+    elif mode == "face_over_cell":
+        delta_h = 1.0 / avg(FacetArea(mesh) / CellVolume(mesh))
+    else:
+        raise ValueError('mode must be - center_distance or face_over_cell')
+    return delta_h
+
+
+def Laplacian_form(space):
+    """
+    Return the Laplacian form for the given space
+    with zero-Neumann boundary conditions
+    """
+    mesh = space.mesh()
+
+    # detect degree of function space
+    degree = space.ufl_element().degree()
+    
+    # detect an extruded mesh is used
+    if isinstance(degree, tuple):
+        if all(d == 0 for d in degree):
+            degree = 0
+        else:
+            raise ValueError('Only piecewise constant is implemented for extruded meshes')
+    else:
+        degree = degree
+
+    d_internal_faces = d_face_interior(mesh)
+
+    test = TestFunction(space)
+    trial = TrialFunction(space)
+    if degree == 0:
+        if mesh.ufl_cell().is_simplex():
+            # if the mesh is simplicial, we use the DG0 laplacian taken from
+            # https://www.firedrakeproject.org/demos/saddle_point_systems.py.html
+            # Without scaling the scheme is not consistent.
+            normal = FacetNormal(mesh)
+            form = simplex_DG0_scaling(mesh) * inner(jump(test, normal), jump(trial, normal)) * d_internal_faces
+        else:
+            print("DG0 on cartesian")
+            d_h = Laplacian_facet_weight(mesh, mode = "face_over_cell")
+            form =  jump(test) * jump(trial) / d_h * d_internal_faces
+    elif degree == 1:
+        form = inner(grad(test), grad(trial)) * dx
+    else:
+        raise NotImplementedError('piecewise constant, or linear tdens is implemented')
+    return form
+
+
+
+
 class HeatMap(Conductivity2ImageMap):
     """
     The image is the solution of one time step 
@@ -79,13 +181,7 @@ class HeatMap(Conductivity2ImageMap):
         test = TestFunction(space)  
         trial = TrialFunction(space)
         form =  inner(test, trial) * dx # mass matrix
-        if space.ufl_element().degree() > 0:
-            form += sigma * grad(test) * grad(trial) * dx
-        else:
-            if space.mesh().ufl_cell().is_simplex():
-                raise NotImplementedError('Laplacian with DG0 simplices is not implemented')
-            delta_h = utilities.delta_h(space)
-            form += sigma * jump(test) * jump(trial) / delta_h * dS
+        form += self.sigma * Laplacian_form(space)
 
         # 1-form for the heat equation
         self.rhs_heat = self.tdens4transform * test * dx
@@ -99,19 +195,28 @@ class HeatMap(Conductivity2ImageMap):
             solver_parameters={
                 'ksp_type': 'cg',
                 'ksp_rtol': 1e-10,
-                'ksp_initial_guess_nonzero': True,
-                #'ksp_monitor_true_residual': None,
+                #'ksp_initial_guess_nonzero': True,
+                'ksp_monitor_true_residual': None,
                 'pc_type': 'hypre',
                 },
             options_prefix='heat_solver_')
-
+        
+    
     def __call__(self, conductivity, **kargs) -> Function:
         # image and tdens are expected to be close (up to scaling)
-        self.image_h = assemble(interpolate(conductivity / self.scaling, self.space))
+        #self.image_h = assemble(interpolate(conductivity / self.scaling, self.space))
                 
         # image = M * tdens
-        self.tdens4transform = assemble(interpolate(conductivity, self.space))
-                
+        self.tdens4transform.assign(conductivity)# = assemble(interpolate(conductivity, self.space))
+        test = TestFunction(self.space)
+        integral = assemble(test*self.tdens4transform*dx)
+        print(f"{integral=}")        
+
+        
+        b = assemble(self.rhs_heat)
+        with b.dat.vec as b_vec:
+            print("BVEC NORM",b_vec.norm())
+
         # invoce the solver
         self.heat_solver.solve()
                 
