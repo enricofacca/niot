@@ -14,7 +14,7 @@ import os
 
 import petsc4py
 import time 
-from memory_profiler import profile
+#from memory_profiler import profile
 
 
 from . conductivity2image import IdentityMap, HeatMap, PorousMediaMap
@@ -122,6 +122,16 @@ def d_face_exterior(mesh):
     else:
         d_exterior = ds
     return d_exterior
+
+def simplex_DG0_scaling(mesh):
+    # quantities for DG0 laplacian
+    alpha = 4.0
+    h = h_size(mesh, mode = "face_over_cell")
+    h_avg = (h('+') + h('-'))/2.0
+    DG0_scaling = alpha(4.0)/h_avg
+
+    return DG0_scaling
+            
 
 
 class SpaceDiscretization:
