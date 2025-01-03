@@ -9,8 +9,9 @@ from niot import image2dat as i2d
 from niot import utilities
 from niot import optimal_transport as ot
 from niot import NiotSolver
-from memory_profiler import profile
+#from memory_profiler import profile
 
+from niot.conductivity2image import HeatMap
 
 from firedrake import *
 from scipy.ndimage import zoom
@@ -32,6 +33,16 @@ warnings.filterwarnings("ignore")
 
 np.set_printoptions(formatter={'float': '{:0.2e}'.format})
 
+def mpi_mkdir(directory, comm=COMM_WORLD):
+    if os.path.exists(directory):
+        return
+    
+    
+    comm.Barrier()
+    if comm.rank == 0:
+        os.mkdir(directory)
+    comm.Barrier()
+    return
 
 def build_meshes_from_numpy(data, mesh_type="simplicial",lengths=None,label_boundary=False):
     if lengths is None:
@@ -87,7 +98,7 @@ def load_data(field, coarseness, data_folder="../../../mri/",mesh_type="simplici
     return tof_fire, cartesian_mesh
     
 
-def setup_btp(brain_mask, inlets):
+def setup_btp(brain_mask, inlets, corrupted, constant_absorption = 100):
     mesh = brain_mask.function_space().mesh()
     
     # convert to firedrake
@@ -102,14 +113,16 @@ def setup_btp(brain_mask, inlets):
     #sink.interpolate(conditional(tof_fire>threshold_domain,1,0) 
     #                 * conditional(tof_fire<threshold_network,1,0))
     
-    sink.interpolate(conditional(brain_mask>1e-10,1,0)) 
-
+    
+    sink.interpolate(conditional(brain_mask>1e-10,constant_absorption,0)
+                     * conditional(corrupted>0,0,1)) # remove blood vessels outside the mask 
+    
 
     mass_source = assemble(source*dx)
     mass_sink = assemble(sink*dx)
 
     #source /= mass_source
-    sink /= mass_sink
+    #sink /= mass_sink
     PETSc.Sys.Print(f"{mass_source=:.2e} {mass_sink=:.2e}")
 
 
@@ -137,16 +150,17 @@ def setup_btp(brain_mask, inlets):
 
 def labels(fem,
            gamma,wd,wr,
-           corrupted_as_initial_guess,
+           ini,
            confidence,
            tdens2image, 
            method):
+    name = ini.name()
     label= [
         f'fem{fem}',
         f'gamma{gamma:.1e}',
         f'wd{wd:.1e}',
         f'wr{wr:.1e}',
-        f'ini{corrupted_as_initial_guess:.1e}',
+        f'ini'+name,
         f'conf{confidence}']
     if tdens2image['type'] == 'identity':
         label.append(f'mu2iidentity')
@@ -221,7 +235,7 @@ def setup_solver(btp,
     # optimization
     niot_solver.ctrl_set('optimization_tol', 1e-5)
     niot_solver.ctrl_set('constraint_tol', 1e-5)
-    niot_solver.ctrl_set('max_iter', 1000)
+    niot_solver.ctrl_set('max_iter', 10000)
     niot_solver.ctrl_set('max_restart', 4)
     niot_solver.ctrl_set('verbose', 2)
 
@@ -240,7 +254,7 @@ def setup_solver(btp,
     deltat_control = {
         'type': 'adaptive2',
         'lower_bound': 1e-13,
-        'upper_bound': 5e-2,
+        'upper_bound': 1e-1,
         'expansion': 1.1,
         'contraction': 0.5,
     }
@@ -251,41 +265,6 @@ def setup_solver(btp,
 
 
    
-#
-# common setup
-#
-fems = ["DG0DG0"]
-wr = [0.0]
-method = [
-    "tdens_mirror_descent_explicit",
-]
-
-def figure1():
-    #
-    # Combinations producting the data for Figure 2
-    #
-    gamma = [0.5] # 
-    wd = [0.0]  # set the discrepancy to zero
-    ini = [0]
-    # the following are not influent since wd=weight discrepancy is zero
-    conf = ["ONE"]
-    maps = [
-        #{"type": "identity", "scaling": 1/20},
-        {"type": "identity", "scaling": 1/10},
-    ]
-    parameters = [
-        fems,
-        gamma,
-        wd,
-        wr,
-        ini,
-        conf,
-        maps,
-        method,
-    ]
-    combinations = list(itertools.product(*parameters))
-
-    return combinations
 
 
 def downsample(data,coarseness,mode="zoom"):
@@ -303,7 +282,6 @@ def downsample(data,coarseness,mode="zoom"):
     if coarseness <= 1:
         return data
       
-    PETSc.Sys.Print('coarsening image')
     if mode == "zoom":
         factors = tuple([1 if n==1 else 1/coarseness for n in data.shape])
         data = zoom(data, factors, order=0)
@@ -320,7 +298,6 @@ def downsample(data,coarseness,mode="zoom"):
 
         # coarseness = 2
         # (nx//2,2,ny//2,2,nz//2,2)
-        dim = data.ndim
         reshaped_shape = sum([[n//coarseness, coarseness] for n in data.shape],[])
         
         
@@ -372,7 +349,7 @@ def select_slice(tof_np, out_directory):
     i2d.numpy2image(tof_bottom_np, f"{out_directory}/tof_bottom.png") 
 
 
-@profile
+#@profile
 def poisson(cartesian_mesh, btp):
     """
     Test solver for possion equation
@@ -440,7 +417,7 @@ def poisson(cartesian_mesh, btp):
 
 
 
-@profile
+#@profile
 def experiment(args):
 
     field = "TOF"
@@ -450,13 +427,11 @@ def experiment(args):
 
 
     # make directories
-    if not  os.path.exists(results):
-        os.mkdir(results)
+    mpi_mkdir(results)
 
     test_case = f"{field}_{coarseness:02}"
     out_directory = results+test_case
-    if not os.path.exists(out_directory):
-        os.mkdir(out_directory)
+    mpi_mkdir(out_directory)
 
 
 
@@ -568,6 +543,7 @@ def experiment(args):
                 f"{out_directory}/inlets", names=['tof_inlets','inlets'])
     PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs'+f" in {time.time()-start:.2f}s")
 
+
     # free memor
     tof_np = None
     t1_np = None
@@ -581,7 +557,7 @@ def experiment(args):
 
     # create mesh
     time0 = time.time()
-    mesh_type = "cartesian" if fems[0]=="DG0DG0" else "simplicial"
+    mesh_type = "cartesian" #if fems[0]=="DG0DG0" else "simplicial"
     mesh, cartesian_mesh =  build_meshes_from_numpy(brain_mask_np, mesh_type=mesh_type,lengths=lengths)
     PETSc.Sys.Print(f"Mesh built in {time.time()-time0:.2f}s")
 
@@ -598,11 +574,51 @@ def experiment(args):
     corrupted = i2d.numpy2firedrake(cartesian_mesh, corrupted_np, name="corrupted")
 
     # initial guess
-    sigma = 0.5
-    low = gaussian_filter(corrupted_np, sigma=sigma)
-    medium = gaussian_filter(low, sigma=sigma)
-    high = gaussian_filter(medium, sigma=sigma)
+    sigma0 = 1.0
+    base = 4
+    space = corrupted.function_space()
+    heat_flow = True
+    min_tdens = 1e-4
+    if heat_flow:
+        heat = HeatMap(corrupted.function_space(), scaling=1.0, sigma=1e1)
+        low = Function(space,name="LOW")
+        medium = Function(space,name="MEDIUM")
+        high = Function(space,name="HIGH")
+        
+        low.assign(heat(corrupted+min_tdens) + min_tdens)
+        medium.assign(heat(low+min_tdens) + min_tdens)
+        high.assign(heat(medium+min_tdens) + min_tdens)
+        
+        low_np = i2d.firedrake2numpy(low)
+        medium_np = i2d.firedrake2numpy(medium)
+        high_np = i2d.firedrake2numpy(high)
+    else:
+        low_np = gaussian_filter(corrupted_np, sigma=base**0*sigma0, truncate=1e0)
+        medium_np = gaussian_filter(low_np, sigma=base, truncate=1e0)
+        high_np = gaussian_filter(medium_np, sigma=base, truncate=1e0)
 
+        low = i2d.numpy2firedrake(cartesian_mesh, low_np, name="LOW")
+        medium = i2d.numpy2firedrake(cartesian_mesh, medium_np, name="MEDIUM")
+        high = i2d.numpy2firedrake(cartesian_mesh, high_np, name="HIGH")
+        for ini in [low,medium,high]:
+            ini += min_tdens
+
+     # save tof_low
+    i2d.numpy2vtr([low_np, medium_np, high_np],
+                   lengths, 
+                  f"{out_directory}/initial_data",
+                    names=['tof_low','tof_medium','tof_high'])
+    
+
+    save_inputs_as_pvd = True
+    if save_inputs_as_pvd:
+        PETSc.Sys.Print("start saving inputs as pvd")
+        start = time.time()
+        out_file = File(f'{out_directory}/inputs.pvd')
+        out_file.write(corrupted)
+        PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs.pvd'+f" in {time.time()-start:.2f}s")
+
+    
 
     # free memor
     tof_np = None
@@ -616,22 +632,16 @@ def experiment(args):
     external_network = None
     cc_corrupted = None
     support_corrupted = None
-
+    low_np = None
+    medium_np = None
+    high_np = None
     
 
     # btp inputs
-    btp = setup_btp(brain_mask, inlets)
+    btp = setup_btp(brain_mask, inlets, corrupted, constant_absorption = 1)
     
     
-
-    
-    # save tof_low
-    i2d.numpy2vtr([low, medium, high],
-                   lengths, 
-                  f"{out_directory}/initial_data",
-                    names=['tof_low','tof_medium','tof_high'])
-    
-
+   
     save_inputs_as_pvd = False
     if save_inputs_as_pvd:
         PETSc.Sys.Print("start saving inputs as pvd")
@@ -647,23 +657,66 @@ def experiment(args):
         exit()
 
 
+    
+
+    def figure1():
+            #
+        # common setup
+        #
+        fems = ["DG0DG0"]
+        wr = [0.0]
+        method = [
+            "tdens_mirror_descent_explicit",
+        ]
+
+
+        #
+        # Combinations producting the data for Figure 2
+        #
+        gamma = [0.5] # 
+        wd = [1e-3]  # set the discrepancy to zero
+        ini = [low,medium,high]
+        # the following are not influent since wd=weight discrepancy is zero
+        conf = ["ONE"]
+        maps = [
+            #{"type": "identity", "scaling": 1/20},
+            {"type": "identity", "scaling": 100},
+        ]
+        parameters = [
+            fems,
+            gamma,
+            wd,
+            wr,
+            ini,
+            conf,
+            maps,
+            method,
+        ]
+        combinations = list(itertools.product(*parameters))
+
+        return combinations
+
+
+
     #setup controls
     combinations = figure1()
     
     for combination in combinations:
-    
         label = "_".join(labels(*combination))
+        print(label)
+
+        
 
         PETSc.Sys.Print(label)
 
         label_dir = os.path.join(out_directory,label)
-        if not os.path.exists(label_dir):
-            os.mkdir(label_dir)
+        mpi_mkdir(label_dir)
 
         
         # setup solvers
         niot_solver = setup_solver( btp, corrupted, *combinations[0])
-
+        initial = combination[4]
+        niot_solver.set_solution(tdens=initial)
         ierr = niot_solver.solve()
 
         # save solution
@@ -686,7 +739,7 @@ def experiment(args):
 
         #niot_solver = None
 
-        #filename = f'{label_dir}/reconstruction.pvd'
+        #filename = f'{ma}/reconstruction.pvd'
         #out_file = VTKFile(filename,mode='w')
         #out_file.write(pot, tdens)
         #PETSc.Sys.Print(f"{ierr=}. Saved solution to "+filename)
@@ -694,7 +747,20 @@ def experiment(args):
         tdens_np = i2d.firedrake2numpy(tdens)
         pot_np = i2d.firedrake2numpy(pot)
 
-        i2d.numpy2vtr([tdens_np,pot_np], lengths, f"{out_directory}/tdens_pot", names=['tdens','pot'])
+        # save tdens and pot as npy files
+        np.save(f"{label_dir}/tdens.npy",tdens_np)
+        np.save(f"{label_dir}/pot.npy",pot_np)
+
+        support_reconstuction = np.zeros_like(tdens_np)
+        support_reconstuction[tdens_np>1e-4] = 1
+        cc_reconstruction, n_cc_reconstruction = cc3d.connected_components(
+            support_reconstuction, 
+            connectivity=26, 
+            binary_image=True, 
+            return_N=True)
+        PETSc.Sys.Print(f"{n_cc_reconstruction=}")
+
+        i2d.numpy2vtr([tdens_np,pot_np,cc_reconstruction], lengths, f"{label_dir}/tdens_pot", names=['tdens','pot','cc_reconstruction'])
 
 
         
