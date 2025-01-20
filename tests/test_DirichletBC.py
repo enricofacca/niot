@@ -115,6 +115,9 @@ def define_problem_inputs(test_case_number, nref, mesh_type="cartesian"):
         mesh2d = UnitSquareMesh(ndiv, ndiv, quadrilateral=quadrilateral)
         mesh = ExtrudedMesh(mesh2d, ndiv, layer_height=1.0/ndiv)
         #mesh = BoxMesh(ndiv, ndiv, ndiv, Lx=1.0, Ly=1.0, Lz=1.0, hexahedral=True)
+        mesh.nx = ndiv
+        mesh.ny = ndiv
+        mesh.nz = ndiv
 
         x,y,z = SpatialCoordinate(mesh)
         u_exact = x**2/2 - x**3/3 - 1/12 + y**2/2 - y**3/3 - 1/12 + z**2/2 - z**3/3 - 1/12
@@ -145,18 +148,23 @@ def define_problem_inputs(test_case_number, nref, mesh_type="cartesian"):
         # description = "Domain=[0,1]\time[0,1], zero Dirichlet BCs on x=0, x=1"
         if mesh_type == "simplicial":
             return None
-        ndiv = 8 * 2**nref
+        ndiv = 4 * 2**nref
         mesh2d = UnitSquareMesh(ndiv, ndiv, quadrilateral=quadrilateral)
         mesh = ExtrudedMesh(mesh2d, ndiv, layer_height=1.0/ndiv)
-        
+        mesh.nx = ndiv
+        mesh.ny = ndiv
+        mesh.nz = ndiv
+
+
         x,y,z = SpatialCoordinate(mesh)
         u_exact = z
         V = FunctionSpace(mesh, "DG", 0)
-        f = -div(grad(u_exact))
+        f = -div(grad(u_exact))#100*conditional(z>0.4,1,0)*conditional(z<0.6,100,0)
 
         DG0 = FunctionSpace(mesh, "DG", 0)
+        
         strong_Dirichlet = [(u_exact, "bottom"), (u_exact, "top")]
-        weak_Dirichlet = [(u_exact, ds_b, 1.0), (1.0, ds_t, 1.0)]
+        weak_Dirichlet = [(Constant(0.0), ds_b, 1.0), (1.0, ds_t, 1.0)]
         
         return mesh, u_exact, f, strong_Dirichlet, weak_Dirichlet
 
@@ -193,13 +201,15 @@ def define_problem_inputs(test_case_number, nref, mesh_type="cartesian"):
         tof_full = np.load(f'../examples/2024mri/data/TOF.npy')
         tof_np = tof_full[:,0:160,:10]
         tof_np[tof_np<100] = 0.0
-        mesh = i2d.build_mesh_from_numpy(tof_np, mesh_type="cartesian")
-        tof = i2d.numpy2firedrake(mesh, tof_np)
-        f = tof
+        lengths = np.array(tof_np.shape)*0.5
+        mesh = i2d.build_mesh_from_numpy(tof_np, mesh_type="cartesian",lengths=lengths)
+        tof = i2d.numpy2firedrake(mesh, tof_np, name="tof", lengths=lengths)
+        x,y,z = SpatialCoordinate(mesh)
+        f = conditional(z>lengths[2]/2,1,0)#tof
         u_exact = Constant(0.0)
 
         strong_Dirichlet = [(0, "bottom")]
-        weak_Dirichlet = [(u_exact, ds_b, tof)]
+        weak_Dirichlet = [(u_exact, ds_b, 1.0)]
 
         return mesh, u_exact, f, strong_Dirichlet, weak_Dirichlet
     
@@ -246,7 +256,8 @@ verbose = 1
 mesh_types = ["cartesian", "simplicial"]
 pot_fems = [("DG",0), ("CG",1), ("CR",1), ]
 test_cases = list(range(8))
-save_output = True
+save_output = False
+save_vtr = False
 @pytest.mark.parametrize("mesh_type", mesh_types)
 @pytest.mark.parametrize("pot_fem", pot_fems)
 @pytest.mark.parametrize("test_case_number", test_cases) 
@@ -276,7 +287,8 @@ def test_case(mesh_type, pot_fem, test_case_number):
             if degree>0:
                 break
 
-        h_mode = "cell_over_facet"
+        #h_mode = "cell_over_facet"
+        h_mode = "CellDiameter"
         SD = SpaceDiscretization(mesh, space, degree, h_mode=h_mode)
         
 
@@ -291,12 +303,13 @@ def test_case(mesh_type, pot_fem, test_case_number):
         L = f * test * dx
 
         # fix boundary conditions
+        penalty = 1e1
         if space == "DG":
             if verbose > 0:
                 PETSc.Sys.Print(f"Imposing Dirichlet weakly :")
             # impose weak Dirichlet BCs
-            a = SD.apply_weak_Dirichlet_lhs(weak_Dirichlet, a)# penalty=1e6)
-            L = SD.apply_weak_Dirichlet_rhs(weak_Dirichlet, L)#, penalty=1e6)
+            a = SD.apply_weak_Dirichlet_lhs(weak_Dirichlet, a, penalty=penalty)
+            L = SD.apply_weak_Dirichlet_rhs(weak_Dirichlet, L, penalty=penalty)
             bcs = None
         else:
             # impose strong Dirichlet BCs
@@ -320,8 +333,8 @@ def test_case(mesh_type, pot_fem, test_case_number):
         # setup solver
         solver_parameters={ "ksp_type": "cg",
                             "ksp_max_it": 1000,
-                            "ksp_rtol": 1e-13, 
-                            "ksp_atol": 1e-13,
+                            "ksp_rtol": 1e-12, 
+                            "ksp_atol": 1e-12,
                             "pc_type": "hypre",
                             "ksp_monitor_true_residual": None,
                             }
@@ -359,6 +372,21 @@ def test_case(mesh_type, pot_fem, test_case_number):
             out_file_name  = f"dirichlet_test/output_nref{nref:02}.pvd"
             utilities.save2pvd([u, exact_function, error_function,f_h], out_file_name)
 
+        if save_vtr:
+            out_file_name  = f"dirichlet_test/output_nref{nref:02}.vtr"
+            u_np = i2d.firedrake2numpy(u)
+            exact_np = i2d.firedrake2numpy(exact_function)
+            error_np = i2d.firedrake2numpy(error_function)
+            f_np = i2d.firedrake2numpy(f_h)
+            try:
+                lengths = i2d.get_lengths(mesh)
+            except:
+                lengths = np.array([1.0, 1.0, 1.0])
+            i2d.numpy2vtr([u_np, exact_np, error_np, f_np], 
+                      lengths, 
+                      out_file_name, 
+                      names=["u", "exact", "error", "f"])
+
     hs = np.array(hs)
     errorsL2 = np.array(errorsL2)
 
@@ -368,7 +396,9 @@ def test_case(mesh_type, pot_fem, test_case_number):
 if __name__ == "__main__":
     mesh_types = ["cartesian"]
     pot_fems = [("DG",0)]
-    test_cases = [10]
+    test_cases = [7]
+    save_output = False
+    save_vtr = True
     combinations = itertools.product(mesh_types, pot_fems, test_cases)
     for mesh_type, pot_fem, test_case_number in combinations:
         test_case(mesh_type, pot_fem, test_case_number)

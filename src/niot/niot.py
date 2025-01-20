@@ -324,7 +324,7 @@ class SpaceDiscretization:
     def apply_weak_Dirichlet_lhs(self, 
                              weak_Dirichlet, 
                              Laplacian_form,
-                             penalty=16):
+                             penalty=1e2):
         """
         Apply weak Dirichlet boundary conditions to the form L.
         Args:
@@ -350,7 +350,7 @@ class SpaceDiscretization:
     def apply_weak_Dirichlet_rhs(self,
                                  weak_Dirichlet,
                                  rhs_form,
-                                 penalty=16):
+                                 penalty=1e2):
             
         function_space = rhs_form.arguments()[0].function_space()
         test = TestFunction(function_space)
@@ -564,8 +564,7 @@ class NiotSolver:
                  confidence=1.0, 
                  spaces='DG0DG0',
                  cell2face='harmonic_mean',
-                 setup=False,
-                 Dirichlet_penalty=0.0,
+                 setup=False
                  ):
         '''
         Initialize solver (spatial discretization)
@@ -579,19 +578,22 @@ class NiotSolver:
         self.spaces = spaces
         self.cell2face = cell2face
         
+        mode = "cell_over_facet"
+        #mode = "CellDiameter"
+        self.Dirichlet_penalty = 1e2
         if self.spaces == 'CR1DG0':
-            self.fems = SpaceDiscretization(self.mesh,'CR', 1, 'DG', 0, cell2face)
+            self.fems = SpaceDiscretization(self.mesh,'CR', 1, 'DG', 0, cell2face, h_mode=mode)
         if self.spaces == 'CG1DG0':
-            self.fems = SpaceDiscretization(self.mesh,'CG', 1, 'DG', 0, cell2face)
+            self.fems = SpaceDiscretization(self.mesh,'CG', 1, 'DG', 0, cell2face, h_mode=mode)
         elif self.spaces == 'DG0DG0':
             if self.mesh.ufl_cell().is_simplex():
                 raise ValueError('DG0DG0 only implemented for cartesian grids')
-            self.fems = SpaceDiscretization(self.mesh,'DG',0,'DG',0, cell2face)
+            self.fems = SpaceDiscretization(self.mesh,'DG',0,'DG',0, cell2face, h_mode=mode)
         else:
             raise ValueError('Wrong spaces only (pot,tdens) in (CR1,DG0) or (DG0,DG0) implemented')
         self.ConstansSpace = FunctionSpace(self.mesh, 'R', 0)
 
-        self.Dirichlet_penalty = Dirichlet_penalty
+        
 
         # initialize the solution
         self.sol = self.create_solution()
@@ -686,8 +688,6 @@ class NiotSolver:
 
         #if self.ctrl_get('verbose') >= 3:
         petsc_controls['ksp_monitor_true_residual'] = None
-        
-        
         self.setup_pot_solver(petsc_controls)
 
         log_verbose = self.ctrl_get('log_verbose')
@@ -801,7 +801,7 @@ class NiotSolver:
         # 
         # Boundary conditions
         # 
-        penalty = 1e1
+        penalty = self.Dirichlet_penalty
         if self.btp.weak_Dirichlet is not None:
             PETSc.Sys.Print(f"Applying weak Dirichlet boundary conditions")
             self.weighted_Laplacian = self.fems.apply_weak_Dirichlet_lhs(
@@ -1345,6 +1345,8 @@ class NiotSolver:
         # TODO: is there a better way to do define the PDE 
         # obtain taking the partial derivative of the Lagrangian?   
         
+
+
         pot, tdens = sol.subfunctions
         self.pot_h.assign(pot)
         self.tdens_h.assign(tdens)
