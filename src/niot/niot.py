@@ -104,7 +104,6 @@ def Laplacian_facet_weight(mesh, mode = "center_distance"):
 
 
 def h_size(mesh, mode = "CellDiameter"):
-    print(f"mode = {mode}")
     if mode == "CellDiameter":
         return CellDiameter(mesh)
     elif mode == "cell_over_facet":

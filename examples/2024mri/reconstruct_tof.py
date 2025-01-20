@@ -356,7 +356,7 @@ def select_slice(tof_np, out_directory):
     i2d.numpy2image(tof_bottom_np, f"{out_directory}/tof_bottom.png") 
 
 
-#@profile
+@profile
 def poisson(cartesian_mesh, btp):
     """
     Test solver for possion equation
@@ -442,7 +442,7 @@ def poisson(cartesian_mesh, btp):
 
 
 
-#@profile
+@profile
 def experiment(args):
 
     field = "TOF"
