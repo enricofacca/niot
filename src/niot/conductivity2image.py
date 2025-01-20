@@ -149,7 +149,6 @@ def Laplacian_form(space):
             normal = FacetNormal(mesh)
             form = simplex_DG0_scaling(mesh) * inner(jump(test, normal), jump(trial, normal)) * d_internal_faces
         else:
-            print("DG0 on cartesian")
             d_h = Laplacian_facet_weight(mesh, mode = "face_over_cell")
             form =  jump(test) * jump(trial) / d_h * d_internal_faces
     elif degree == 1:
@@ -196,7 +195,7 @@ class HeatMap(Conductivity2ImageMap):
                 'ksp_type': 'cg',
                 'ksp_rtol': 1e-10,
                 #'ksp_initial_guess_nonzero': True,
-                'ksp_monitor_true_residual': None,
+                #'ksp_monitor_true_residual': None,
                 'pc_type': 'hypre',
                 },
             options_prefix='heat_solver_')
@@ -210,13 +209,9 @@ class HeatMap(Conductivity2ImageMap):
         self.tdens4transform.assign(conductivity)# = assemble(interpolate(conductivity, self.space))
         test = TestFunction(self.space)
         integral = assemble(test*self.tdens4transform*dx)
-        print(f"{integral=}")        
-
         
         b = assemble(self.rhs_heat)
-        with b.dat.vec as b_vec:
-            print("BVEC NORM",b_vec.norm())
-
+        
         # invoce the solver
         self.heat_solver.solve()
                 

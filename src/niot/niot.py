@@ -87,26 +87,30 @@ def Laplacian_facet_weight(mesh, mode = "center_distance"):
             x_func = assemble(interpolate(x, DG0))
             y_func = assemble(interpolate(y, DG0))
             delta_h = sqrt(jump(x_func)**2 + jump(y_func)**2)
+        
         elif mesh.geometric_dimension() == 3:
             x,y,z = mesh.coordinates
             x_func = assemble(interpolate(x, DG0))
             y_func = assemble(interpolate(y, DG0))
             z_func = assemble(interpolate(z, DG0))
             delta_h = sqrt(jump(x_func)**2 
-                                + jump(y_func)**2 
-                                + jump(z_func)**2)
-    elif mode == "face_over_cell":
+                           + jump(y_func)**2 
+                           + jump(z_func)**2)
+    elif mode == "cell_over_face":
         delta_h = 1.0 / avg(FacetArea(mesh) / CellVolume(mesh))
     else:
         raise ValueError('mode must be - center_distance or face_over_cell')
     return delta_h
 
 
-def h_size(mesh, mode = "cellSize"):
-    if mode == "cellSize":
-        return CellSize(mesh)
-    elif mode == "face_over_cell":
-        return FacetArea(mesh) / CellVolume(mesh)
+def h_size(mesh, mode = "CellDiameter"):
+    print(f"mode = {mode}")
+    if mode == "CellDiameter":
+        return CellDiameter(mesh)
+    elif mode == "cell_over_facet":
+        return CellVolume(mesh) / FacetArea(mesh)
+    else:
+        raise ValueError('mode must be - CellDiameter or cell_over_facet')
 
 
 def d_face_interior(mesh):
@@ -126,7 +130,7 @@ def d_face_exterior(mesh):
 def simplex_DG0_scaling(mesh):
     # quantities for DG0 laplacian
     alpha = 4.0
-    h = h_size(mesh, mode = "face_over_cell")
+    h = h_size(mesh, mode = "cell_over_facet")
     h_avg = (h('+') + h('-'))/2.0
     DG0_scaling = alpha(4.0)/h_avg
 
@@ -142,9 +146,13 @@ class SpaceDiscretization:
     # include relevant citations
     Citations().register('FCP2021')
     def __init__(self, mesh, 
-                 pot_space='CR', pot_deg=1, 
-                 tdens_space='DG', tdens_deg=0, 
-                 cell2face='harmonic_mean'):
+                 pot_space='CR', 
+                 pot_deg=1, 
+                 tdens_space='DG', 
+                 tdens_deg=0, 
+                 cell2face='harmonic_mean',
+                 h_mode="CellDiameter"
+                 ):
         #tdens_fem='DG0',pot_fem='P1'):
         '''
         Initialize FEM spaces used to discretized the problem
@@ -155,11 +163,12 @@ class SpaceDiscretization:
         self.pot_test = TestFunction(self.pot_space)
 
         if ((pot_space=='DG') or (pot_space =="DQ") ) and (pot_deg == 0):
-            self.delta_h = Laplacian_facet_weight(mesh, mode = "face_over_cell")
+            self.delta_h = Laplacian_facet_weight(mesh, mode = "center_distance")#"face_over_cell")
             self.cell2face = cell2face
             # quantities for DG0 laplacian
             alpha = Constant(4.0)
-            self.h = h_size(mesh, mode = "face_over_cell")
+            self.h = h_size(mesh, mode = h_mode)
+            # self.h = h_size(mesh, mode = "face_over_cell")
             h_avg = (self.h('+') + self.h('-'))/2.0
             self.DG0_scaling = alpha/h_avg
             self.normal = FacetNormal(mesh)
@@ -336,7 +345,7 @@ class SpaceDiscretization:
         trial = TrialFunction(function_space)
 
         for values_function, d_boundary_measure, marker in weak_Dirichlet:
-            Laplacian_form += penalty * self.h * test * trial * marker * d_boundary_measure
+            Laplacian_form += penalty / self.h * test * trial * marker * d_boundary_measure
         return Laplacian_form
             
     def apply_weak_Dirichlet_rhs(self,
@@ -347,7 +356,7 @@ class SpaceDiscretization:
         function_space = rhs_form.arguments()[0].function_space()
         test = TestFunction(function_space)
         for values_function, d_boundary_measure, marker in weak_Dirichlet:
-            rhs_form += penalty * values_function * self.h * test * marker * d_boundary_measure
+            rhs_form += penalty / self.h * values_function * test * marker * d_boundary_measure
         return rhs_form
 
     
@@ -659,7 +668,7 @@ class NiotSolver:
             'ksp_dtol': 1e5,
             'ksp_max_it' : 1000,
             'ksp_initial_guess_nonzero': True, 
-            'ksp_norm_type': 'unpreconditioned',
+            #'ksp_norm_type': 'unpreconditioned',
             #'ksp_monitor_true_residual' : None, 
         }
         if self.mesh.geometric_dimension() == 3:
@@ -676,8 +685,8 @@ class NiotSolver:
             
             
 
-        if self.ctrl_get('verbose') >= 3:
-            petsc_controls['ksp_monitor_true_residual'] = None
+        #if self.ctrl_get('verbose') >= 3:
+        petsc_controls['ksp_monitor_true_residual'] = None
         
         
         self.setup_pot_solver(petsc_controls)
@@ -793,11 +802,13 @@ class NiotSolver:
         # 
         # Boundary conditions
         # 
+        penalty = 1e1
         if self.btp.weak_Dirichlet is not None:
+            PETSc.Sys.Print(f"Applying weak Dirichlet boundary conditions")
             self.weighted_Laplacian = self.fems.apply_weak_Dirichlet_lhs(
-                self.btp.weak_Dirichlet, self.weighted_Laplacian)
+                self.btp.weak_Dirichlet, self.weighted_Laplacian, penalty=penalty)
             self.rhs = self.fems.apply_weak_Dirichlet_rhs(
-                self.btp.weak_Dirichlet, self.rhs)
+                self.btp.weak_Dirichlet, self.rhs, penalty=penalty)
         else:
             raise NotImplementedError('Strong Dirichlet boundary conditions not implemented')
         
@@ -811,6 +822,7 @@ class NiotSolver:
             nullspace = VectorSpaceBasis(constant=True,comm=self.comm)
         else:
             nullspace = None
+
 
         #
         # Setup Linear Variational Problem
