@@ -578,8 +578,8 @@ class NiotSolver:
         self.spaces = spaces
         self.cell2face = cell2face
         
-        mode = "cell_over_facet"
         #mode = "CellDiameter"
+        mode = "cell_over_facet"
         self.Dirichlet_penalty = 1e2
         if self.spaces == 'CR1DG0':
             self.fems = SpaceDiscretization(self.mesh,'CR', 1, 'DG', 0, cell2face, h_mode=mode)

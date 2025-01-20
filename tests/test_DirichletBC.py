@@ -287,8 +287,8 @@ def test_case(mesh_type, pot_fem, test_case_number):
             if degree>0:
                 break
 
-        #h_mode = "cell_over_facet"
-        h_mode = "CellDiameter"
+        h_mode = "cell_over_facet"
+        #h_mode = "CellDiameter"
         SD = SpaceDiscretization(mesh, space, degree, h_mode=h_mode)
         
 
