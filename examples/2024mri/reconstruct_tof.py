@@ -145,6 +145,7 @@ def setup_btp(brain_mask, inlets, corrupted, constant_absorption = 100):
     inlet_pressure = Function(inlets.function_space())
     inlet_pressure.assign(0.0)
     weak_Dirichlet = [(inlet_pressure, ds_b, inlets)]
+    #strong_Dirichlet = [(source, ds_b, inlets)]
     btp = ot.BranchedTransportProblem(source, sink, 
                                       gamma=gamma, 
                                       Dirichlet = None,
@@ -261,7 +262,7 @@ def setup_solver(btp,
     deltat_control = {
         'type': 'adaptive2',
         'lower_bound': 1e-13,
-        'upper_bound': 1e-1,
+        'upper_bound': 1e-2,
         'expansion': 1.1,
         'contraction': 0.5,
     }
@@ -356,7 +357,7 @@ def select_slice(tof_np, out_directory):
     i2d.numpy2image(tof_bottom_np, f"{out_directory}/tof_bottom.png") 
 
 
-@profile
+#@profile
 def poisson(cartesian_mesh, btp):
     """
     Test solver for possion equation
@@ -442,7 +443,7 @@ def poisson(cartesian_mesh, btp):
 
 
 
-@profile
+#@profile
 def experiment(args):
 
     field = "TOF"
@@ -707,7 +708,7 @@ def experiment(args):
     
     
     # btp inputs
-    btp = setup_btp(brain_mask, inlets, corrupted, constant_absorption = 0.1)
+    btp = setup_btp(brain_mask, inlets, corrupted, constant_absorption = 1e-3)
     
     
    
