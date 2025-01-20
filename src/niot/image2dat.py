@@ -43,10 +43,21 @@ convention_3d_axis_front_back = 2
 
 
 
-def cartesian_grid_3d(shape_xyz, lengths=[1.0,1.0,1.0]):
+def cartesian_grid_3d(shape_xyz, lengths=[1.0,1.0,1.0],comm=COMM_WORLD):
    nx,ny,nz = shape_xyz
-   mesh2d = RectangleMesh(nx,ny,lengths[0],lengths[1],quadrilateral=True)
+   PETSc.Sys.Print(f'Creating mesh {nx}x{ny}x{nz} {lengths=}')
+   mesh2d = RectangleMesh(nx,ny,lengths[0],lengths[1],quadrilateral=True,comm=comm)
    mesh = ExtrudedMesh(mesh2d,nz,lengths[2]/nz)
+   mesh.nx = nx
+   mesh.ny = ny
+   mesh.nz = nz
+   
+   mesh.xmin = 0
+   mesh.xmax = lengths[0]
+   mesh.ymin = 0
+   mesh.ymax = lengths[1] 
+   mesh.zmin = 0
+   mesh.zmax = lengths[2]
    return mesh   
 
 def build_mesh_from_numpy(np_image, 
@@ -84,6 +95,7 @@ def build_mesh_from_numpy(np_image,
       if mesh_type == 'simplicial':
          quadrilateral = False
 
+      PETSc.Sys.Print(f'Creating mesh {width}x{height} {lengths=}')
       mesh = fd.RectangleMesh(
             nx=width,
             ny=height,
@@ -94,6 +106,7 @@ def build_mesh_from_numpy(np_image,
             diagonal="right",
             comm=comm
             )
+
       mesh.nx = width
       mesh.ny = height
       mesh.xmin = 0
@@ -111,7 +124,7 @@ def build_mesh_from_numpy(np_image,
 
       if mesh_type == 'cartesian':
          if extrude:
-            mesh = cartesian_grid_3d([nx,ny,nz],lengths)
+            mesh = cartesian_grid_3d([nx,ny,nz],lengths,comm=comm)
             mesh.nx = nx
             mesh.ny = ny
             mesh.nz = nz
@@ -406,7 +419,7 @@ def simplex2cartesian(function, cartesian_mesh):
 
 def firedrake2numpy(function):
    """
-   Convert DG0 firedrake function to numpy array (2d or 3d).
+   Convert DG0firedrake function to numpy array (2d or 3d).
    It works only for meshes genereted with RectangleMesh or BoxMesh.
    If the mesh is simplicial, the function is averaged neighbouring cells.
    If the mesh is cartesian, the results is reshaped to the original image shape.
@@ -467,7 +480,6 @@ def numpy2vtr(np_images, lengths, vtk_file, names):
    """
    # Create a grid
    if COMM_WORLD.rank == 0:
-      print(len(np_images), len(names))
       if not isinstance(np_images, list):
          np_images = [np_images]
       if not isinstance(names, list):
