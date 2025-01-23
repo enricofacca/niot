@@ -105,7 +105,7 @@ def load_data(field, coarseness, data_folder="../../../mri/",mesh_type="simplici
     return tof_fire, cartesian_mesh
     
 
-def setup_btp(brain_mask, inlets, corrupted, constant_absorption = 100):
+def setup_btp(brain_mask, inlets, corrupted, constant_absorption = 1):
     mesh = brain_mask.function_space().mesh()
     
     # convert to firedrake
@@ -161,7 +161,8 @@ def labels(fem,
            ini,
            confidence,
            tdens2image, 
-           method):
+           method,
+           absortion):
     name = ini.name()
     label= [
         f'fem{fem}',
@@ -193,6 +194,7 @@ def labels(fem,
         else:
             raise ValueError(f'Unknown method {method}')
     label.append(f'method{short_method}')
+    label.append(f"sink{absortion:.1e}")
     return label
 
 
@@ -262,7 +264,7 @@ def setup_solver(btp,
     deltat_control = {
         'type': 'adaptive2',
         'lower_bound': 1e-13,
-        'upper_bound': 1e-2,
+        'upper_bound': 5e-2,
         'expansion': 1.1,
         'contraction': 0.5,
     }
@@ -395,7 +397,7 @@ def poisson(cartesian_mesh, btp):
                         "ksp_rtol": 1e-13, 
                         "ksp_atol": 1e-13,
                         "pc_type": "hypre",
-                        "ksp_monitor_true_residual": None,
+                        #"ksp_monitor_true_residual": None,
                         }
     
     # solver of poisson equation
@@ -410,7 +412,7 @@ def poisson(cartesian_mesh, btp):
         'ksp_max_it' : 1000,
         'ksp_initial_guess_nonzero': True, 
         'ksp_norm_type': 'unpreconditioned',
-        'ksp_monitor_true_residual' : None, 
+        #'ksp_monitor_true_residual' : None, 
     }
     if cartesian_mesh.geometric_dimension() == 3:
         hypre_ctrl_3d = {
@@ -591,10 +593,12 @@ def experiment(args):
         start = time.time()
         i2d.numpy2vtr([t1_np,tof_np, corrupted_np,main_network,external_network,brain_mask_np],#,cc_corrupted], 
                     lengths, f"{out_directory}/mri", 
-                    names=['t1','tof','corrupted','main_network','external_network','brain_mask'])#,'cc_corrupted'])
+                    names=['t1','tof','corrupted','main_network','external_network','brain_mask'],#,'cc_corrupted'])
+                    comm=my_ensemble.comm)
         i2d.numpy2vtr([tof_inlet_np,inlets_np], 
                     [lengths[0],lengths[1],hz],
-                    f"{out_directory}/inlets", names=['tof_inlets','inlets'])
+                    f"{out_directory}/inlets", names=['tof_inlets','inlets'],
+                    comm=my_ensemble.comm)
         PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs'+f" in {time.time()-start:.2f}s")
 
         
@@ -682,7 +686,8 @@ def experiment(args):
         i2d.numpy2vtr([low_np, medium_np, high_np],
                         lengths, 
                         f"{out_directory}/initial_data",
-                        names=['tof_low','tof_medium','tof_high'])
+                        names=['tof_low','tof_medium','tof_high'],
+                        comm=my_ensemble.comm)
 
     # free memory    
     low_np = None
@@ -707,27 +712,6 @@ def experiment(args):
     
     
     
-    # btp inputs
-    btp = setup_btp(brain_mask, inlets, corrupted, constant_absorption = 1e-3)
-    
-    
-   
-    save_inputs_as_pvd = True
-    if save_inputs_as_pvd and my_ensemble.ensemble_comm.rank == 0:
-        PETSc.Sys.Print("start saving inputs as pvd")
-        start = time.time()
-        out_file = VTKFile(f'{out_directory}/inputs.pvd', comm=my_ensemble.comm)
-        out_file.write(btp.sink,corrupted)
-        PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs.pvd'+f" in {time.time()-start:.2f}s")
-        
-    my_ensemble.ensemble_comm.barrier()
-
-
-    test_poisson = False
-    if test_poisson:
-        poisson(cartesian_mesh, btp)
-        exit()
-
 
     
 
@@ -754,6 +738,7 @@ def experiment(args):
             #{"type": "identity", "scaling": 1/20},
             {"type": "identity", "scaling": 100},
         ]
+        absorption = [1e-2,1e-1,1e0,1e1]
         parameters = [
             fems,
             gamma,
@@ -763,15 +748,32 @@ def experiment(args):
             conf,
             maps,
             method,
+            absorption,
         ]
         combinations = list(itertools.product(*parameters))
 
         return combinations
 
-
+    PETSc.Sys.Print("start saving inputs as pvd")
+    start = time.time()
+    out_file = VTKFile(f'{out_directory}/corrupted.pvd', comm=my_ensemble.comm)
+    out_file.write(corrupted)
+    PETSc.Sys.Print(f"saved inputs in {out_file}"+f" in {time.time()-start:.2f}s")
 
     #setup controls
     combinations = figure1()
+
+    
+    
+
+
+    test_poisson = False
+    if test_poisson:
+        btp = setup_btp(brain_mask, inlets, corrupted, constant_absorption = 1.0)
+        poisson(cartesian_mesh, btp)
+        exit()
+
+
     
     
     # divide the combinations in the ensemble
@@ -781,15 +783,43 @@ def experiment(args):
     sub_combinations = list(lol(combinations, my_ensemble.ensemble_comm.size))
     todo = sub_combinations[my_ensemble.ensemble_comm.rank]
 
+
     my_ensemble.ensemble_comm.barrier()
     PETSc.Sys.Print(f"{my_ensemble.ensemble_comm.rank=} {len(todo)=}")
     for combination in todo:
         label = "_".join(labels(*combination))
         PETSc.Sys.Print(f"{my_ensemble.ensemble_comm.rank=} {label}")
 
+        # btp inputs
+        absortion = combination[-1]
+        btp = setup_btp(brain_mask, inlets, corrupted, constant_absorption = absortion)
+
+        if my_ensemble.comm.rank == 0:
+            print(f"{my_ensemble.ensemble_comm.rank=} {label=}")
 
         label_dir = os.path.join(out_directory,label)
         mpi_mkdir(label_dir, my_ensemble.comm)
+
+        save_inputs_as_pvd = True
+        if save_inputs_as_pvd :
+            PETSc.Sys.Print("start saving sink as pvd")
+            start = time.time()
+            filename = f"{label_dir}/sink.pvd"
+            PETSc.Sys.Print(f"Saving {filename}")
+            outfile = VTKFile(filename, comm=my_ensemble.comm)
+            outfile.write(btp.sink)
+            PETSc.Sys.Print(f"saved inputs in {filename}"+f" in {time.time()-start:.2f}s")
+        
+        save_inputs_as_vtr = True
+        if save_inputs_as_vtr:
+            filename=f"{label_dir}/sink"
+            PETSc.Sys.Print(f"Saving {filename}")
+            sink_np = i2d.firedrake2numpy(btp.sink)
+            i2d.numpy2vtr([sink_np], lengths, filename, names=['sink'], comm=my_ensemble.comm)
+        
+
+        my_ensemble.ensemble_comm.barrier()
+        
 
         
         # setup solvers
@@ -831,8 +861,14 @@ def experiment(args):
             binary_image=True, 
             return_N=True)
         PETSc.Sys.Print(f"{n_cc_reconstruction=}")
-
-        i2d.numpy2vtr([tdens_np,pot_np,cc_reconstruction], lengths, f"{label_dir}/tdens_pot", names=['tdens','pot','cc_reconstruction'])
+        
+        filename=f"{label_dir}/tdens_pot"
+        PETSc.Sys.Print(f"Saving {filename}")
+        i2d.numpy2vtr([tdens_np,pot_np,cc_reconstruction],
+         lengths, 
+         filename, 
+         names=['tdens','pot','cc_reconstruction'],
+        comm=my_ensemble.comm)
 
 
         
