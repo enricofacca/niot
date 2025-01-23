@@ -686,8 +686,8 @@ class NiotSolver:
             
             
 
-        #if self.ctrl_get('verbose') >= 3:
-        petsc_controls['ksp_monitor_true_residual'] = None
+        if self.ctrl_get('verbose') >= 3:
+            petsc_controls['ksp_monitor_true_residual'] = None
         self.setup_pot_solver(petsc_controls)
 
         log_verbose = self.ctrl_get('log_verbose')
