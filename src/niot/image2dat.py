@@ -474,12 +474,12 @@ def firedrake2numpy(function):
    return global_data
       
 
-def numpy2vtr(np_images, lengths, vtk_file, names):
+def numpy2vtr(np_images, lengths, vtk_file, names, comm=COMM_WORLD):
    """
    Given a numpy array, save it to a vtk file.
    """
    # Create a grid
-   if COMM_WORLD.rank == 0:
+   if comm.rank == 0:
       if not isinstance(np_images, list):
          np_images = [np_images]
       if not isinstance(names, list):
@@ -487,8 +487,7 @@ def numpy2vtr(np_images, lengths, vtk_file, names):
 
       if len(np_images) != len(names):
          raise ValueError('The number of images and names must be the same')
-      
-
+   
 
 
       data_shape = np_images[0].shape
