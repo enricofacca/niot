@@ -660,7 +660,7 @@ class NiotSolver:
 
         # solver of poisson equation
         petsc_controls ={
-            "snes_monitor": None,
+            #"snes_monitor": None,
             # krylov solver controls
             'ksp_type': 'cg',
             'pc_type': 'hypre',
@@ -692,7 +692,12 @@ class NiotSolver:
 
         log_verbose = self.ctrl_get('log_verbose')
         if log_verbose > 0:
-            self.log_viewer = PETSc.Viewer().createASCII(self.ctrl_get('log_file'), 'w', comm=self.comm)
+            log_file = self.ctrl_get('log_file')
+            try:
+                os.remove(log_file)
+            except OSError:
+                pass
+            self.log_viewer = PETSc.Viewer().createASCII(log_file, 'w', comm=self.comm)
     
         # we need to initialize the increment solver
         self.shift_semi_implicit = Function(self.ConstansSpace)
@@ -729,9 +734,10 @@ class NiotSolver:
             num_facets = self.mesh.num_facets()
 
 
-        self.print_info(f'Number of cells: {num_cells}',priority=2, where=['stdout','log'])
-        self.print_info(f'Number of nodes: {num_vertices}',priority=2, where=['stdout','log'])
-        self.print_info(f'Number of facet: {num_facets}',priority=2, where=['stdout','log'])
+        self.print_info(f'Cells: {num_cells}'
+                        + f'Nodes: {num_vertices}'
+                        + f'Facets: {num_facets}',
+                        priority=2, where=['stdout','log'])
 
     def setup_tdensimage(self):
         """
@@ -803,7 +809,6 @@ class NiotSolver:
         # 
         penalty = self.Dirichlet_penalty
         if self.btp.weak_Dirichlet is not None:
-            PETSc.Sys.Print(f"Applying weak Dirichlet boundary conditions")
             self.weighted_Laplacian = self.fems.apply_weak_Dirichlet_lhs(
                 self.btp.weak_Dirichlet, self.weighted_Laplacian, penalty=penalty)
             self.rhs = self.fems.apply_weak_Dirichlet_rhs(
@@ -896,7 +901,7 @@ class NiotSolver:
                 log_verbose = self.ctrl_get('log_verbose')
                 if log_verbose >0 and log_verbose >= priority:
                     self.log_viewer.pushASCIISynchronized()
-                    self.log_viewer.printfASCIISynchronized('   '*(priority-1)+msg+'\n')
+                    self.log_viewer.printfASCII('   '*(priority-1)+msg+'\n')
 
     
 
@@ -1149,7 +1154,29 @@ class NiotSolver:
         # open log file
         #if self.ctrl_get('log_verbose') > 0:
         #    f_log = open(self.ctrl_get('log_file'), 'w')
-        
+        tdens2image = self.ctrl_get('tdens2image')
+        if tdens2image['type'] == 'identity':
+            map_description = f'mu2iidentity'
+        elif tdens2image['type'] == 'heat':
+           map_description = f"mu2iheat{tdens2image['sigma']:.1e}"
+        elif tdens2image['type'] == 'pm':
+           map_description = f"mu2ipm{tdens2image['sigma']:.1e}"
+        else:
+            raise ValueError(f'Unknown tdens2image {tdens2image}')
+        max_iter = self.ctrl_get('max_iter')
+        wd = self.ctrl_get('discrepancy_weight')
+
+        msg = (
+            f' wd: {wd :.2e} '
+            +f' map: {map_description}'
+            + f' max_iter: {max_iter}'
+                )
+        self.print_info(
+                msg, 
+                priority=0,
+                where=['stdout','log'],
+            )
+
         # solve initial 
         ierr = self.solve_pot_PDE(self.sol)
         if ierr != 0:
