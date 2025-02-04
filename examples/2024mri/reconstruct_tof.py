@@ -247,7 +247,10 @@ def setup_solver(btp,
     niot_solver.ctrl_set('constraint_tol', 1e-6)
     niot_solver.ctrl_set('max_iter', 5000)
     niot_solver.ctrl_set('max_restart', 4)
-    niot_solver.ctrl_set('verbose', 2)
+    niot_solver.ctrl_set('verbose', 0)
+
+    
+   
 
      # time discretization
     if method is None:
@@ -625,7 +628,7 @@ def experiment(args):
 
     cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths,comm=my_ensemble.comm)
     PETSc.Sys.Print(f"Mesh built")
-   
+
     space = FunctionSpace(cartesian_mesh,"DG",0)
     if my_ensemble.ensemble_comm.rank == 0:
         PETSc.Sys.Print("converting into firedrake")
@@ -653,55 +656,57 @@ def experiment(args):
     PETSc.Sys.Print(f"end broadcasting")
     
     # initial guess
-    heat_flow = True
+    heat_flow = False
     sigma0 = 1.0
     base = 4
     min_tdens = 1e-4
-    if heat_flow:
-        heat = HeatMap(corrupted.function_space(), scaling=1.0, sigma=1e1)
-        low = Function(space,name="LOW")
-        medium = Function(space,name="MEDIUM")
-        high = Function(space,name="HIGH")
+
+    if False:
+        if heat_flow:
+            heat = HeatMap(corrupted.function_space(), scaling=1.0, sigma=1e1)
+            low = Function(space,name="LOW")
+            medium = Function(space,name="MEDIUM")
+            high = Function(space,name="HIGH")
+            
+            low.assign(heat(corrupted+min_tdens) + min_tdens)
+            medium.assign(heat(low+min_tdens) + min_tdens)
+            high.assign(heat(medium+min_tdens) + min_tdens)
+            
+            low_np = i2d.firedrake2numpy(low)
+            medium_np = i2d.firedrake2numpy(medium)
+            high_np = i2d.firedrake2numpy(high)
+        else:
+            low_np = gaussian_filter(corrupted_np, sigma=base**0*sigma0, truncate=1e0)
+            medium_np = gaussian_filter(low_np, sigma=base, truncate=1e0)
+            high_np = gaussian_filter(medium_np, sigma=base, truncate=1e0)
+            
+            low = i2d.numpy2firedrake(cartesian_mesh, low_np, name="LOW")
+            medium = i2d.numpy2firedrake(cartesian_mesh, medium_np, name="MEDIUM")
+            high = i2d.numpy2firedrake(cartesian_mesh, high_np, name="HIGH")
+            for ini in [low,medium,high]:
+                ini += min_tdens
+
+        if my_ensemble.ensemble_comm.rank == 0:
+            # save tof_low
+            i2d.numpy2vtr([low_np, medium_np, high_np],
+                            lengths, 
+                            f"{out_directory}/initial_data",
+                            names=['tof_low','tof_medium','tof_high'],
+                            comm=my_ensemble.comm)
+
+        # free memory    
+        low_np = None
+        medium_np = None
+        high_np = None
         
-        low.assign(heat(corrupted+min_tdens) + min_tdens)
-        medium.assign(heat(low+min_tdens) + min_tdens)
-        high.assign(heat(medium+min_tdens) + min_tdens)
-        
-        low_np = i2d.firedrake2numpy(low)
-        medium_np = i2d.firedrake2numpy(medium)
-        high_np = i2d.firedrake2numpy(high)
-    else:
-        low_np = gaussian_filter(corrupted_np, sigma=base**0*sigma0, truncate=1e0)
-        medium_np = gaussian_filter(low_np, sigma=base, truncate=1e0)
-        high_np = gaussian_filter(medium_np, sigma=base, truncate=1e0)
-
-        low = i2d.numpy2firedrake(cartesian_mesh, low_np, name="LOW")
-        medium = i2d.numpy2firedrake(cartesian_mesh, medium_np, name="MEDIUM")
-        high = i2d.numpy2firedrake(cartesian_mesh, high_np, name="HIGH")
-        for ini in [low,medium,high]:
-            ini += min_tdens
-
-    if my_ensemble.ensemble_comm.rank == 0:
-        # save tof_low
-        i2d.numpy2vtr([low_np, medium_np, high_np],
-                        lengths, 
-                        f"{out_directory}/initial_data",
-                        names=['tof_low','tof_medium','tof_high'],
-                        comm=my_ensemble.comm)
-
-    # free memory    
-    low_np = None
-    medium_np = None
-    high_np = None
-    
     one = Function(space, name="ONE")
     one.assign(1.0)
     PETSc.Sys.Print(f"Initial guess built")
     
 
-    initials = [low,medium,high,one]
+    #initials = [low,medium,high,one]
 
-    save_inputs_as_pvd = True
+    save_inputs_as_pvd = False
     if save_inputs_as_pvd:
         PETSc.Sys.Print("start saving inputs as pvd")
         start = time.time()
@@ -730,15 +735,17 @@ def experiment(args):
         # Combinations producting the data for Figure 2
         #
         gamma = [0.5] # 
-        wd = [0.0]#1e-6,1e-3,1e1,1e2,1e5]  # set the discrepancy to zero
-        ini = [one]#,low,medium]
+        wd = [1e-4,1e-3]  # set the discrepancy to zero
+        ini = [one]#,high]
         # the following are not influent since wd=weight discrepancy is zero
         conf = ["ONE"]
         maps = [
             #{"type": "identity", "scaling": 1/20},
-            {"type": "identity", "scaling": 100},
+            #{"type": "identity", "scaling": 1},
+            {"type": "identity", "scaling": 10},
+            #{"type": "identity", "scaling": 100},
         ]
-        absorption = [1e-2,1e-1,1e0,1e1]
+        absorption = [1e-3]#,1e-4]
         parameters = [
             fems,
             gamma,
@@ -783,24 +790,31 @@ def experiment(args):
     sub_combinations = list(lol(combinations, my_ensemble.ensemble_comm.size))
     todo = sub_combinations[my_ensemble.ensemble_comm.rank]
 
+    for i in range(my_ensemble.ensemble_comm.size):
+        if i == my_ensemble.ensemble_comm.rank:
+            print(f"ENSEMBLE {i}")
+            for j, comb in enumerate(todo):
+                label = "_".join(labels(*comb))
+                if my_ensemble.comm.rank == 0:
+                    print(f"{j} {label}")   
+        my_ensemble.ensemble_comm.barrier()
 
     my_ensemble.ensemble_comm.barrier()
+
+
     PETSc.Sys.Print(f"{my_ensemble.ensemble_comm.rank=} {len(todo)=}")
-    for combination in todo:
+    for i, combination in enumerate(todo):
         label = "_".join(labels(*combination))
-        PETSc.Sys.Print(f"{my_ensemble.ensemble_comm.rank=} {label}")
+        PETSc.Sys.Print(f"{i} {my_ensemble.ensemble_comm.rank=} {label}")
 
         # btp inputs
         absortion = combination[-1]
         btp = setup_btp(brain_mask, inlets, corrupted, constant_absorption = absortion)
 
-        if my_ensemble.comm.rank == 0:
-            print(f"{my_ensemble.ensemble_comm.rank=} {label=}")
-
         label_dir = os.path.join(out_directory,label)
         mpi_mkdir(label_dir, my_ensemble.comm)
 
-        save_inputs_as_pvd = True
+        save_inputs_as_pvd = False
         if save_inputs_as_pvd :
             PETSc.Sys.Print("start saving sink as pvd")
             start = time.time()
@@ -810,7 +824,7 @@ def experiment(args):
             outfile.write(btp.sink)
             PETSc.Sys.Print(f"saved inputs in {filename}"+f" in {time.time()-start:.2f}s")
         
-        save_inputs_as_vtr = True
+        save_inputs_as_vtr = False
         if save_inputs_as_vtr:
             filename=f"{label_dir}/sink"
             PETSc.Sys.Print(f"Saving {filename}")
@@ -820,12 +834,19 @@ def experiment(args):
 
         my_ensemble.ensemble_comm.barrier()
         
-
+        
         
         # setup solvers
-        niot_solver = setup_solver( btp, corrupted, *combinations[0])
+        if my_ensemble.comm.rank == 0:
+            print(f"BEGIN {i+1}/{len(todo)} ensemble {my_ensemble.ensemble_comm.rank}: {label}")
+        niot_solver = setup_solver( btp, corrupted, *combination)
         initial = combination[4]
         niot_solver.set_solution(tdens=initial)
+        
+        log_filename = os.path.join(label_dir,f"niot.log")
+        niot_solver.ctrl_set("log_file",log_filename)
+        
+        # run solver
         ierr = niot_solver.solve()
 
         # save solution
@@ -869,7 +890,8 @@ def experiment(args):
          filename, 
          names=['tdens','pot','cc_reconstruction'],
         comm=my_ensemble.comm)
-
+        if my_ensemble.comm.rank == 0:
+            print(f"DONE  {i+1}/{len(todo)} ensemble {my_ensemble.ensemble_comm.rank}: {label}")
 
         
 
