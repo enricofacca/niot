@@ -461,6 +461,7 @@ class NiotSolver:
         'max_iter': 100,
         'max_restart': 2,
         'min_tdens' : 1e-8,
+        'restart': False,
         # info 
         'verbose' : 0,
         'log_verbose': 2,
@@ -564,7 +565,8 @@ class NiotSolver:
                  confidence=1.0, 
                  spaces='DG0DG0',
                  cell2face='harmonic_mean',
-                 setup=False
+                 setup=False,
+                 ensemble_comm=None,
                  ):
         '''
         Initialize solver (spatial discretization)
@@ -575,6 +577,9 @@ class NiotSolver:
                           
         self.mesh = btp.mesh
         self.comm  = self.mesh.comm
+        self.ensemble_comm = None
+        if ensemble_comm is not None:
+            self.ensemble_comm = ensemble_comm
         self.spaces = spaces
         self.cell2face = cell2face
         
@@ -693,10 +698,13 @@ class NiotSolver:
         log_verbose = self.ctrl_get('log_verbose')
         if log_verbose > 0:
             log_file = self.ctrl_get('log_file')
+            print(f'Log file: {log_file}')
             try:
                 os.remove(log_file)
             except OSError:
                 pass
+            if hasattr(self, 'log_viewer'):
+                self.log_viewer.destroy()
             self.log_viewer = PETSc.Viewer().createASCII(log_file, 'w', comm=self.comm)
     
         # we need to initialize the increment solver
@@ -723,7 +731,7 @@ class NiotSolver:
         #                         'pc_type': 'hypre'},
         #                         options_prefix='increment_solver_')
 
-        if hasattr(self.mesh,'extruded'):
+        if isinstance(self.mesh, ExtrudedMeshTopology):
             num_cells = self.mesh.num_cells() * (self.mesh.layers-1)
             num_vertices = self.mesh.num_vertices() * self.mesh.layers
             num_facets = ( self.mesh.num_cells() * (self.mesh.layers) # horizontal facets
@@ -735,9 +743,35 @@ class NiotSolver:
 
 
         self.print_info(f'Cells: {num_cells}'
-                        + f'Nodes: {num_vertices}'
-                        + f'Facets: {num_facets}',
+                        + f' Nodes: {num_vertices}'
+                        + f' Facets: {num_facets}',
                         priority=2, where=['stdout','log'])
+        
+        # open log file
+        tdens2image = self.ctrl_get('tdens2image')
+        if tdens2image['type'] == 'identity':
+            map_description = f'mu2iidentity'
+        elif tdens2image['type'] == 'heat':
+           map_description = f"mu2iheat{tdens2image['sigma']:.1e}"
+        elif tdens2image['type'] == 'pm':
+           map_description = f"mu2ipm{tdens2image['sigma']:.1e}"
+        else:
+            raise ValueError(f'Unknown tdens2image {tdens2image}')
+        
+        max_iter = self.ctrl_get('max_iter')
+        wd = self.ctrl_get('discrepancy_weight')
+
+        msg = (
+            f' wd: {wd :.2e} '
+            +f' map: {map_description}'
+            + f' max_iter: {max_iter}'
+                )
+        self.print_info(
+                msg, 
+                priority=0,
+                where=['stdout','log'],
+            )
+        
 
     def setup_tdensimage(self):
         """
@@ -1138,65 +1172,41 @@ class NiotSolver:
          ierr : control flag. It is 0 if everthing worked.
         '''
         
-       
-
-        # Initialize the parameter-dependent solvers
-        self.setup()
-
-
         # Clear tape is required to avoid memory accumalation
         # It works but I don't know why
         # see also https://github.com/firedrakeproject/firedrake/issues/3133
         use_adjoint = self.ctrl_get("use_adjoint")
         #if use_adjoint:
         tape = fire_adj.get_working_tape()
-        
-        # open log file
-        #if self.ctrl_get('log_verbose') > 0:
-        #    f_log = open(self.ctrl_get('log_file'), 'w')
-        tdens2image = self.ctrl_get('tdens2image')
-        if tdens2image['type'] == 'identity':
-            map_description = f'mu2iidentity'
-        elif tdens2image['type'] == 'heat':
-           map_description = f"mu2iheat{tdens2image['sigma']:.1e}"
-        elif tdens2image['type'] == 'pm':
-           map_description = f"mu2ipm{tdens2image['sigma']:.1e}"
-        else:
-            raise ValueError(f'Unknown tdens2image {tdens2image}')
-        max_iter = self.ctrl_get('max_iter')
-        wd = self.ctrl_get('discrepancy_weight')
+    
+        if not self.ctrl_get('restart'):
+            # Initialize the parameter-dependent solvers
+            #self.setup()
 
-        msg = (
-            f' wd: {wd :.2e} '
-            +f' map: {map_description}'
-            + f' max_iter: {max_iter}'
-                )
-        self.print_info(
-                msg, 
-                priority=0,
-                where=['stdout','log'],
-            )
-
-        # solve initial 
-        ierr = self.solve_pot_PDE(self.sol)
-        if ierr != 0:
+            # solve initial 
+            ierr = self.solve_pot_PDE(self.sol)
+            if ierr != 0:
+                self.print_info(
+                msg=f'First solve_pot_PDE failed with {ierr}\n. Aborting', 
+                priority=0, 
+                where=['stdout','log'], 
+                color='red')
+                return ierr
+            avg_outer = self.outer_iterations / max(self.nonlinear_iterations,1)
             self.print_info(
-            msg=f'First solve_pot_PDE failed with {ierr}\n. Aborting', 
-            priority=0, 
-            where=['stdout','log'], 
-            color='red')
-            return ierr
-        avg_outer = self.outer_iterations / max(self.nonlinear_iterations,1)
-        self.print_info(
-            msg=f'It: {0} avgouter: {avg_outer:.1f}', 
-            priority=1, 
-            where=['stdout','log'], 
-            color='green')
-        
+                msg=f'It: {0} avgouter: {avg_outer:.1f}', 
+                priority=1, 
+                where=['stdout','log'], 
+                color='green')
+            
+            
+            
+            self.iteration = 0
+            
         # udpack main controls and start main loop
         max_iter = self.ctrl_get('max_iter')
+
         
-        self.iteration = 0
         ierr_dmk = 0
         while ierr_dmk == 0 and self.iteration < max_iter:
             # update with restarts
@@ -1266,6 +1276,8 @@ class NiotSolver:
             if (residual_opt < self.ctrl_get('optimization_tol')):
                 ierr_dmk = 0
                 break
+
+        
 
         #if self.ctrl_get('log_verbose') > 0:
         #    f_log.close()
