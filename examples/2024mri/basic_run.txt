@@ -1,0 +1,1 @@
+nohup mpiexec -n 10 python reconstruct_tof.py --xmin 10 --xmax 155 --ymin 12 --ymax 175 --zmin 0 --zmax 152 --n_ensemble 10 --mri ./data/ --out wdgt0/ > c1.out 2> c1.err
