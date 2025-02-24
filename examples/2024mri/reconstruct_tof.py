@@ -2,7 +2,8 @@ import sys
 import glob
 import os
 from copy import deepcopy as cp
-
+ 
+import gc
 import cc3d
 import numpy as np
 from niot import image2dat as i2d
@@ -118,7 +119,7 @@ def setup_btp(brain_mask, inlets, corrupted, constant_absorption = 1):
     # above 150 define the approximate support of absortion
     # above 250 is remove beacuse where we know we have blood vessels
     #sink.interpolate(conditional(tof_fire>threshold_domain,1,0) 
-    #                 * conditional(tof_fire<threshold_network,1,0))
+    #                 * conditional(tof_fire<|etwork,1,0))
     
     
     sink.interpolate(-conditional(brain_mask>1e-10,constant_absorption,0)
@@ -213,7 +214,7 @@ def setup_solver(btp,
                  method='tdens_mirror_descent_explicit'  ,
                  directory='out/',
                  labels_problem=['unnamed'],
-                 comm=COMM_SELF,
+                 ensemble_comm=None,
                  verbose=0):
 
 
@@ -232,6 +233,7 @@ def setup_solver(btp,
                              spaces = fem,
                              cell2face = 'harmonic_mean',
                              setup=False,
+                            ensemble_comm=ensemble_comm,
                              )
 
 
@@ -454,13 +456,13 @@ def experiment(args):
     field = "TOF"
     coarseness = args.c
     results = args.out
-    threshold_network = 250.0
+    threshold_network = args.threshold_network
 
 
     # make directories
     mpi_mkdir(results)
 
-    test_case = f"{field}_{coarseness:02}"
+    test_case = f"{field}_{coarseness:02}_threshold_{threshold_network:.1e}"
     out_directory = results+test_case
     mpi_mkdir(out_directory)
 
@@ -647,6 +649,11 @@ def experiment(args):
         inlets = Function(space,name="Inlets")
         brain_mask = Function(space,name="Brain_mask")
         corrupted = Function(space,name="corrupted")
+
+    brain_mask_np = None
+    inlets_np = None
+    inlets_3d_np = None
+    corrupted_np = None
     
     my_ensemble.ensemble_comm.barrier()
     PETSc.Sys.Print(f"start broadcasting")
@@ -656,12 +663,13 @@ def experiment(args):
     PETSc.Sys.Print(f"end broadcasting")
     
     # initial guess
-    heat_flow = False
+    heat_flow = True
     sigma0 = 1.0
     base = 4
     min_tdens = 1e-4
 
-    if False:
+    initial_guess = True
+    if initial_guess:
         if heat_flow:
             heat = HeatMap(corrupted.function_space(), scaling=1.0, sigma=1e1)
             low = Function(space,name="LOW")
@@ -714,9 +722,14 @@ def experiment(args):
         fun = initials[my_ensemble.ensemble_comm.rank]
         out_file.write(fun)
         PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs.pvd'+f" in {time.time()-start:.2f}s")
-    
-    
-    
+        
+        PETSc.Sys.Print("start saving inputs as pvd")
+        start = time.time()
+        out_file = VTKFile(f'{out_directory}/corrupted.pvd', comm=my_ensemble.comm)
+        out_file.write(corrupted)
+        PETSc.Sys.Print(f"saved inputs in {out_file}"+f" in {time.time()-start:.2f}s")
+        
+        
 
     
 
@@ -736,7 +749,7 @@ def experiment(args):
         #
         gamma = [0.5] # 
         wd = [1e-4,1e-3]  # set the discrepancy to zero
-        ini = [one]#,high]
+        ini = [one]
         # the following are not influent since wd=weight discrepancy is zero
         conf = ["ONE"]
         maps = [
@@ -761,11 +774,7 @@ def experiment(args):
 
         return combinations
 
-    PETSc.Sys.Print("start saving inputs as pvd")
-    start = time.time()
-    out_file = VTKFile(f'{out_directory}/corrupted.pvd', comm=my_ensemble.comm)
-    out_file.write(corrupted)
-    PETSc.Sys.Print(f"saved inputs in {out_file}"+f" in {time.time()-start:.2f}s")
+    
 
     #setup controls
     combinations = figure1()
@@ -840,59 +849,68 @@ def experiment(args):
         if my_ensemble.comm.rank == 0:
             print(f"BEGIN {i+1}/{len(todo)} ensemble {my_ensemble.ensemble_comm.rank}: {label}")
         niot_solver = setup_solver( btp, corrupted, *combination)
-        initial = combination[4]
-        niot_solver.set_solution(tdens=initial)
         
+        # setup log file
         log_filename = os.path.join(label_dir,f"niot.log")
         niot_solver.ctrl_set("log_file",log_filename)
         
+        # set solvers according to controls
+        niot_solver.setup()
+        
+        #
+        initial = combination[4]
+        niot_solver.set_solution(tdens=initial)
+        
+        
         # run solver
-        ierr = niot_solver.solve()
+        total_iterations = niot_solver.ctrl_get('max_iter')
+        buffer_saving = min(10000,total_iterations)
 
-        # save solution
-        pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
 
+        def solve_and_save(niot_solver, label_dir):
+            ierr = niot_solver.solve()
+
+            # save solution
+            pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
+
+            tdens_np = i2d.firedrake2numpy(tdens)
+            pot_np = i2d.firedrake2numpy(pot)
+
+            tdens = None
+            pot = None
+
+
+            # save tdens and pot as npy files
+            np.save(f"{label_dir}/tdens.npy",tdens_np)
+            np.save(f"{label_dir}/pot.npy",pot_np)
         
+            filename=f"{label_dir}/tdens_pot"
+            PETSc.Sys.Print(f"Saving {filename}")
+            i2d.numpy2vtr([tdens_np,pot_np],
+            lengths, 
+            filename, 
+            names=['tdens','pot'],
+            comm=my_ensemble.comm)
+            if my_ensemble.comm.rank == 0:
+                print(f"DONE  {i+1}/{len(todo)} ensemble {my_ensemble.ensemble_comm.rank}: {label}")
 
+            tdens_np = None
+            pot_np = None
 
-        DQ0 = FunctionSpace(cartesian_mesh,"DQ",0)
-        tdens_grid = Function(DQ0, name="tdens_grid")
-        pot_grid = Function(DQ0, name="pot_grid")
+        # run and save
+        niot_solver.ctrl_set('max_iter', total_iterations%buffer_saving)
+        solve_and_save(niot_solver, label_dir)
+        PETSc.Sys.Print(f"First {total_iterations%buffer_saving} iterations done")
 
-        tdens_grid.interpolate(tdens)
-        pot_grid.interpolate(pot)
+        # run and save, skipping initial steps
+        niot_solver.ctrl_set('max_iter',buffer_saving)
+        niot_solver.ctrl_set('restart',True)
+        for i in range(total_iterations//buffer_saving):
+            PETSc.Sys.Print(f"Restarting {i+1}/{total_iterations//buffer_saving} {label}")
+            solve_and_save(niot_solver, label_dir)
 
-
-        reconstruction = Function(niot_solver.fems.tdens_space)
-        reconstruction.interpolate(niot_solver.tdens2image(tdens) )
-        reconstruction.rename('reconstruction','Reconstruction')
-
-        tdens_np = i2d.firedrake2numpy(tdens)
-        pot_np = i2d.firedrake2numpy(pot)
-
-        # save tdens and pot as npy files
-        np.save(f"{label_dir}/tdens.npy",tdens_np)
-        np.save(f"{label_dir}/pot.npy",pot_np)
-
-        support_reconstuction = np.zeros_like(tdens_np)
-        support_reconstuction[tdens_np>1e-4] = 1
-        cc_reconstruction, n_cc_reconstruction = cc3d.connected_components(
-            support_reconstuction, 
-            connectivity=26, 
-            binary_image=True, 
-            return_N=True)
-        PETSc.Sys.Print(f"{n_cc_reconstruction=}")
+        gc.collect()
         
-        filename=f"{label_dir}/tdens_pot"
-        PETSc.Sys.Print(f"Saving {filename}")
-        i2d.numpy2vtr([tdens_np,pot_np,cc_reconstruction],
-         lengths, 
-         filename, 
-         names=['tdens','pot','cc_reconstruction'],
-        comm=my_ensemble.comm)
-        if my_ensemble.comm.rank == 0:
-            print(f"DONE  {i+1}/{len(todo)} ensemble {my_ensemble.ensemble_comm.rank}: {label}")
-
         
 
 if __name__ == "__main__":
@@ -909,6 +927,7 @@ if __name__ == "__main__":
     parser.add_argument("--ymax", type=float, default=1000.0, help="Upper bound y")
     parser.add_argument("--zmin", type=float, default=0.0, help="Lower bound z")
     parser.add_argument("--zmax", type=float, default=1000.0, help="Upper bound z")
+    parser.add_argument("--threshold_network", type=float, default=250, help="Threshold for network")
     
     args, unknown = parser.parse_known_args()
 
