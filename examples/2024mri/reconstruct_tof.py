@@ -419,18 +419,21 @@ def poisson(cartesian_mesh, btp):
         'ksp_norm_type': 'unpreconditioned',
         #'ksp_monitor_true_residual' : None, 
     }
+
+    dim = cartesian_mesh.geometric_dimension()
+    PETSc.Sys.Print(f"3d hypre {dim}") 
     if cartesian_mesh.geometric_dimension() == 3:
         hypre_ctrl_3d = {
                         # tuning parameters for the multigrid
                         # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
                         "pc_hypre_type": "boomeramg",
-                        "pc_hypre_boomeramg_strong_threshold": 0.75,
+                        "pc_hypre_boomeramg_strong_threshold": 0.8,
                         "pc_hypre_boomeramg_max_iter": 1,
-                        "pc_hypre_boomeramg_agg_nl": 3,
+                        "pc_hypre_boomeramg_agg_nl": 4,
                         "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
                     }
         petsc_controls.update(hypre_ctrl_3d)
-
+        PETSc.Sys.Print(f"3d hypre") 
 
     problem = LinearVariationalProblem(a, L, pot_h, bcs=bcs)
     solver = LinearVariationalSolver(problem, 
@@ -668,8 +671,9 @@ def experiment(args):
     base = 4
     min_tdens = 1e-4
 
-    initial_guess = True
+    initial_guess = False
     if initial_guess:
+        PETSc.Sys.Print(f"Initial guess")
         if heat_flow:
             heat = HeatMap(corrupted.function_space(), scaling=1.0, sigma=1e1)
             low = Function(space,name="LOW")
