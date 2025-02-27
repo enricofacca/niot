@@ -474,7 +474,7 @@ def firedrake2numpy(function):
    return global_data
       
 
-def numpy2vtr(np_images, lengths, vtk_file, names, comm=COMM_WORLD):
+def numpy2vtr(np_images, lengths, vtk_file, names, comm=COMM_WORLD, offset=None):
    """
    Given a numpy array, save it to a vtk file.
    """
@@ -489,15 +489,15 @@ def numpy2vtr(np_images, lengths, vtk_file, names, comm=COMM_WORLD):
          raise ValueError('The number of images and names must be the same')
    
 
-
+      if offset is None:
+         offset = [0,0,0]
       data_shape = np_images[0].shape
       dim = len(data_shape)
       if ( dim == 2):
-         
          #imageToVTK(vtk_file, cellData={name: reshaped})
-         x = np.linspace(0, lengths[0], data_shape[0]+1)
-         y = np.linspace(0, lengths[1], data_shape[1]+1)      
-         z = np.array([0])
+         x = np.linspace(offset[0], lengths[0]+offset[0], data_shape[0]+1)
+         y = np.linspace(offset[1], lengths[1]+offset[1], data_shape[1]+1)      
+         z = np.array([offset[2]])
 
          cellData = {}
          for i in range(len(np_images)):
@@ -510,9 +510,9 @@ def numpy2vtr(np_images, lengths, vtk_file, names, comm=COMM_WORLD):
          gridToVTK(vtk_file, x, y, z, cellData={name: reshaped})
    
       elif ( dim == 3):
-         x = np.linspace(0, lengths[0], data_shape[0]+1)
-         y = np.linspace(0, lengths[1], data_shape[1]+1)
-         z = np.linspace(0, lengths[2], data_shape[2]+1)   
+         x = np.linspace(offset[0], lengths[0] + offset[0], data_shape[0]+1)
+         y = np.linspace(offset[1], lengths[1] + offset[1], data_shape[1]+1)
+         z = np.linspace(offset[2], lengths[2] + offset[2], data_shape[2]+1)   
          cellData = {}
          for i in range(len(np_images)):
             cellData.update({names[i]: np_images[i]})
