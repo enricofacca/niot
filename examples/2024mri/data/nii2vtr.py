@@ -5,31 +5,55 @@ from pyevtk.hl import gridToVTK, writeParallelVTKGrid
 from niot import image2dat as i2d
 import sys
 
-#epi_img = nib.load('T1.nii.gz')
-#epi_img_data = epi_img.get_fdata()
-#print(epi_img_data.shape)
-#np.save('T1.npy',epi_img_data)
 
-nii_file = sys.argv[1]
-try:
-    data_name = sys.argv[2]
-except:
-    data_name = 'data'
-vtr_file = nii_file.replace('.nii.gz', '')
-
-epi_img = nib.load(nii_file)
-epi_img_data = epi_img.get_fdata()
-hdr = epi_img.header
-print(hdr)
-print(epi_img.affine)
+nii_files = sys.argv[1:-1]
+vtr_file = sys.argv[-1]
 
 
-nx, ny, nz = epi_img_data.shape
-dx, dy, dz = epi_img.header['pixdim'][1:4]
+names = []
+data = []
+for i, nii_file in enumerate(nii_files):
+    # remove extension nii.gz form the name
+    data_name = nii_file.split('/')[-1].split('.')[0]
+    names.append(data_name)
+
+
+            
+    epi_img = nib.load(nii_file)
+    epi_img_data = epi_img.get_fdata()
+    data.append(epi_img_data)
+    
+    hdr = epi_img.header
+    nx, ny, nz = epi_img_data.shape
+    dx, dy, dz = epi_img.header['pixdim'][1:4]
+    offset = epi_img.affine[:3, 3]
+
+    old_shape = epi_img_data.shape
+    old_size = epi_img.header['pixdim'][1:4]
+    old_offset = epi_img.affine[:3, 3]
+
+    if i > 0:
+        # check if all the images have the same shape
+        if not (old_shape == epi_img_data.shape):
+            raise ValueError("All images must have the same shape")
+        # check if all the images have the same size
+
+        if not (old_size == epi_img.header['pixdim'][1:4]).all():
+            raise ValueError("All images must have the same size")
+        
+        # check if all the images have the same offset
+        if not (old_offset == offset).all():
+            raise ValueError("All images must have the same offset")
+
 lx, ly, lz = nx * dx, ny * dy, nz * dz
 
+print(names)
+
 # Coordinates
-i2d.numpy2vtr([epi_img_data], [lx, ly, lz], vtr_file, names=[data_name])
+# remove .vtr extension if passed in vtr_file
+if vtr_file[-4:] == '.vtr':
+    vtr_file = vtr_file[:-4]
+i2d.numpy2vtr(data, [lx, ly, lz], vtr_file, names=names, offset=offset)
 exit()
 
 #epi_img = nib.load('QSM.nii.gz')
