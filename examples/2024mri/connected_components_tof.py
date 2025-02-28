@@ -13,11 +13,15 @@ def connected_components(np_data, threshold, connectivity=26):
                                                  return_N=True)
     return labels, n_labels
 
-def detect_main_network(labels_np, n_labels, tof_np):
+def main_network_equal_one(labels_np, n_labels, tof_np):
+    """
+    Mark the main network as label 1.
+    """
+    
     # find the index of the main network
     index_max_tof = np.unravel_index(tof_np.argmax(), tof_np.shape)
     label_largest_tof = labels_np[index_max_tof]
-    print(f"Label: Largest tof: {label_largest_tof=}")
+    PETSc.Sys.Print(f"Label: Largest tof value: {label_largest_tof}")
 
     #
     # We count the occurences of each label in the labels_np array
@@ -25,7 +29,7 @@ def detect_main_network(labels_np, n_labels, tof_np):
     counts = np.bincount(labels_np.flatten())
     # 0 is background, 
     label_largest_component = np.argmax(counts[1:])+1
-    print(f"Label: Largest component: {label_largest_component=}")
+    PETSc.Sys.Print(f"Label: Largest component: {label_largest_component}")
 
     candidates = [label_largest_tof, label_largest_component]
     if not all(candidates):
@@ -43,6 +47,23 @@ def detect_main_network(labels_np, n_labels, tof_np):
     labels_np[labels_np == temp] = label_main_network
 
     return labels_np
+
+
+def find_external_network(labels_np):
+    """
+    Find the connected components different from the 
+    main network (labels=1) that are connected to the bottom of the domain.
+    """
+    # find inlets of external network
+    indices_bottom = labels_np[:,:,0]
+    list_indices_bottom = np.unique(indices_bottom)
+    # remove 0 (background) and 1(main network) from the list
+    list_external = list_indices_bottom[2:]
+    external_np = np.zeros_like(labels_np, dtype=np.uint8)
+    for index in list_external:
+        external_np[indices_bottom == index] = 1
+    return external_np
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -79,13 +100,7 @@ if __name__ == '__main__':
 
 
     # find inlets of external network
-    indices_bottom = labels_np[:,:,0]
-    list_indices_bottom = np.unique(indices_bottom)
-    # remove 0 (background) and 1(main network) from the list
-    list_external = list_indices_bottom[2:]
-    external_np = np.zeros_like(labels_np, dtype=np.uint8)
-    for index in list_external:
-        external_np[indices_bottom == index] = 1
+    external_np = find_external_network(labels_np)
     nibabel.save(nibabel.Nifti1Image(external_np, tof_data.affine), 
                  f"{dir_nii}external_network_t{args.threshold:.2e}.nii.gz")
     
