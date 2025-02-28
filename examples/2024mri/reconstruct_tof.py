@@ -247,7 +247,7 @@ def setup_solver(btp,
     # optimization
     niot_solver.ctrl_set('optimization_tol', 1e-5)
     niot_solver.ctrl_set('constraint_tol', 1e-6)
-    niot_solver.ctrl_set('max_iter', 5000)
+    niot_solver.ctrl_set('max_iter', 1)
     niot_solver.ctrl_set('max_restart', 4)
     niot_solver.ctrl_set('verbose', 0)
 
@@ -466,6 +466,7 @@ def experiment(args):
     mpi_mkdir(results)
 
     test_case = f"{field}_{coarseness:02}_threshold_{threshold_network:.1e}"
+    PETSc.Sys.Print(test_case)
     out_directory = results+test_case
     mpi_mkdir(out_directory)
 
@@ -496,7 +497,7 @@ def experiment(args):
         PETSc.Sys.Print(f"Data shape: {tof_np.shape} Lengths: {lengths}")
 
         # load brain mask
-        brain_mask_data = nibabel.load(args.mri+'/brain_resampled.nii.gz')
+        brain_mask_data = nibabel.load(args.mri+'/brain_mask.nii.gz')
         brain_mask_np = brain_mask_data.get_fdata() 
         PETSc.Sys.Print(f"Data shape: {brain_mask_np.shape} Lengths: {lengths}")
 
