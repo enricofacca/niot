@@ -45,12 +45,12 @@ convention_3d_axis_front_back = 2
 
 def cartesian_grid_3d(shape_xyz, lengths=[1.0,1.0,1.0],comm=COMM_WORLD):
    nx,ny,nz = shape_xyz
-   PETSc.Sys.Print(f'Creating mesh {nx}x{ny}x{nz} {lengths=}')
    mesh2d = RectangleMesh(nx,ny,lengths[0],lengths[1],quadrilateral=True,comm=comm)
    mesh = ExtrudedMesh(mesh2d,nz,lengths[2]/nz)
    mesh.nx = nx
    mesh.ny = ny
    mesh.nz = nz
+
    
    mesh.xmin = 0
    mesh.xmax = lengths[0]
@@ -267,6 +267,7 @@ def get_box_division(mesh):
             nx = int(np.rint(np.sqrt(xy*xz/yz)))
             ny = int(np.rint(xy/nx))
             nz = int(np.rint(xz/nx))
+
       return nx, ny, nz
    
 
@@ -307,7 +308,6 @@ def get_lengths(mesh):
          Lx = abs(np.max(x)-np.min(x))
          Ly = abs(np.max(y)-np.min(y))
          Lz = abs(np.max(z)-np.min(z))
-
       return Lx, Ly, Lz
    
 def compatible(mesh, value):
@@ -417,7 +417,7 @@ def simplex2cartesian(function, cartesian_mesh):
    return cartesian_function
 
 
-def firedrake2numpy(function):
+def firedrake2numpy(function, shape_np=None):
    """
    Convert DG0firedrake function to numpy array (2d or 3d).
    It works only for meshes genereted with RectangleMesh or BoxMesh.
@@ -432,7 +432,10 @@ def firedrake2numpy(function):
    if mesh.ufl_cell().is_simplex():
       raise ValueError('Only cartesian meshes are supported. Use simplex2cartesian first')
    
-   shape = get_box_division(mesh)
+   if shape_np is None:
+      shape = get_box_division(mesh)
+   else:
+      shape = shape_np
    
    
    
