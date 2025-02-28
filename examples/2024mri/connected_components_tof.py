@@ -21,16 +21,14 @@ def main_network_equal_one(labels_np, n_labels, tof_np):
     # find the index of the main network
     index_max_tof = np.unravel_index(tof_np.argmax(), tof_np.shape)
     label_largest_tof = labels_np[index_max_tof]
-    PETSc.Sys.Print(f"Label: Largest tof value: {label_largest_tof}")
-
+    
     #
     # We count the occurences of each label in the labels_np array
     #
     counts = np.bincount(labels_np.flatten())
     # 0 is background, 
     label_largest_component = np.argmax(counts[1:])+1
-    PETSc.Sys.Print(f"Label: Largest component: {label_largest_component}")
-
+    
     candidates = [label_largest_tof, label_largest_component]
     if not all(candidates):
         for c in candidates:
