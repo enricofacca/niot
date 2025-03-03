@@ -4,3 +4,5 @@ siphash24
 nibabel
 memory_profiler
 connected-components-3d
+pillow
+matplotlib
