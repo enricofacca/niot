@@ -4,6 +4,9 @@ import numpy as np
 from pyevtk.hl import gridToVTK, writeParallelVTKGrid
 from niot import image2dat as i2d
 import sys
+import os
+
+
 
 
 nii_files = sys.argv[1:-1]
@@ -14,7 +17,11 @@ names = []
 data = []
 for i, nii_file in enumerate(nii_files):
     # remove extension nii.gz form the name
-    data_name = nii_file.split('/')[-1].split('.')[0]
+    data_name = os.path.basename(nii_file)
+    if data_name[-7:] == '.nii.gz':
+        data_name = data_name[:-7]
+    if data_name[-4:] == '.nii':
+        data_name = data_name[:-4]
     names.append(data_name)
 
 

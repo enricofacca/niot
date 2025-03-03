@@ -85,11 +85,18 @@ def setup_h5(mri_directory, threshold, comm=COMM_WORLD):
     gc.collect()
 
     # inlets
-    inlets_np[:,:,1:] = 0
-    inlets = i2d.numpy2firedrake(cartesian_mesh, inlets_np, name="inlets")
-    nibabel.save(nibabel.Nifti1Image(inlets_np, tof_data.affine), 
-                    f"{dir_nii}inlets_t{threshold:.2e}.nii.gz")
-    inlets_np = None
+     # tof_np = tof_data.get_fdata()
+    file_nii = f"{dir_nii}/main_inlets.nii.gz"
+    file_npy = f"{dir_nii}/main_inlets.npy"   
+    save_as_npy(file_nii, file_npy, comm=comm)
+    inlets_2d_np = np.load(file_npy,mmap_mode='r')
+    inlets_3d_np = np.zeros(dimensions)
+    inlets_3d_np[:,:,0] = inlets_2d_np[:,:,0]
+    inlets = i2d.numpy2firedrake(cartesian_mesh, inlets_3d_np, name="inlets")
+    inlets_2d_np = None
+    inlets_3d_np = None
+    PETSc.Sys.Print(f"Inlets done")
+    clean_npy_file(file_npy)
     gc.collect()
 
 
