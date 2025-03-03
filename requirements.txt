@@ -3,6 +3,7 @@ pyevtk
 siphash24
 nibabel
 memory_profiler
+localthickness
 connected-components-3d
 pillow
 matplotlib
