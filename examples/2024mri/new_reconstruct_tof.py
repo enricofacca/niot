@@ -234,7 +234,7 @@ def setup_solver(btp,
     # optimization
     niot_solver.ctrl_set('optimization_tol', 1e-5)
     niot_solver.ctrl_set('constraint_tol', 1e-6)
-    niot_solver.ctrl_set('max_iter', 1)
+    niot_solver.ctrl_set('max_iter', 5000)
     niot_solver.ctrl_set('max_restart', 4)
     niot_solver.ctrl_set('verbose', 0)
 
@@ -746,7 +746,7 @@ def experiment(args):
         
         # run solver
         total_iterations = niot_solver.ctrl_get('max_iter')
-        buffer_saving = min(10000,total_iterations)
+        buffer_saving = min(100,total_iterations)
 
 
         def solve_and_save(niot_solver, label_dir):
@@ -766,7 +766,7 @@ def experiment(args):
             if my_ensemble.comm.rank == 0:
                 filename=f"{label_dir}/tdens.nii.gz"
                 nibabel.save(nibabel.Nifti1Image(tdens_np, affine), filename)
-                filename=f"{label_dir}/pot.nii"
+                filename=f"{label_dir}/pot.nii.gz"
                 nibabel.save(nibabel.Nifti1Image(pot_np, affine), filename)
             
             #np.save(f"{label_dir}/tdens.nii.gz",tdens_np)
