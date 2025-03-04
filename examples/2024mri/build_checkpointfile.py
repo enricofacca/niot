@@ -51,41 +51,13 @@ def setup_h5(mri_directory, threshold, comm=COMM_WORLD):
     save_as_npy(file_nii, file_npy, comm=comm)
     tof_np = np.load(file_npy,mmap_mode='r')
     tof = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
-    clean_npy_file(file_npy)
-
-
-    PETSc.Sys.Print(f"TOF done")
-    labels_np, n_labels = connected_components(tof_np,  threshold=threshold)
-    labels_np = main_network_equal_one(labels_np, n_labels, tof_np)
     tof_np = None
-    gc.collect()
-
-    # main and external network
-    main_network_np = np.zeros_like(labels_np, dtype=np.uint8)
-    main_network_np[labels_np == 1] = 1
-    external_network_np = find_external_network(labels_np)
-    labels_np = None
-    gc.collect()
-
-    nibabel.save(nibabel.Nifti1Image(external_network_np, tof_data.affine),
-                        f"{dir_nii}external_network_t{threshold:.2e}.nii.gz")
-    external_network = i2d.numpy2firedrake(cartesian_mesh, external_network_np, name="external_network")
-    PETSc.Sys.Print(f"External network done")
-    external_network_np = None
-    gc.collect()
-
-
-    nibabel.save(nibabel.Nifti1Image(main_network_np, tof_data.affine), 
-                    f"{dir_nii}main_network_t{threshold:.2e}.nii.gz")
-    main_network = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name="main_network")
-    PETSc.Sys.Print(f"Main network done")
-    # copy main network before cleaning it
-    inlets_np = np.copy(main_network_np)
-    main_network_np = None
-    gc.collect()
-
+    clean_npy_file(file_npy)
+    PETSc.Sys.Print(f"TOF done")
+    
+    
     # inlets
-     # tof_np = tof_data.get_fdata()
+    # tof_np = tof_data.get_fdata()
     file_nii = f"{dir_nii}/main_inlets.nii.gz"
     file_npy = f"{dir_nii}/main_inlets.npy"   
     save_as_npy(file_nii, file_npy, comm=comm)
@@ -121,7 +93,35 @@ def setup_h5(mri_directory, threshold, comm=COMM_WORLD):
     PETSc.Sys.Print(f"T1 done")
     clean_npy_file(file_npy)
     gc.collect()
+    
+    # 
+    # threshold dependent data
+    # 
+    
+    
+    # main and external network
+    file_nii = f"{dir_nii}/main_network_t{threshold:.2e}.nii.gz"
+    file_npy = f"{dir_nii}/main_network_t{threshold:.2e}.npy"   
+    save_as_npy(file_nii, file_npy, comm=comm)
+    main_network_np = np.load(file_npy,mmap_mode='r')
+    main_network = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name="main_network")
+    PETSc.Sys.Print(f"Main network done")
+    main_network_np = None
+    gc.collect()
 
+    # external network
+    file_nii = f"{dir_nii}/external_network_t{threshold:.2e}.nii.gz"
+    file_npy = f"{dir_nii}/external_network_t{threshold:.2e}.npy"   
+    save_as_npy(file_nii, file_npy, comm=comm)
+    external_network_np = np.load(file_npy,mmap_mode='r')
+    external_network = i2d.numpy2firedrake(cartesian_mesh, external_network_np, name="external_network")
+    PETSc.Sys.Print(f"External network done")
+    external_network_np = None
+    gc.collect()
+
+    #
+    # save to h5
+    #
     cartesian_mesh.name = "mesh"
     h5_filename = f"{mri_directory}/inputs_t{threshold:.2e}_nproc{n_proc}.h5"
     
