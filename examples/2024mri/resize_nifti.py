@@ -84,7 +84,6 @@ def resize(args):
     tof_np = tof_data.get_fdata()
     
     original_dimensions = tof_data.header.get_data_shape()[:3]
-    print(tof_data.header)
     hx, hy, hz = tof_data.header['pixdim'][1:4]
     lengths = np.array([float(original_dimensions[0]*hx), 
                         float(original_dimensions[1]*hy), 
@@ -134,10 +133,6 @@ def resize(args):
     out.header["qoffset_x"] = 0.0
     out.header["qoffset_y"] = 0.0
     out.header["qoffset_z"] = 0.0
-    print(out.header)
-    print(out.affine)
-    print(out.get_sform())
-    print(out.get_qform())
     print(args.output)
     nibabel.save(out, args.output)        
         

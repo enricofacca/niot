@@ -54,6 +54,11 @@ def chunks(lst, n):
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
 
+def product_dict(**kwargs):
+    keys = kwargs.keys()
+    for instance in itertools.product(*kwargs.values()):
+        yield dict(zip(keys, instance))
+
 
 def build_meshes_from_numpy(data, mesh_type="simplicial",lengths=None, comm=COMM_WORLD, label_boundary=False):
     if lengths is None:
@@ -123,17 +128,17 @@ def setup_btp(brain_mask, inlets, corrupted, kappa, constant_absorption = 1):
     #sink.interpolate(conditional(tof_fire>threshold_domain,1,0) 
     #                 * conditional(tof_fire<|etwork,1,0))
     
-    
-    sink.interpolate(-conditional(brain_mask>1e-10,constant_absorption,0)
+    threshold_sink = 40
+    sink.interpolate(-conditional(brain_mask > threshold_sink,constant_absorption,0)
                      * conditional(corrupted>0,0,1)) # remove blood vessels outside the mask 
     
 
-    mass_source = assemble(source*dx)
-    mass_sink = assemble(sink*dx)
+    #mass_source = assemble(source*dx)
+    #mass_sink = assemble(sink*dx)
 
     #source /= mass_source
-    #sink /= mass_sink
-    PETSc.Sys.Print(f"{mass_source=:.2e} {mass_sink=:.2e}")
+    #figu /= mass_sink
+    #PETSc.Sys.Print(f"{mass_source=:.2e} {mass_sink=:.2e}")
 
     # Define the branched transport problem
     gamma=0.5
@@ -152,194 +157,67 @@ def setup_btp(brain_mask, inlets, corrupted, kappa, constant_absorption = 1):
     
 
 
-def labels(fem,
-           gamma,
-           wd,
-           wr,
-           ini,
-           confidence,
-           tdens2image, 
-           method,
-           absortion):
-    label= [
-        f'fem{fem}',
-        f'gamma{gamma:.1e}',
-        f'wd{wd:.1e}',
-        f'wr{wr:.1e}',
-        f'ini'+ini.name(),
-        f'conf'+confidence.name(),]
-    if tdens2image['type'] == 'identity':
-        label.append(f'mu2iidentity')
-    elif tdens2image['type'] == 'heat':
-        label.append(f"mu2iheat{tdens2image['sigma']:.1e}")
-    elif tdens2image['type'] == 'pm':
-        label.append(f"mu2ipm{tdens2image['sigma']:.1e}")
-    else:
-        raise ValueError(f'Unknown tdens2image {tdens2image}')
-    label.append(f"scaling{tdens2image['scaling']:.1e}")  
-    if method is not None:
-        if method == 'tdens_mirror_descent_explicit':
-            short_method = 'te'
-        elif method == 'tdens_mirror_descent_semi_implicit':
-            short_method = 'tsi'
-        elif method == 'gfvar_gradient_descent_explicit':
-            short_method = 'ge'
-        elif method == 'gfvar_gradient_descent_semi_implicit':
-            short_method = 'gsi'
-        elif method == 'tdens_logarithmic_barrier':
-            short_method = 'tlb'
+def labels(**kargs):
+    """ 
+    Set a list of labels for the experiment
+    """
+    
+    label = []
+    try:    
+        wd = kargs['wd']
+        label.append(f'wd{wd:.1e}')
+    except:
+        raise ValueError("wd not provided")
+    
+    try:
+        ini = kargs['ini']
+        label.append(f'ini'+ini)
+    except:
+        raise ValueError("ini not provided")
+    
+    try:
+        confidence = kargs['conf']
+        label.append(f'conf'+confidence)
+    except:
+        raise ValueError("conf not provided")
+    
+    try:
+        tdens2image = kargs['map']
+        if tdens2image['type'] == 'identity':
+            label.append(f'mapidentity')
+        elif tdens2image['type'] == 'heat':
+            label.append(f"mapheat{tdens2image['sigma']:.1e}")
+        elif tdens2image['type'] == 'pm':
+            label.append(f"mapipm{tdens2image['sigma']:.1e}")
         else:
-            raise ValueError(f'Unknown method {method}')
-    label.append(f'method{short_method}')
-    label.append(f"sink{absortion:.1e}")
+            raise ValueError(f'Unknown tdens2image {tdens2image}')
+        label.append(f"scaling{tdens2image['scaling']:.1e}")         
+    except:
+        raise ValueError("tdens2image not provided")
+
+    
+    
+    # if method is not None:
+    #     if method == 'tdens_mirror_descent_explicit':
+    #         short_method = 'te'
+    #     elif method == 'tdens_mirror_descent_semi_implicit':
+    #         short_method = 'tsi'
+    #     elif method == 'gfvar_gradient_descent_explicit':
+    #         short_method = 'ge'
+    #     elif method == 'gfvar_gradient_descent_semi_implicit':
+    #         short_method = 'gsi'
+    #     elif method == 'tdens_logarithmic_barrier':
+    #         short_method = 'tlb'
+    #     else:
+    #         raise ValueError(f'Unknown method {method}')
+    # label.append(f'method{short_method}')
+    # 
+    try:
+        absorption = kargs['absorption']
+        label.append(f"sink{absorption:.1e}")
+    except:
+        pass
     return label
-
-
-def setup_solver(btp, 
-                 corrupted, 
-                 fem="DG0DG0",
-                 gamma=0.5, 
-                 wd=1e-2,
-                 wr=0.0, 
-                 corrupted_as_initial_guess=0,
-                 confidence=1.0,
-                 tdens2image={
-                     'type':'identity',
-                     'scaling':1e0
-                 },
-                 method='tdens_mirror_descent_explicit'  ,
-                 ):
-
-    print(method)
-   
-    mesh = btp.source.function_space().mesh()
-
-    niot_solver = NiotSolver(btp, 
-                             corrupted,  
-                             confidence=confidence, 
-                             spaces = fem,
-                             cell2face = 'harmonic_mean',
-                             setup=False,
-                             ensemble_comm=None,
-                             )
-
-
-    # Setup the solver's parameters
-
-    # inpainting
-    niot_solver.ctrl_set('discrepancy_weight', wd)
-    niot_solver.ctrl_set('regularization_weight', wr)
-    niot_solver.ctrl_set(['tdens2image'], tdens2image)
-
-    # optimization
-    niot_solver.ctrl_set('optimization_tol', 1e-5)
-    niot_solver.ctrl_set('constraint_tol', 1e-6)
-    niot_solver.ctrl_set('max_iter', 5000)
-    niot_solver.ctrl_set('max_restart', 4)
-    niot_solver.ctrl_set('verbose', 0)
-
-    
-   
-
-    # time discretization
-    print(method)
-    if method is None:
-        method = 'tdens_mirror_descent_explicit'
-    niot_solver.ctrl_set(['dmk','type'], method)
-    if 'tdens' in method:
-        if method == 'tdens_logarithmic_barrier':
-            pass
-        else:
-            niot_solver.ctrl_set(['dmk',method,'gradient_scaling'], 'dmk')
-        
-
-    # time step
-    
-    deltat_control = {
-        'type': 'adaptive2',
-        'lower_bound': 1e-13,
-        'upper_bound': 5e-2,
-        'expansion': 1.1,
-        'contraction': 0.5,
-    }
-    niot_solver.ctrl_set(['dmk',method,'deltat'], deltat_control)
-    
-    return niot_solver
-
-
-
-   
-
-
-def downsample(data,coarseness,mode="zoom"):
-    """
-    Downsample data by a factor of coarseness
-    Args:
-    data: numpy 2d or 3d array
-    coarseness: int
-    mode: str
-        "zoom": uses scipy.ndimage.zoom
-        "max" : uses max of neighbours cells
-    Returns:
-        data: numpy 2d or 3d array
-    """
-    if coarseness <= 1:
-        return data
-      
-    if mode == "zoom":
-        factors = tuple([1 if n==1 else 1/coarseness for n in data.shape])
-        data = zoom(data, factors, order=0)
-        PETSc.Sys.Print(data.shape)
-        return data
-
-    elif mode == "max":
-        # the extra boundary required
-        pad_shape = tuple([(0, int(coarseness*np.ceil(n/coarseness)-n)) for n in data.shape])
-
-        # pad with -inf
-        data = np.pad(data, pad_shape, mode='constant', constant_values=-np.inf)
-        
-
-        # coarseness = 2
-        # (nx//2,2,ny//2,2,nz//2,2)
-        reshaped_shape = sum([[n//coarseness, coarseness] for n in data.shape],[])
-        
-        
-        # reshape gathering neighbours cells and get the max
-        extra_dim = tuple([2*i+1 for i in range(data.ndim)])
-        
-        data = data.reshape(reshaped_shape).max(axis=extra_dim)
-        
-        return data
-
-def indices_restrict(data_shape, lengths, xyz_bounds):
-    """ 
-    Assuming that LX=1
-    """
-    indices_bounds = []
-    for axis_index in range(len(data_shape)):
-        n_axis = data_shape[axis_index]
-        len_axis = lengths[axis_index]
-        if xyz_bounds[axis_index] is None:
-            indices_bounds.append([0,n_axis])
-        else:
-            lower, upper = xyz_bounds[axis_index]
-            indices_bound = [max(0,int(lower/len_axis*n_axis)),min(int(upper/len_axis*n_axis),n_axis)]
-            indices_bounds.append( indices_bound)
-                
-
-    return np.array(indices_bounds)
-
-def restrict(data, indices_bounds):
-    """ 
-    Assuming that LX=1
-    """
-    data = data[indices_bounds[0][0]:indices_bounds[0][1],
-                indices_bounds[1][0]:indices_bounds[1][1],
-                indices_bounds[2][0]:indices_bounds[2][1]]
-    data = np.ascontiguousarray(data)
-    return data
-
 
 
 
@@ -480,6 +358,8 @@ def experiment(args):
 
     out_directory = results + test_case
     mpi_mkdir(out_directory)
+
+    
     my_ensemble = Ensemble(COMM_WORLD, args.n_ensemble)
     
     
@@ -533,91 +413,130 @@ def experiment(args):
 
 
     # confidence data
-    confidence = Function(tof.function_space(), name="confidence")
-    confidence.interpolate(1.0 + 9.0 * conditional(main_network > 0, 1, 0))
+    def set_confidence(option, **kwargs):
+        if option == "one":
+            return Constant(1.0)
+            
+        elif option == "main_network":
+            # get main network
+            try:
+                main_network = kwargs['main_network']
+            except:
+                raise ValueError("main_network not provided")
+
+            confidence = Function(main_network.function_space(), name="confidence")
+            confidence.interpolate(1.0 + 9.0 * conditional(main_network > 0, 1, 0))
+            return confidence
+        else:
+            raise ValueError(f"Unknown confidence option {option}")
+
+    #confidence = set_confidence("one", main_network=main_network)
+
+
+    def set_kappa(option, **kwargs):
+        """
+        Set kappa function.
+        In the region with high value of kappa the network passage is penalized.
+        """
+        if option == "one":
+            return 1.0
+        elif option == "t1":
+            try:
+                t1 = kwargs['t1']
+            except:
+                raise ValueError("t1 not provided")
+            kappa = Function(t1.function_space(), name="kappa")
+            kappa.interpolate(1.0 + conditional(t1 > 600, 1, 0))
+            return kappa
+        else:
+            raise ValueError(f"Unknown kappa option {option}")
         
-        
-    # kappa definition
-    kappa = Function(tof.function_space(), name="kappa")
-    kappa.interpolate(1.0 + conditional(t1 > 600, 1, 0))
+    #kappa = set_kappa("one", t1=t1)
+
 
     # define the corrupted network
-    corrupted = set_corrupted_network(tof, main_network, external_network, brain_mask, threshold_network)
+    #corrupted = set_corrupted_network(tof, main_network, external_network, brain_mask, threshold_network)
 
-    space = corrupted.function_space()
+    #space = corrupted.function_space()
     
-    # initial guess
-    heat_flow = True
-    sigma0 = 1.0
-    base = 4
-    min_tdens = 1e-4
+    def set_initial_guess(option, **kargs):        
+        if option == "one":
+            return Constant(1.0)
 
-    initial_guess = False
-    if initial_guess:
-        if heat_flow:
-            heat = HeatMap(corrupted.function_space(), scaling=1.0, sigma=1e1)
+        if option == "low":
+            try:
+                corrupted = kargs['corrupted']
+            except:
+                raise ValueError("corrupted not provided")
+            
+            heat = HeatMap(space, scaling=1.0, sigma=1e1)
             low = Function(space,name="LOW")
+            low.assign(heat(corrupted+1e-4) + 1e-4)
+            return low
+        
+        if option == "medium":
+            try:
+                corrupted = kargs['corrupted']
+            except:
+                raise ValueError("corrupted not provided")
+            
+            low = set_initial_guess("low", corrupted)
             medium = Function(space,name="MEDIUM")
+            medium.assign(heat(low+1e-4) + 1e-4)
+            return medium
+        
+        if option == "high":
+            try:
+                corrupted = kargs['corrupted']
+            except:
+                raise ValueError("corrupted not provided")
+            
+            medium = set_initial_guess("medium", corrupted)
             high = Function(space,name="HIGH")
+            high.assign(heat(medium+1e-4) + 1e-4)
+            return high
+
+        if option == "low_gaussian":
+            try:
+                corrupted = kargs['corrupted']
+            except:
+                raise ValueError("corrupted not provided")
             
-            low.assign(heat(corrupted+min_tdens) + min_tdens)
-            medium.assign(heat(low+min_tdens) + min_tdens)
-            high.assign(heat(medium+min_tdens) + min_tdens)
             
-            low_np = i2d.firedrake2numpy(low)
-            medium_np = i2d.firedrake2numpy(medium)
-            high_np = i2d.firedrake2numpy(high)
-        else:
-            low_np = gaussian_filter(corrupted_np, sigma=base**0*sigma0, truncate=1e0)
-            medium_np = gaussian_filter(low_np, sigma=base, truncate=1e0)
-            high_np = gaussian_filter(medium_np, sigma=base, truncate=1e0)
-            
+            corrupted_np = i2d.firedrake2numpy(corrupted)
+            low_np = gaussian_filter(corrupted_np, sigma=4, truncate=1e0)
             low = i2d.numpy2firedrake(cartesian_mesh, low_np, name="LOW")
+            low += 1e-4
+            return low
+        
+        if option == "medium_gaussian":
+            try:
+                corrupted = kargs['corrupted']
+            except:
+                raise ValueError("corrupted not provided")
+            
+            low = set_initial_guess("low_gaussian", corrupted)
+            low_np = i2d.firedrake2numpy(low)
+            medium_np = gaussian_filter(low_np, sigma=4, truncate=1e0)
             medium = i2d.numpy2firedrake(cartesian_mesh, medium_np, name="MEDIUM")
+            medium += 1e-4
+            return medium
+        
+        if option == "high_gaussian":
+            try:
+                corrupted = kargs['corrupted']
+            except:
+                raise ValueError("corrupted not provided")
+            
+            medium = set_initial_guess("medium_gaussian", corrupted)
+            medium_np = i2d.firedrake2numpy(medium)
+            high_np = gaussian_filter(medium_np, sigma=4, truncate=1e0)
             high = i2d.numpy2firedrake(cartesian_mesh, high_np, name="HIGH")
-            for ini in [low,medium,high]:
-                ini += min_tdens
-
-        if my_ensemble.ensemble_comm.rank == 0:
-            # save tof_low
-            i2d.numpy2vtr([low_np, medium_np, high_np],
-                            lengths, 
-                            f"{out_directory}/initial_data",
-                            names=['tof_low','tof_medium','tof_high'],
-                            comm=my_ensemble.comm)
-
-        # free memory    
-        low_np = None
-        medium_np = None
-        high_np = None
-        
-    one = Function(space, name="ONE")
-    one.assign(1.0)
-    PETSc.Sys.Print(f"Initial guess built")
-    
-
-    #initials = [low,medium,high,one]
-
-    save_inputs_as_pvd = False
-    if save_inputs_as_pvd:
-        PETSc.Sys.Print("start saving inputs as pvd")
-        start = time.time()
-        out_file = VTKFile(f'{out_directory}/inputs{my_ensemble.ensemble_comm.rank}.pvd',comm=my_ensemble.comm)
-        fun = initials[my_ensemble.ensemble_comm.rank]
-        out_file.write(fun)
-        PETSc.Sys.Print("saved inputs in "+f'{out_directory}/inputs.pvd'+f" in {time.time()-start:.2f}s")
-        
-        PETSc.Sys.Print("start saving inputs as pvd")
-        start = time.time()
-        out_file = VTKFile(f'{out_directory}/corrupted.pvd', comm=my_ensemble.comm)
-        out_file.write(corrupted)
-        PETSc.Sys.Print(f"saved inputs in {out_file}"+f" in {time.time()-start:.2f}s")
-        
+            high += 1e-4
+            return high
         
 
-    
-
-    def figure1():
+    def parameters_combinations():
             #
         # common setup
         #
@@ -631,38 +550,28 @@ def experiment(args):
         #
         # Combinations producting the data for Figure 2
         #
-        gamma = [0.5] # 
-        wd = [1e-4,1e-3]  # set the discrepancy to zero
-        ini = [one]
-        # the following are not influent since wd=weight discrepancy is zero
-        conf = [one, confidence]
-        maps = [
-            #{"type": "identity", "scaling": 1/20},
-            #{"type": "identity", "scaling": 1},
-            {"type": "identity", "scaling": 10},
-            #{"type": "identity", "scaling": 100},
-        ]
-        absorption = [1e-3]#,1e-4]
-        parameters = [
-            fems,
-            gamma,
-            wd,
-            wr,
-            ini,
-            conf,
-            maps,
-            method,
-            absorption,
-        ]
+        options = {
+            "wd": [1e-4,1e-3],  # set the discrepancy to zero
+            "ini": ["one"],
+            "conf": ["one", "main_network"],
+            "map": [
+                #{"type": "identity", "scaling": 1/20},
+                #{"type": "identity", "scaling": 1},
+                {"type": "identity", "scaling": 10},
+                #{"type": "identity", "scaling": 100},
+            ],
+            "kappa": ["one"],
+        "absorption": [1e-3]#,1e-4]
+        }
 
-        combinations = list(itertools.product(*parameters))
+        combinations = list(product_dict(**options))
 
         return combinations
 
     
 
     #setup controls
-    combinations = figure1()
+    combinations = parameters_combinations()
 
 
     test_poisson = False
@@ -685,7 +594,7 @@ def experiment(args):
         if i == my_ensemble.ensemble_comm.rank:
             print(f"ENSEMBLE {i}")
             for j, comb in enumerate(todo):
-                label = "_".join(labels(*comb))
+                label = "_".join(labels(**comb))
                 if my_ensemble.comm.rank == 0:
                     print(f"{j} {label}")   
         my_ensemble.ensemble_comm.barrier()
@@ -695,42 +604,82 @@ def experiment(args):
 
     PETSc.Sys.Print(f"{my_ensemble.ensemble_comm.rank=} {len(todo)=}")
     for i, combination in enumerate(todo):
-        label = "_".join(labels(*combination))
+        # set label and directory
+        label = "_".join(labels(**combination))
         PETSc.Sys.Print(f"{i} {my_ensemble.ensemble_comm.rank=} {label}")
-
-        # btp inputs
-        absortion = combination[-1]
-        btp = setup_btp(brain_mask, inlets, corrupted, kappa, constant_absorption = absortion)
-
         label_dir = os.path.join(out_directory,label)
         mpi_mkdir(label_dir, my_ensemble.comm)
 
-        save_inputs_as_pvd = False
-        if save_inputs_as_pvd :
-            PETSc.Sys.Print("start saving sink as pvd")
-            start = time.time()
-            filename = f"{label_dir}/sink.pvd"
-            PETSc.Sys.Print(f"Saving {filename}")
-            outfile = VTKFile(filename, comm=my_ensemble.comm)
-            outfile.write(btp.sink)
-            PETSc.Sys.Print(f"saved inputs in {filename}"+f" in {time.time()-start:.2f}s")
+
+        #
+        # set corrupted network
+        #
+        corrupted = set_corrupted_network(tof, main_network, external_network, brain_mask, threshold_network)        
         
+        #
+        # btp inputs
+        #
+        absortion = combination["absorption"]
+        kappa = set_kappa(combination["kappa"], t1=t1)
+        btp = setup_btp(brain_mask, inlets, corrupted, kappa, constant_absorption = absortion)
+
+        # save sink term for visualization
         save_inputs_as_vtr = False
         if save_inputs_as_vtr:
             filename=f"{label_dir}/sink"
             PETSc.Sys.Print(f"Saving {filename}")
             sink_np = i2d.firedrake2numpy(btp.sink)
             i2d.numpy2vtr([sink_np], lengths, filename, names=['sink'], comm=my_ensemble.comm)
+        #my_ensemble.ensemble_comm.barrier()
+        
+        
+        #
+        # set confidence
+        #
+        confidence = set_confidence(combination["conf"], main_network=main_network)
         
 
-        my_ensemble.ensemble_comm.barrier()
-        
-        
-        
+
         # setup solvers
         if my_ensemble.comm.rank == 0:
             print(f"BEGIN {i+1}/{len(todo)} ensemble {my_ensemble.ensemble_comm.rank}: {label}")
-        niot_solver = setup_solver( btp, corrupted, *combination[:-1])
+        
+        # setup solver
+        niot_solver = NiotSolver(btp, 
+                             corrupted,  
+                             confidence=confidence, 
+                             spaces = "DG0DG0",
+                             cell2face = 'harmonic_mean',
+                             setup = False,
+                             ensemble_comm=None
+                             )
+        # inpainting
+        wd = combination["wd"]
+        niot_solver.ctrl_set('discrepancy_weight', wd)
+        niot_solver.ctrl_set('regularization_weight', 0.0)
+        tdens2image = combination["map"]
+        niot_solver.ctrl_set(['tdens2image'], tdens2image)
+
+        # optimization
+        niot_solver.ctrl_set('optimization_tol', 1e-5)
+        niot_solver.ctrl_set('constraint_tol', 1e-6)
+        niot_solver.ctrl_set('max_iter', 8)
+        niot_solver.ctrl_set('max_restart', 4)
+        niot_solver.ctrl_set('verbose', 0)
+
+        # time discretization
+        method = "tdens_mirror_descent_explicit"
+        niot_solver.ctrl_set(['dmk','type'], method)
+
+        # time step
+        deltat_control = {
+        'type': 'adaptive2',
+        'lower_bound': 1e-13,
+        'upper_bound': 5e-2,
+        'expansion': 1.1,
+        'contraction': 0.5,
+        }
+        niot_solver.ctrl_set(['dmk',method,'deltat'], deltat_control)
         
         # setup log file
         log_filename = os.path.join(label_dir,f"niot.log")
@@ -739,53 +688,38 @@ def experiment(args):
         # set solvers according to controls
         niot_solver.setup()
         
-        #
-        initial = combination[4]
+        # set intial guess
+        initial = set_initial_guess(combination["ini"], corrupted=corrupted)
         niot_solver.set_solution(tdens=initial)
         
-        
-        # run solver
+        #
+        # run solver, buffering the saving of the solution
+        #
         total_iterations = niot_solver.ctrl_get('max_iter')
-        buffer_saving = min(100,total_iterations)
+        buffer_saving = min(2,total_iterations)
 
 
         def solve_and_save(niot_solver, label_dir):
+            # solve
             ierr = niot_solver.solve()
 
             # save solution
             pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
-
+            
             tdens_np = i2d.firedrake2numpy(tdens)
             tdens = None
-
+            filename=f"{label_dir}/tdens.nii.gz"
+            nibabel.save(nibabel.Nifti1Image(tdens_np, affine), filename)
+            tdens_np = None
+            gc.collect()
+            
             pot_np = i2d.firedrake2numpy(pot)
             pot = None
-
-
-            # save tdens and pot as npy files
-            if my_ensemble.comm.rank == 0:
-                filename=f"{label_dir}/tdens.nii.gz"
-                nibabel.save(nibabel.Nifti1Image(tdens_np, affine), filename)
-                filename=f"{label_dir}/pot.nii.gz"
-                nibabel.save(nibabel.Nifti1Image(pot_np, affine), filename)
-            
-            #np.save(f"{label_dir}/tdens.nii.gz",tdens_np)
-            #np.save(f"{label_dir}/pot.nii",pot_np)
-        
-            save_outputs_as_vtr = False
-            if save_outputs_as_vtr:
-                filename=f"{label_dir}/tdens_pot"
-                PETSc.Sys.Print(f"Saving {filename}")
-                i2d.numpy2vtr([tdens_np,pot_np],
-                lengths, 
-                filename, 
-                names=['tdens','pot'],
-                comm=my_ensemble.comm)
-                if my_ensemble.comm.rank == 0:
-                    print(f"DONE  {i+1}/{len(todo)} ensemble {my_ensemble.ensemble_comm.rank}: {label}")
-
-                tdens_np = None
+            filename=f"{label_dir}/pot.nii.gz"
+            nibabel.save(nibabel.Nifti1Image(pot_np, affine), filename)
             pot_np = None
+            gc.collect()
+            
 
         # run and save
         niot_solver.ctrl_set('max_iter', total_iterations%buffer_saving)
@@ -796,7 +730,7 @@ def experiment(args):
         niot_solver.ctrl_set('max_iter',buffer_saving)
         niot_solver.ctrl_set('restart',True)
         for i in range(total_iterations//buffer_saving):
-            PETSc.Sys.Print(f"Restarting {i+1}/{total_iterations//buffer_saving} {label}")
+            PETSc.Sys.Print(f"Restarting {100*(i+1)/(total_iterations//buffer_saving):.1f}% of {total_iterations} - {label}")
             solve_and_save(niot_solver, label_dir)
 
         gc.collect()
@@ -807,16 +741,9 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description='Reconstruct network')
     #parser.add_argument("--field", type=str, default='TOF', help="TOF")
-    parser.add_argument("--c", type=int, default=1, help="coarseing factor")
     parser.add_argument("--n_ensemble", type=int, default=1, help="Number of processor per simulation")
     parser.add_argument("--mri", type=str, default="./mri/", help="directory with mri data")
     parser.add_argument("--out", type=str, default="./runs/", help="output directory")
-    parser.add_argument("--xmin", type=float, default=0.0, help="Lower bound x")
-    parser.add_argument("--xmax", type=float, default=1000.0, help="Upper bound x")
-    parser.add_argument("--ymin", type=float, default=0.0, help="Lower bound y")
-    parser.add_argument("--ymax", type=float, default=1000.0, help="Upper bound y")
-    parser.add_argument("--zmin", type=float, default=0.0, help="Lower bound z")
-    parser.add_argument("--zmax", type=float, default=1000.0, help="Upper bound z")
     parser.add_argument("--threshold", type=float, default=250, help="Threshold for network")
     
     args, unknown = parser.parse_known_args()
