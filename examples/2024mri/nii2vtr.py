@@ -16,8 +16,10 @@ vtr_file = sys.argv[-1]
 names = []
 data = []
 for i, nii_file in enumerate(nii_files):
-    # remove extension nii.gz form the name
+    # remove extension
     data_name = os.path.basename(nii_file)
+    
+    #data_name = data_name.split('.')[0]
     if data_name[-7:] == '.nii.gz':
         data_name = data_name[:-7]
     if data_name[-4:] == '.nii':
@@ -27,7 +29,7 @@ for i, nii_file in enumerate(nii_files):
 
             
     epi_img = nib.load(nii_file)
-    epi_img_data = epi_img.get_fdata()
+    epi_img_data = np.array(epi_img.get_fdata(), dtype=np.float32)
     data.append(epi_img_data)
     
     hdr = epi_img.header
