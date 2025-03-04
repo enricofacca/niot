@@ -55,51 +55,57 @@ def find_external_network(labels_np):
     # find inlets of external network
     indices_bottom = labels_np[:,:,0]
     list_indices_bottom = np.unique(indices_bottom)
+    
     # remove 0 (background) and 1(main network) from the list
     list_external = list_indices_bottom[2:]
     external_np = np.zeros_like(labels_np, dtype=np.uint8)
     for index in list_external:
-        external_np[indices_bottom == index] = 1
+        location = np.where(labels_np == index)
+        external_np[location] = 1
     return external_np
+
+def connected_components_tof(dir_nii, threshold):
+    # load tof data and get basic info
+    tof_data = nibabel.load(f"{dir_nii}TOF.nii.gz")
+    tof_np = tof_data.get_fdata()
+
+    # separe connected components
+    labels_np, nlabels = connected_components(tof_np, threshold)
+    print(f"Found {nlabels=} with tof>={threshold:.2e}")
+    labels_np = main_network_equal_one(labels_np, nlabels, tof_np)
+    nibabel.save(nibabel.Nifti1Image(labels_np, tof_data.affine), 
+                 f"{dir_nii}connected_components_t{threshold:.2e}.nii.gz")
+
+    # save as nifti 
+    main_network = np.zeros_like(labels_np, dtype=np.uint8)
+    main_network[labels_np == 1] = 1
+    print(f"Saving main network to {dir_nii}main_network_t{threshold:.2e}.nii.gz")
+    nibabel.save(nibabel.Nifti1Image(main_network, tof_data.affine), 
+                 f"{dir_nii}main_network_t{threshold:.2e}.nii.gz")
+
+    # inlets
+    #inlets_np = np.copy(labels_np)
+    #inlets_np[:,:,1:] = 0
+    #nibabel.save(nibabel.Nifti1Image(inlets_np, tof_data.affine), 
+    #             f"{dir_nii}inlets_t{args.threshold:.2e}.nii.gz")
+
+
+
+    # find inlets of external network
+    print(f"Saving external network to {dir_nii}external_network_t{threshold:.2e}.nii.gz")
+    external_np = find_external_network(labels_np)
+    nibabel.save(nibabel.Nifti1Image(external_np, tof_data.affine), 
+                 f"{dir_nii}external_network_t{threshold:.2e}.nii.gz")
+    
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--mri', type=str)
-    parser.add_argument('--coarseness', type=int)
     parser.add_argument('--threshold', type=float)
     args = parser.parse_args()
 
-    # load tof data and get basic info
-    dir_nii = args.mri+'/c'+f"{args.coarseness:02}/"
-    tof_data = nibabel.load(f"{dir_nii}TOF.nii.gz")
-    dimensions = tof_data.header.get_data_shape()[:3]
-    tof_np = tof_data.get_fdata()
+    connected_components_tof(args.mri, args.threshold)
 
-    # separe connected components
-    labels_np, nlabels = connected_components(tof_np, args.threshold)
-    print(f"Found {nlabels=} with tof>={args.threshold:.2e}")
-    labels_np = detect_main_network(labels_np, nlabels, tof_np)
-    nibabel.save(nibabel.Nifti1Image(labels_np, tof_data.affine), 
-                 f"{dir_nii}connected_components_t{args.threshold:.2e}.nii.gz")
-
-    # save as nifti 
-    main_network = np.zeros_like(labels_np, dtype=np.uint8)
-    main_network[labels_np == 1] = 1
-    nibabel.save(nibabel.Nifti1Image(main_network, tof_data.affine), 
-                 f"{dir_nii}main_network_t{args.threshold:.2e}.nii.gz")
-
-    # inlets
-    inlets_np = np.copy(labels_np)
-    inlets_np[:,:,1:] = 0
-    nibabel.save(nibabel.Nifti1Image(inlets_np, tof_data.affine), 
-                 f"{dir_nii}inlets_t{args.threshold:.2e}.nii.gz")
-
-
-
-    # find inlets of external network
-    external_np = find_external_network(labels_np)
-    nibabel.save(nibabel.Nifti1Image(external_np, tof_data.affine), 
-                 f"{dir_nii}external_network_t{args.threshold:.2e}.nii.gz")
     
     
