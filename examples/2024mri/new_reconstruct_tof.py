@@ -2,7 +2,7 @@ import sys
 import glob
 import os
 from copy import deepcopy as cp
- 
+import json 
 import gc
 import cc3d
 import numpy as np
@@ -14,9 +14,12 @@ from niot import SpaceDiscretization
 from build_checkpointfile import setup_h5
 #from memory_profiler import profile
 
-from niot.conductivity2image import HeatMap
+from connected_components_tof import save_main_and_external_network_as_nifti
 
+from niot.conductivity2image import HeatMap
+import subprocess
 from firedrake import *
+from firedrake import COMM_WORLD
 from scipy.ndimage import zoom
 import time
 from firedrake import VTKFile as File
@@ -113,6 +116,30 @@ def load_data(field, coarseness, data_folder="../../../mri/",mesh_type="simplici
     return tof_fire, cartesian_mesh
     
 
+def set_sink(option="segmented", **kargs):
+    """
+    Set sink
+    """
+    
+    if option == "segmented":
+        
+        tof = kargs['tof']
+        brain_mask = kargs['brain_mask']
+        aseg = kargs['aseg']
+        main_network = kargs['main_network'] 
+        constant_absorption = 1.0
+        DG0 = tof.function_space()
+        
+        sink = Function(tof.function_space(), name="sink")
+        sink.interpolate(- conditional(aseg > 0, constant_absorption,0)
+                        * conditional(main_network > 0, 0, 1) ) # remove blood vessels outside the mask 
+    else:
+        raise ValueError(f"Unknown sink option {option}")
+
+    return sink
+
+
+
 def setup_btp(brain_mask, inlets, corrupted, kappa, constant_absorption = 1):
     mesh = brain_mask.function_space().mesh()
     
@@ -128,17 +155,17 @@ def setup_btp(brain_mask, inlets, corrupted, kappa, constant_absorption = 1):
     #sink.interpolate(conditional(tof_fire>threshold_domain,1,0) 
     #                 * conditional(tof_fire<|etwork,1,0))
     
-    threshold_sink = 40
-    sink.interpolate(-conditional(brain_mask > threshold_sink,constant_absorption,0)
+    threshold_sink = 1e-10
+    sink.interpolate(-conditional(brain_mask > threshold_sink, constant_absorption,0)
                      * conditional(corrupted>0,0,1)) # remove blood vessels outside the mask 
     
 
-    #mass_source = assemble(source*dx)
-    #mass_sink = assemble(sink*dx)
+    mass_source = assemble(source*dx)
+    mass_sink = assemble(sink*dx)
 
     #source /= mass_source
     #figu /= mass_sink
-    #PETSc.Sys.Print(f"{mass_source=:.2e} {mass_sink=:.2e}")
+    PETSc.Sys.Print(f"{mass_source=:.2e} {mass_sink=:.2e}")
 
     # Define the branched transport problem
     gamma=0.5
@@ -170,13 +197,13 @@ def labels(**kargs):
         raise ValueError("wd not provided")
     
     try:
-        ini = kargs['ini']
-        label.append(f'ini'+ini)
+        ini = kargs["initial"]
+        label.append(f"ini"+ini)
     except:
         raise ValueError("ini not provided")
     
     try:
-        confidence = kargs['conf']
+        confidence = kargs["confidence"]
         label.append(f'conf'+confidence)
     except:
         raise ValueError("conf not provided")
@@ -195,28 +222,19 @@ def labels(**kargs):
     except:
         raise ValueError("tdens2image not provided")
 
-    
-    
-    # if method is not None:
-    #     if method == 'tdens_mirror_descent_explicit':
-    #         short_method = 'te'
-    #     elif method == 'tdens_mirror_descent_semi_implicit':
-    #         short_method = 'tsi'
-    #     elif method == 'gfvar_gradient_descent_explicit':
-    #         short_method = 'ge'
-    #     elif method == 'gfvar_gradient_descent_semi_implicit':
-    #         short_method = 'gsi'
-    #     elif method == 'tdens_logarithmic_barrier':
-    #         short_method = 'tlb'
-    #     else:
-    #         raise ValueError(f'Unknown method {method}')
-    # label.append(f'method{short_method}')
-    # 
     try:
         absorption = kargs['absorption']
         label.append(f"sink{absorption:.1e}")
     except:
         pass
+
+    try:
+        kappa = kargs['kappa']
+        label.append(f"kappa{kappa}")
+    except:
+        pass
+
+
     return label
 
 
@@ -307,23 +325,30 @@ def poisson(cartesian_mesh, btp):
     out_file.write(pot_h)
 
 
-def set_corrupted_network(tof, main_network, external_network, brain_mask, threshold_network):
+def set_corrupted_network(**kargs):
+    """
+    Set corrupted network
+    """
+    tof = kargs['tof']
+    main_network = kargs['main_network']
+    external_network = kargs['external_network']
+    brain_mask = kargs['brain_mask']
+    threshold_network = kargs['threshold']
+
+        
     DG0 = tof.function_space()
     corrupted = Function(DG0, name="corrupted")
     corrupted.interpolate(tof 
-                        * conditional( tof > threshold_network, 1, 0) 
+                        * conditional(external_network > 0, 0, 1) # exclude external network
+                        * conditional(tof > threshold_network, 1, 0) 
                         * conditional(brain_mask > 1e-10, 1, 0) # only the main brain 
                         * conditional(main_network > 0, 0, 1) # remove main network
                         + tof 
-                        * conditional( tof > threshold_network, 1, 0)
+                        * conditional(external_network > 0, 0, 1) # exclude external network
+                        * conditional(tof > threshold_network, 1, 0)
                         * conditional(main_network > 0, 1, 0) # restore main network
     )
     
-    # remove vessel going and out
-    in_and_out = Function(DG0, name="in_and_out")
-    in_and_out.interpolate(tof*conditional(external_network>0, 1, 0))
-    corrupted -= in_and_out
-
     return corrupted
 
 
@@ -331,10 +356,31 @@ def set_corrupted_network(tof, main_network, external_network, brain_mask, thres
 #@profile
 def experiment(args):
     results = args.out
-    threshold_network = args.threshold
-    threshold_tof = threshold_network
-
-    PETSc.Sys.Print(f"RUNNING {args.mri} {threshold_network:.1e}")
+    
+    # load options from json file
+    try:
+        with open(args.options, 'r') as f:
+            options = json.load(f)
+    except:
+        options = {
+            "threshold": [1e-3],
+            "wd": [1e-4],  
+            "initial": ["one"],
+            "confidence": ["one"],
+            "map": [{"type": "identity", "scaling": 10}],
+            "kappa": ["one","t1"],
+            "absorption": [1e-3]
+            }
+        # print as example
+        for key, value in options.items():
+            PETSc.Sys.Print(f"{key} : {value}")
+        
+        raise ValueError(f"File {args.options} not found")
+        
+    if len(options["threshold"]) > 1:
+        raise ValueError("Only one threshold is allowed")
+    threshold = options["threshold"][0]
+    PETSc.Sys.Print(f"RUNNING {args.mri} {threshold:.1e}")
 
     # make directories
     mpi_mkdir(results)
@@ -343,7 +389,7 @@ def experiment(args):
         input_name = os.path.basename(os.path.dirname(args.mri))
     else:
         input_name = os.path.basename(args.mri)
-    test_case = f"{input_name}_threshold_{args.threshold:.1e}"
+    test_case = f"{input_name}_threshold_{threshold:.1e}"
     PETSc.Sys.Print(f"RUNNING {test_case}")
     
     
@@ -359,40 +405,72 @@ def experiment(args):
     out_directory = results + test_case
     mpi_mkdir(out_directory)
 
-    
+    #
+    # check presence of data required
+    #
+    if COMM_WORLD.rank == 0:
+        files = [
+            f"{args.mri}/TOF.nii.gz",
+                f"{args.mri}/T1.nii.gz",
+                f"{args.mri}/main_inlets.nii.gz",
+                f"{args.mri}/brain_mask.nii.gz",
+                ]
+        for file in files:
+            if not os.path.exists(file):
+                raise ValueError(f"File {file} not found")
+        
+        # threshold dependend files
+        main_network_file = f"{args.mri}/main_network_t{threshold:.2e}.nii.gz"
+        external_network_file = f"{args.mri}/external_network_t{threshold:.2e}.nii.gz"            
+        if not os.path.exists(main_network_file) or not os.path.exists(external_network_file):
+            PETSc.Sys.Print(f"Identifty main network and external network",end="")
+            # this only use numpy, so we run only on one processor
+            save_main_and_external_network_as_nifti(args.mri, threshold)
+            PETSc.Sys.Print(f"- done")
+
+    COMM_WORLD.barrier()
+
+
+    # create ensemble of processors
     my_ensemble = Ensemble(COMM_WORLD, args.n_ensemble)
     
-    
-    # only the first ensemble needs to read the data
-    # if my_ensemble.ensemble_comm.rank == 0:
+    #
     # check if h5 already exists or build it, but it may run out of memory
-    h5_file = f"{args.mri}/inputs_t{args.threshold:.2e}_nproc{args.n_ensemble}.h5"
-    PETSc.Sys.Print(f"{h5_file}")
-    
+    #
+    h5_file = f"{args.mri}/inputs_t{threshold:.2e}_nproc{args.n_ensemble}.h5"
     if os.path.exists(h5_file):
         PETSc.Sys.Print(f"Found checkpoint file {h5_file}")
     else:   
-        PETSc.Sys.Print(f"Checkpoint not found. Creating it but we may run out of memory")
+        PETSc.Sys.Print(f"Checkpoint not found. Creating it but we may run out of memory.\n"
+                        f"Consider running mpiexec -n {args.n_ensemble} python build_checkpointfile.py "
+                        )
         if my_ensemble.ensemble_comm.rank == 0:
-            setup_h5(args.mri, args.threshold, comm=my_ensemble.comm)
+            setup_h5(args.mri, threshold, comm=my_ensemble.comm)
         my_ensemble.ensemble_comm.barrier()
-        PETSc.Sys.Print(f"checkpoint created")
+        PETSc.Sys.Print(f"Checkpoint created")
 
+
+    #
+    # load data
+    #
     with CheckpointFile(h5_file, 'r',comm=my_ensemble.comm) as afile:
         mesh = afile.load_mesh("mesh")
-        PETSc.Sys.Print(f"mesh loaded")
+        PETSc.Sys.Print(f"mesh",end=" ")
         tof = afile.load_function(mesh, "tof")
-        PETSc.Sys.Print(f"tof loaded")
+        PETSc.Sys.Print(f"tof",end=" ")
+        aseg = afile.load_function(mesh, "aseg")
+        PETSc.Sys.Print(f"aseg",end=" ")
         brain_mask = afile.load_function(mesh, "brain_mask")
-        PETSc.Sys.Print(f"brain mask loaded")
-        main_network = afile.load_function(mesh, "main_network")
-        PETSc.Sys.Print(f"main network loaded")
+        PETSc.Sys.Print(f"brain mask",end=" ")
         t1 = afile.load_function(mesh, "t1")
-        PETSc.Sys.Print(f"t1 loaded")
-        external_network = afile.load_function(mesh, "external_network")
-        PETSc.Sys.Print(f"external network loaded")
+        PETSc.Sys.Print(f"t1",end=" ")
         inlets = afile.load_function(mesh, "inlets")
-        PETSc.Sys.Print(f"inlets loaded")
+        PETSc.Sys.Print(f"inlets",end=" ")
+        main_network = afile.load_function(mesh, "main_network")
+        PETSc.Sys.Print(f"main network",end="")
+        external_network = afile.load_function(mesh, "external_network")
+        PETSc.Sys.Print(f"external network",end=" ")
+      
     PETSc.Sys.Print(f"Checkpoint loaded")
     my_ensemble.ensemble_comm.barrier()
 
@@ -410,14 +488,25 @@ def experiment(args):
 
     cartesian_mesh = mesh
     
+    input_data = { 
+        "tof": tof, 
+        "aseg": aseg, 
+        "brain_mask": brain_mask, 
+        "t1": t1, 
+        "inlets": inlets, 
+        "main_network": main_network, 
+        "external_network": external_network,
+        "cartesian_mesh": cartesian_mesh,
+        "threshold": threshold
+    }
 
 
     # confidence data
     def set_confidence(option, **kwargs):
         if option == "one":
-            return Constant(1.0)
-            
+            return Constant(1.0)            
         elif option == "main_network":
+            PETSc.Sys.Print(f"Using main network as confidence")
             # get main network
             try:
                 main_network = kwargs['main_network']
@@ -430,9 +519,7 @@ def experiment(args):
         else:
             raise ValueError(f"Unknown confidence option {option}")
 
-    #confidence = set_confidence("one", main_network=main_network)
-
-
+    
     def set_kappa(option, **kwargs):
         """
         Set kappa function.
@@ -445,20 +532,22 @@ def experiment(args):
                 t1 = kwargs['t1']
             except:
                 raise ValueError("t1 not provided")
+            try:
+                main_network = kwargs['main_network']
+            except:
+                raise ValueError("main_network not provided")
+
             kappa = Function(t1.function_space(), name="kappa")
-            kappa.interpolate(1.0 + conditional(t1 > 600, 1, 0))
+            kappa.interpolate(1.0 
+                              + conditional(main_network>0,0,1) 
+                              * (
+                                  conditional(t1 > 400, 5, 0)
+                                  + conditional(t1 > 500, 5, 0)
+                                ) )
             return kappa
         else:
             raise ValueError(f"Unknown kappa option {option}")
         
-    #kappa = set_kappa("one", t1=t1)
-
-
-    # define the corrupted network
-    #corrupted = set_corrupted_network(tof, main_network, external_network, brain_mask, threshold_network)
-
-    #space = corrupted.function_space()
-    
     def set_initial_guess(option, **kargs):        
         if option == "one":
             return Constant(1.0)
@@ -470,7 +559,7 @@ def experiment(args):
                 raise ValueError("corrupted not provided")
             
             heat = HeatMap(space, scaling=1.0, sigma=1e1)
-            low = Function(space,name="LOW")
+            low = Function(space, name="LOW")
             low.assign(heat(corrupted+1e-4) + 1e-4)
             return low
         
@@ -535,43 +624,13 @@ def experiment(args):
             high += 1e-4
             return high
         
-
-    def parameters_combinations():
-            #
-        # common setup
-        #
-        fems = ["DG0DG0"]
-        wr = [0.0]
-        method = [
-            "tdens_mirror_descent_explicit",
-        ]
+        else:
+            raise ValueError(f"Unknown initial guess option {option}")
+        
 
 
-        #
-        # Combinations producting the data for Figure 2
-        #
-        options = {
-            "wd": [1e-4,1e-3],  # set the discrepancy to zero
-            "ini": ["one"],
-            "conf": ["one", "main_network"],
-            "map": [
-                #{"type": "identity", "scaling": 1/20},
-                #{"type": "identity", "scaling": 1},
-                {"type": "identity", "scaling": 10},
-                #{"type": "identity", "scaling": 100},
-            ],
-            "kappa": ["one"],
-        "absorption": [1e-3]#,1e-4]
-        }
 
-        combinations = list(product_dict(**options))
-
-        return combinations
-
-    
-
-    #setup controls
-    combinations = parameters_combinations()
+    combinations = list(product_dict(**options))
 
 
     test_poisson = False
@@ -609,36 +668,53 @@ def experiment(args):
         PETSc.Sys.Print(f"{i} {my_ensemble.ensemble_comm.rank=} {label}")
         label_dir = os.path.join(out_directory,label)
         mpi_mkdir(label_dir, my_ensemble.comm)
+        
+        # get git version used 
+        git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
+        combination4save = cp(combination)
+        combination4save["git_hash"] = git_hash
+        # save a copy of current combination as json
+        with open(f"{label_dir}/option.json", 'w') as f:
+            json.dump(combination4save, f, indent=4)
+
+        # print combination
+        for key, value in combination.items():
+            PETSc.Sys.Print(f"{key} : {value}")
 
 
         #
         # set corrupted network
         #
-        corrupted = set_corrupted_network(tof, main_network, external_network, brain_mask, threshold_network)        
+        corrupted = set_corrupted_network(**input_data)
         
         #
         # btp inputs
         #
         absortion = combination["absorption"]
-        kappa = set_kappa(combination["kappa"], t1=t1)
-        btp = setup_btp(brain_mask, inlets, corrupted, kappa, constant_absorption = absortion)
+        sink = set_sink(option="segmented", **input_data, constant_absorption = absortion)
 
-        # save sink term for visualization
-        save_inputs_as_vtr = False
-        if save_inputs_as_vtr:
-            filename=f"{label_dir}/sink"
-            PETSc.Sys.Print(f"Saving {filename}")
-            sink_np = i2d.firedrake2numpy(btp.sink)
-            i2d.numpy2vtr([sink_np], lengths, filename, names=['sink'], comm=my_ensemble.comm)
-        #my_ensemble.ensemble_comm.barrier()
-        
-        
+        R = FunctionSpace(cartesian_mesh,"R",0)
+        source = Function(R, name="source")
+        source.assign(0.0)
+
+        kappa = set_kappa(combination["kappa"], **input_data)
+
+
+        inlet_pressure = Function(inlets.function_space())
+        inlet_pressure.assign(0.0)
+        weak_Dirichlet = [(inlet_pressure, ds_b, inlets)]
+        #strong_Dirichlet = [(source, ds_b, inlets)]
+        btp = ot.BranchedTransportProblem(source, sink, 
+                                      gamma=0.5, 
+                                      Dirichlet = None,
+                                      weak_Dirichlet = weak_Dirichlet,
+                                      kappa=kappa)
+
         #
         # set confidence
         #
-        confidence = set_confidence(combination["conf"], main_network=main_network)
+        confidence = set_confidence(combination["confidence"], **input_data)
         
-
 
         # setup solvers
         if my_ensemble.comm.rank == 0:
@@ -689,8 +765,44 @@ def experiment(args):
         niot_solver.setup()
         
         # set intial guess
-        initial = set_initial_guess(combination["ini"], corrupted=corrupted)
+        initial = set_initial_guess(combination["initial"], corrupted=corrupted)
+        print("Initial guess set")
+        print(initial)
         niot_solver.set_solution(tdens=initial)
+        
+        save_inputs = True
+        if save_inputs:
+            filename = f"{label_dir}/corrupted.nii.gz"
+            PETSc.Sys.Print(f"Saving {filename}")
+            corrupted_np = i2d.firedrake2numpy(corrupted)
+            nibabel.save(nibabel.Nifti1Image(corrupted_np, affine), filename)
+            corrupted_np = None
+            gc.collect()
+
+            filename = f"{label_dir}/sink.nii.gz"
+            PETSc.Sys.Print(f"Saving {filename}")
+            sink_np = i2d.firedrake2numpy(btp.sink)
+            nibabel.save(nibabel.Nifti1Image(sink_np, affine), filename)
+            sink_np = None
+            gc.collect()
+
+            if combination["confidence"] != "one":
+                filename = f"{label_dir}/confidence.nii.gz"
+                PETSc.Sys.Print(f"Saving {filename}")
+                confidence_np = i2d.firedrake2numpy(confidence)
+                nibabel.save(nibabel.Nifti1Image(confidence_np, affine), filename)
+                confidence_np = None
+
+            if combination["kappa"] != "one":
+                filename = f"{label_dir}/kappa.nii.gz"
+                PETSc.Sys.Print(f"Saving {filename}")
+                kappa_np = i2d.firedrake2numpy(btp.kappa)
+                nibabel.save(nibabel.Nifti1Image(kappa_np, affine), filename)
+                kappa_np = None
+                gc.collect()
+            
+        
+        
         
         #
         # run solver, buffering the saving of the solution
@@ -736,7 +848,6 @@ def experiment(args):
         gc.collect()
         
         
-
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description='Reconstruct network')
@@ -744,7 +855,7 @@ if __name__ == "__main__":
     parser.add_argument("--n_ensemble", type=int, default=1, help="Number of processor per simulation")
     parser.add_argument("--mri", type=str, default="./mri/", help="directory with mri data")
     parser.add_argument("--out", type=str, default="./runs/", help="output directory")
-    parser.add_argument("--threshold", type=float, default=250, help="Threshold for network")
+    parser.add_argument("--options", type=str, default="options.json", help="Json file with controls")
     
     args, unknown = parser.parse_known_args()
 
