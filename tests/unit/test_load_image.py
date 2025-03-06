@@ -29,7 +29,7 @@ def test_convert_write(img_path, mesh_type, normalizeRGB, inverteBW):
 
 
     # create mesh
-    mesh = i2d.build_mesh_from_numpy(np_img, mesh_type=mesh_type)
+    mesh = i2d.build_mesh_from_numpy(np_img.shape, mesh_type=mesh_type)
     
     # convert to firedrake
     fire_img = i2d.numpy2firedrake(mesh, np_img)
@@ -40,7 +40,7 @@ def test_convert_write(img_path, mesh_type, normalizeRGB, inverteBW):
 
     # convert back to numpy
     if mesh_type == 'simplicial':
-        mesh_cartesian = i2d.build_mesh_from_numpy(np_img, mesh_type='cartesian')
+        mesh_cartesian = i2d.build_mesh_from_numpy(np_img.shape, mesh_type='cartesian')
         image_dg0 = Function(FunctionSpace(mesh_cartesian, "DG", 0))
         image_dg0.interpolate(fire_img)
         np_img_converted = i2d.firedrake2numpy(image_dg0)

@@ -60,7 +60,7 @@ def cartesian_grid_3d(shape_xyz, lengths=[1.0,1.0,1.0],comm=COMM_WORLD):
    mesh.zmax = lengths[2]
    return mesh   
 
-def build_mesh_from_numpy(np_image, 
+def build_mesh_from_numpy(np_shape, 
                           mesh_type='simplicial',
                           lengths=None,
                           extrude=True,
@@ -69,20 +69,20 @@ def build_mesh_from_numpy(np_image,
    '''
    Create a mesh (first axis size=1) from a numpy array
    '''
-   if not ( (np_image.ndim == 2) or (np_image.ndim == 3)):
+   if not ( (len(np_shape) == 2) or (len(np_shape) == 3)):
       raise ValueError('Only 2D and 3D images are supported')
    
    if not( ( mesh_type == 'simplicial') or (mesh_type == 'cartesian')):
       raise ValueError('Only simplicial and cartesian meshes are supported')
 
 
-   if (np_image.ndim == 2):
+   if (len(np_shape) == 2):
       # here we swap the axes because the image is 
       # read from left, right, top to bottom
       if convention_2d_invert_rows_columns:
-         height, width  = np_image.shape
+         height, width  = np_shape
       else:
-         width, height = np_image.shape
+         width, height = np_shape
 
       # if no lengths are given, we assume that dimensions are proportional
       # to the size of the numpy array
@@ -116,8 +116,8 @@ def build_mesh_from_numpy(np_image,
       return mesh
       #print(f'{comm.size=} {comm.rank=} {mesh.comm.size=} {mesh.comm.rank=}' )
             
-   elif (np_image.ndim == 3):
-      nx, ny, nz = np_image.shape
+   elif (len(np_shape) == 3):
+      nx, ny, nz = np_shape
       
       if lengths is None:
          lengths = (nx,ny,nz)

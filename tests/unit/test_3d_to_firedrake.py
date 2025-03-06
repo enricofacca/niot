@@ -111,13 +111,13 @@ lenghts_box = [lengths,[1.0,2.0,3.0]]
 def test_3d_mesh(mesh_type, example, lengths):
     print(f"Testing {mesh_type}")
     if mesh_type == 'simplicial':
-        mesh = i2d.build_mesh_from_numpy(example, mesh_type='simplicial',lengths=lengths)  
+        mesh = i2d.build_mesh_from_numpy(example.shape, mesh_type='simplicial',lengths=lengths)  
         check_3d_numpy_simplicial_mesh(mesh, example)
         check_coordinates(mesh, lengths)
     elif "cartesian" in mesh_type :
         extrude = ("extruded" in mesh_type)
         print(f"extrude {extrude}")
-        mesh = i2d.build_mesh_from_numpy(example, mesh_type='cartesian',lengths=lengths, extrude=extrude)
+        mesh = i2d.build_mesh_from_numpy(example.shape, mesh_type='cartesian',lengths=lengths, extrude=extrude)
         print(f"mesh {mesh}")
         
 def h_length(V,mode):
