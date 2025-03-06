@@ -64,7 +64,7 @@ def find_external_network(labels_np):
         external_np[location] = 1
     return external_np
 
-def connected_components_tof(dir_nii, threshold):
+def save_main_and_external_network_as_nifti(dir_nii, threshold):
     # load tof data and get basic info
     tof_data = nibabel.load(f"{dir_nii}TOF.nii.gz")
     tof_np = tof_data.get_fdata()
@@ -83,14 +83,7 @@ def connected_components_tof(dir_nii, threshold):
     nibabel.save(nibabel.Nifti1Image(main_network, tof_data.affine), 
                  f"{dir_nii}main_network_t{threshold:.2e}.nii.gz")
 
-    # inlets
-    #inlets_np = np.copy(labels_np)
-    #inlets_np[:,:,1:] = 0
-    #nibabel.save(nibabel.Nifti1Image(inlets_np, tof_data.affine), 
-    #             f"{dir_nii}inlets_t{args.threshold:.2e}.nii.gz")
-
-
-
+   
     # find inlets of external network
     print(f"Saving external network to {dir_nii}external_network_t{threshold:.2e}.nii.gz")
     external_np = find_external_network(labels_np)
@@ -105,7 +98,7 @@ if __name__ == '__main__':
     parser.add_argument('--threshold', type=float)
     args = parser.parse_args()
 
-    connected_components_tof(args.mri, args.threshold)
+    save_main_and_external_network_as_nifti(args.mri, args.threshold)
 
     
     
