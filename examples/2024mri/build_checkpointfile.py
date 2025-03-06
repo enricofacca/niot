@@ -67,8 +67,8 @@ def setup_h5(mri_directory, threshold, comm=COMM_WORLD):
     # inlets
     # tof_np = tof_data.get_fdata()
     
-    file_nii = f"{dir_nii}/main_inlets.nii.gz"
-    file_npy = f"{dir_nii}/main_inlets.npy"   
+    file_nii = f"{dir_nii}/inlets.nii.gz"
+    file_npy = f"{dir_nii}/inlets.npy"   
     save_as_npy(file_nii, file_npy, comm=comm)
     PETSc.Sys.Print(f"Inlets",end="")
     inlets_2d_np = np.load(file_npy,mmap_mode='r')
