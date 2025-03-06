@@ -364,6 +364,7 @@ def set_corrupted_network(**kargs):
 def experiment(args):
     results = args.out
     
+    print(f"RUNNING {args.options}")
     # load options from json file
     try:
         with open(args.options, 'r') as f:
@@ -381,7 +382,6 @@ def experiment(args):
         # print as example
         for key, value in options.items():
             PETSc.Sys.Print(f"{key} : {value}")
-        
         raise ValueError(f"File {args.options} not found")
         
     if len(options["threshold"]) > 1:
@@ -419,7 +419,7 @@ def experiment(args):
         files = [
             f"{args.mri}/TOF.nii.gz",
                 f"{args.mri}/T1.nii.gz",
-                f"{args.mri}/main_inlets.nii.gz",
+                f"{args.mri}/inlets.nii.gz",
                 f"{args.mri}/brain_mask.nii.gz",
                 ]
         for file in files:
