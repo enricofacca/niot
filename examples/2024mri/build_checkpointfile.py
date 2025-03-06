@@ -1,5 +1,5 @@
 import nibabel 
-from firedrake import CheckpointFile, COMM_WORLD, PETSc
+from firedrake import CheckpointFile, COMM_WORLD, PETSc,dx, conditional, assemble
 from niot import image2dat as i2d
 import argparse
 import numpy as np
@@ -11,10 +11,11 @@ def save_as_npy(file_nii, file_npy, comm=COMM_WORLD):
     PETSc.Sys.Print(f" {file_nii} to {file_npy}", os.path.exists(file_npy))
     if not os.path.exists(file_npy):
         if comm.rank == 0:
-            PETSc.Sys.Print(f"Convert {file_nii} to {file_npy}")
+            PETSc.Sys.Print(f"Convertion {file_nii} to {file_npy}",end="")
             data = nibabel.load(file_nii)
             data_np = data.get_fdata()
             np.save(file_npy, data_np)
+            PETSc.Sys.Print(f"- Done")
     comm.barrier()
 
 def clean_npy_file(file_npy):
@@ -39,9 +40,15 @@ def setup_h5(mri_directory, threshold, comm=COMM_WORLD):
                         float(dimensions[2]*hz)])
 
     # define the mesh
-    PETSc.Sys.Print(f"Mesh start")
+    PETSc.Sys.Print(f"Mesh", end="")
     cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths,comm=comm)
-    PETSc.Sys.Print(f"Mesh done")
+    #cartesian_mesh = i2d.build_mesh_from_numpy(
+    #    dimensions, 
+    #    mesh_type='cartesian',
+    #    lengths=lengths,
+    #    comm=comm,
+    #    extrude=False)
+    PETSc.Sys.Print(f"done")
 
 
     # load tof data
@@ -49,25 +56,28 @@ def setup_h5(mri_directory, threshold, comm=COMM_WORLD):
     file_nii = f"{dir_nii}/TOF.nii.gz"
     file_npy = f"{dir_nii}/TOF.npy"   
     save_as_npy(file_nii, file_npy, comm=comm)
+    PETSc.Sys.Print(f"TOF ",end="")
     tof_np = np.load(file_npy,mmap_mode='r')
     tof = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
     tof_np = None
     clean_npy_file(file_npy)
-    PETSc.Sys.Print(f"TOF done")
+    PETSc.Sys.Print(f" - done")
     
     
     # inlets
     # tof_np = tof_data.get_fdata()
+    
     file_nii = f"{dir_nii}/main_inlets.nii.gz"
     file_npy = f"{dir_nii}/main_inlets.npy"   
     save_as_npy(file_nii, file_npy, comm=comm)
+    PETSc.Sys.Print(f"Inlets",end="")
     inlets_2d_np = np.load(file_npy,mmap_mode='r')
     inlets_3d_np = np.zeros(dimensions)
     inlets_3d_np[:,:,0] = inlets_2d_np[:,:,0]
     inlets = i2d.numpy2firedrake(cartesian_mesh, inlets_3d_np, name="inlets")
     inlets_2d_np = None
     inlets_3d_np = None
-    PETSc.Sys.Print(f"Inlets done")
+    PETSc.Sys.Print(f" - done")
     clean_npy_file(file_npy)
     gc.collect()
 
@@ -78,10 +88,26 @@ def setup_h5(mri_directory, threshold, comm=COMM_WORLD):
     save_as_npy(brain_nii_file, brain_npy_file, comm=comm)
     brain_mask_np = np.load(brain_npy_file,mmap_mode='r')
     brain_mask = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name="brain_mask")
+    brain_volume = assemble(conditional(brain_mask>1e-10,1,0)*dx) / np.prod(lengths)
+    PETSc.Sys.Print(f"Brain volume: {brain_volume*100:.2f}%")
     brain_mask_np = None
     PETSc.Sys.Print(f"Brain mask done")
     clean_npy_file(brain_npy_file)
     gc.collect()
+
+
+    # load tof data
+    # tof_np = tof_data.get_fdata()
+    file_nii = f"{dir_nii}/aseg.nii.gz"
+    file_npy = f"{dir_nii}/aseg.npy"   
+    save_as_npy(file_nii, file_npy, comm=comm)
+    PETSc.Sys.Print(f"aseg ",end="")
+    aseg_np = np.load(file_npy,mmap_mode='r')
+    aseg = i2d.numpy2firedrake(cartesian_mesh, aseg_np, name='aseg')
+    aseg_np = None
+    clean_npy_file(file_npy)
+    PETSc.Sys.Print(f" - done")
+    
 
     # load main network
     file_nii = f"{dir_nii}/T1.nii.gz"
@@ -131,23 +157,27 @@ def setup_h5(mri_directory, threshold, comm=COMM_WORLD):
             os.remove(h5_filename)
         except:
             pass
-    PETSc.Sys.Print(f"Saving to {h5_filename}")
+    PETSc.Sys.Print(f"Saving to {h5_filename}", end="")
     with CheckpointFile(h5_filename, 'w', comm=comm) as afile:
         afile.save_mesh(cartesian_mesh)
-        PETSc.Sys.Print(f"mesh done")
+        PETSc.Sys.Print(f" mesh ", end="")
         afile.save_function(tof)
-        PETSc.Sys.Print(f"tof done")
+        PETSc.Sys.Print(f" tof ", end="")
+        afile.save_function(aseg)
+        PETSc.Sys.Print(f" aseg ", end="")
         afile.save_function(t1)
-        PETSc.Sys.Print(f"t1 done")
+        PETSc.Sys.Print(f" t1 ", end="")
         afile.save_function(brain_mask)
-        PETSc.Sys.Print(f"brain mask done")
+        PETSc.Sys.Print(f" brain_mask ", end="")
         afile.save_function(main_network)
-        PETSc.Sys.Print(f"main network done")
+        PETSc.Sys.Print(f" main_network ", end="")
         afile.save_function(external_network)
-        PETSc.Sys.Print(f"external network done")
+        PETSc.Sys.Print(f" external_network ", end="")
         afile.save_function(inlets)
-        PETSc.Sys.Print(f"inlets done")
-
+        PETSc.Sys.Print(f" inlets ", end="")
+    PETSc.Sys.Print(f" - done")
+    
+        
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
