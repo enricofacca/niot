@@ -62,6 +62,13 @@ def product_dict(**kwargs):
     for instance in itertools.product(*kwargs.values()):
         yield dict(zip(keys, instance))
 
+def save_as_nifti(function, affine, filename):
+    function_np = i2d.firedrake2numpy(function)
+    nibabel.save(nibabel.Nifti1Image(function_np, affine), filename)
+    function_np = None
+    gc.collect()
+    return
+
 
 def build_meshes_from_numpy(data, mesh_type="simplicial",lengths=None, comm=COMM_WORLD, label_boundary=False):
     if lengths is None:
@@ -514,7 +521,7 @@ def experiment(args):
                 raise ValueError("main_network not provided")
 
             confidence = Function(main_network.function_space(), name="confidence")
-            confidence.interpolate(1.0 + 9.0 * conditional(main_network > 0, 1, 0))
+            confidence.interpolate(10 * conditional(main_network > 0, 1, 0))
             return confidence
         else:
             raise ValueError(f"Unknown confidence option {option}")
@@ -559,7 +566,7 @@ def experiment(args):
                 raise ValueError("corrupted not provided")
             
             heat = HeatMap(space, scaling=1.0, sigma=1e1)
-            low = Function(space, name="LOW")
+            low = Function(space, name="low", label=f"use heat map with sigma=1e1 and lift by 1e-4")
             low.assign(heat(corrupted+1e-4) + 1e-4)
             return low
         
@@ -604,7 +611,7 @@ def experiment(args):
             except:
                 raise ValueError("corrupted not provided")
             
-            low = set_initial_guess("low_gaussian", corrupted)
+            low = set_initial_guess("low_gaussian", corrupted=corrupted)
             low_np = i2d.firedrake2numpy(low)
             medium_np = gaussian_filter(low_np, sigma=4, truncate=1e0)
             medium = i2d.numpy2firedrake(cartesian_mesh, medium_np, name="MEDIUM")
@@ -617,7 +624,7 @@ def experiment(args):
             except:
                 raise ValueError("corrupted not provided")
             
-            medium = set_initial_guess("medium_gaussian", corrupted)
+            medium = set_initial_guess("medium_gaussian", corrupted=corrupted)
             medium_np = i2d.firedrake2numpy(medium)
             high_np = gaussian_filter(medium_np, sigma=4, truncate=1e0)
             high = i2d.numpy2firedrake(cartesian_mesh, high_np, name="HIGH")
@@ -739,7 +746,13 @@ def experiment(args):
         # optimization
         niot_solver.ctrl_set('optimization_tol', 1e-5)
         niot_solver.ctrl_set('constraint_tol', 1e-6)
-        niot_solver.ctrl_set('max_iter', 8)
+        try: 
+            max_iter = combination["max_iter"]
+        except:
+            max_iter = 5000
+            
+        niot_solver.ctrl_set('max_iter', max_iter)
+        
         niot_solver.ctrl_set('max_restart', 4)
         niot_solver.ctrl_set('verbose', 0)
 
@@ -766,25 +779,23 @@ def experiment(args):
         
         # set intial guess
         initial = set_initial_guess(combination["initial"], corrupted=corrupted)
-        print("Initial guess set")
-        print(initial)
         niot_solver.set_solution(tdens=initial)
         
         save_inputs = True
         if save_inputs:
             filename = f"{label_dir}/corrupted.nii.gz"
             PETSc.Sys.Print(f"Saving {filename}")
-            corrupted_np = i2d.firedrake2numpy(corrupted)
-            nibabel.save(nibabel.Nifti1Image(corrupted_np, affine), filename)
-            corrupted_np = None
-            gc.collect()
+            save_as_nifti(corrupted, affine, filename)
 
             filename = f"{label_dir}/sink.nii.gz"
             PETSc.Sys.Print(f"Saving {filename}")
-            sink_np = i2d.firedrake2numpy(btp.sink)
-            nibabel.save(nibabel.Nifti1Image(sink_np, affine), filename)
-            sink_np = None
-            gc.collect()
+            save_as_nifti(sink, affine, filename)
+
+            if combination["initial"] != "one":
+                filename = f"{label_dir}/initial.nii.gz"
+                PETSc.Sys.Print(f"Saving {filename}")
+                save_as_nifti(initial, affine, filename)
+
 
             if combination["confidence"] != "one":
                 filename = f"{label_dir}/confidence.nii.gz"
