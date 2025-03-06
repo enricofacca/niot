@@ -1,0 +1,11 @@
+{
+    "threshold":[450],
+    "wd": [1e-4],
+    "initial": ["one"],
+    "confidence": ["main_network"],
+    "map": [
+    {"type": "identity", "scaling": 10}
+    ],
+    "kappa": ["t1"],
+    "absorption": [1e-3]
+}
