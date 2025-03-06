@@ -45,3 +45,4 @@ test/*/runs/
 *.vtr
 # nibabel
 *.nii.gz
+*.json
