@@ -861,7 +861,7 @@ def experiment(args):
         
 if __name__ == "__main__":
     
-    parser = argparse.ArgumentParser(description='Reconstruct network')
+    parser = argparse.ArgumentParser(exit_on_error=True, description='Reconstruct network')
     #parser.add_argument("--field", type=str, default='TOF', help="TOF")
     parser.add_argument("--n_ensemble", type=int, default=1, help="Number of processor per simulation")
     parser.add_argument("--mri", type=str, default="./mri/", help="directory with mri data")
