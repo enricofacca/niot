@@ -819,10 +819,13 @@ def experiment(args):
         # run solver, buffering the saving of the solution
         #
         total_iterations = niot_solver.ctrl_get('max_iter')
-        buffer_saving = min(5,total_iterations)
+        buffer_saving = min(500,total_iterations)
 
 
-        def solve_and_save(niot_solver, label_dir):
+        def solve_and_save(niot_solver, label_dir, n_buffer):
+            n_iter = niot_solver.ctrl_get('max_iter')
+            PETSc.Sys.Print(f"TODO {n_iter}")
+            
             # solve
             ierr = niot_solver.solve()
 
@@ -831,14 +834,15 @@ def experiment(args):
             
             tdens_np = i2d.firedrake2numpy(tdens)
             tdens = None
-            filename=f"{label_dir}/tdens.nii.gz"
+            filename=f"{label_dir}/tdens_{n_buffer}.nii.gz"
             nibabel.save(nibabel.Nifti1Image(tdens_np, affine), filename)
             tdens_np = None
             gc.collect()
             
             pot_np = i2d.firedrake2numpy(pot)
             pot = None
-            filename=f"{label_dir}/pot.nii.gz"
+            filename=f"{label_dir}/pot_{n_buffer}.nii.gz"
+            PETSc.Sys.Print(f"Saving {filename} ")
             nibabel.save(nibabel.Nifti1Image(pot_np, affine), filename)
             pot_np = None
             gc.collect()
@@ -846,15 +850,17 @@ def experiment(args):
 
         # run and save
         niot_solver.ctrl_set('max_iter', total_iterations%buffer_saving)
-        solve_and_save(niot_solver, label_dir)
+        solve_and_save(niot_solver, label_dir, 0)
         PETSc.Sys.Print(f"First {total_iterations%buffer_saving} iterations done")
 
         # run and save, skipping initial steps
         niot_solver.ctrl_set('max_iter',buffer_saving)
         niot_solver.ctrl_set('restart',True)
         for i in range(total_iterations//buffer_saving):
-            PETSc.Sys.Print(f"Restarting {100*(i+1)/(total_iterations//buffer_saving):.1f}% of {total_iterations} - {label}")
-            solve_and_save(niot_solver, label_dir)
+            interval = [i*buffer_saving,(i+1)*buffer_saving]
+            PETSc.Sys.Print(f"Starting {interval[0]} {interval[1]} of {total_iterations:.1f} - {label}")
+            solve_and_save(niot_solver, label_dir, i+1)
+            
 
         gc.collect()
         
