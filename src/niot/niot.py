@@ -617,6 +617,14 @@ class NiotSolver:
         assemble(interpolate(confidence,self.fems.tdens_space), tensor=self.confidence)
         self.confidence.rename('confidence','confidence')
 
+        # weights
+
+        self.discrepancy_weight =  Function(self.ConstansSpace, name="discrepancy_weight")
+        self.penalization_weight =  Function(self.ConstansSpace, name="penalization_weight")
+        self.regularization_weight = Function(self.ConstansSpace, name="regularization_weight")
+        
+
+
         # init infos
         self.iteration = 0
         self.restart = 0
@@ -961,9 +969,14 @@ class NiotSolver:
             pw = self.ctrl_get('penalization_weight')
             rw = self.ctrl_get('regularization_weight')
 
+            
+            self.discrepancy_weight.assign(dw)
+            self.penalization_weight.assign(pw)
+            self.regularization_weight.assign(rw)
+
             # Discrepancy 
             if dw > 0:
-                discrepancy_form = dw*self.discrepancy(self.pot_h,self.tdens_h)
+                discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
                 self.lagrangian_fun = assemble(discrepancy_form)  
                 
                 if use_adjoint :
@@ -993,7 +1006,7 @@ class NiotSolver:
 
             # Penalization
             if pw > 0:
-                self.penalization_form = pw*self.penalization(pot,self.tdens_h)
+                self.penalization_form = self.penalization_weight * self.penalization(pot,self.tdens_h)
                 
                 if use_adjoint:
                     self.lagrangian_fun = assemble(self.penalization_form)
@@ -1013,7 +1026,7 @@ class NiotSolver:
                 self.gradient_penalization.assign(0.0)
 
             if rw > 0:
-                self.regularization_form = rw*self.regularization(pot,self.tdens_h)
+                self.regularization_form = self.regularization_weight * self.regularization(pot,self.tdens_h)
                 
                 if use_adjoint: 
                     self.lagrangian_fun = assemble(self.regularization_form)
@@ -1366,15 +1379,19 @@ class NiotSolver:
         returns:
             Lag: Lagrangian functional = w_0*discrepancy + w_1*penalization + w_2*regularization
         '''
-        wr = self.ctrl_get('regularization_weight')
-        wp = self.ctrl_get('penalization_weight')
-        wd = self.ctrl_get('discrepancy_weight')
+        rw = self.ctrl_get('regularization_weight')
+        pw = self.ctrl_get('penalization_weight')
+        dw = self.ctrl_get('discrepancy_weight')
 
-        Lag = wp * self.penalization(pot,tdens)
-        if abs(wd) > 1e-16:
-            Lag += wd * self.discrepancy(pot,tdens)
-        if abs(wr) > 1e-16:
-            Lag += wr * self.regularization(pot,tdens)
+        self.discrepancy_weight.assign(dw)
+        self.penalization_weight.assign(pw)
+        self.regularization_weight.assign(rw)
+
+        Lag = self.penalization_weight * self.penalization(pot,tdens)
+        if abs(dw) > 1e-16:
+            Lag += self.discrepancy_weight * self.discrepancy(pot,tdens)
+        if abs(rw) > 1e-16:
+            Lag += self.regularization_weight * self.regularization(pot,tdens)
         return Lag
     
     #@profile
@@ -1560,9 +1577,14 @@ class NiotSolver:
         wp = self.ctrl_get('penalization_weight')
         wr = self.ctrl_get('regularization_weight')
 
+        self.discrepancy_weight.assign(wd)
+        self.penalization_weight.assign(wp)
+        self.regularization_weight.assign(wr)
+
+
         self.lagrangian_fun = assemble(
-            wd * self.discrepancy(pot, tdens)
-            + wp * self.penalization(pot, tdens)
+            self.discrepancy_weight * self.discrepancy(pot, tdens)
+            + self.penalization_weight * self.penalization(pot, tdens)
             )
         var = fire_adj.Control(tdens)
         self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, var )
