@@ -1210,13 +1210,14 @@ class NiotSolver:
         ierr_dmk = 0
         while ierr_dmk == 0 and self.iteration < max_iter:
             # update with restarts
-            
+            tic = time.time()
             msg = f"\nIt: {self.iteration+1} method {self.ctrl_get(['dmk','type'])}"
             self.print_info(msg, priority=2, where=['stdout','log'], color='green')
     
             ierr = self.iterate(self.sol)
             # clean memory every 10 iterations
-            
+            update_time = time.time() -tic
+
             if self.iteration%5 == 0:
                 #if use_adjoint :
                     # Clear tape is required to avoid memory accumalation
@@ -1252,6 +1253,7 @@ class NiotSolver:
             msg = (f'It: {self.iteration} '
                 +f' dt: {self.deltat:.1e}'
                 +f' var:{residual_opt:.1e}'
+                +f' cpu: {update_time:.1f}'
                 +f' nsym:{self.nonlinear_iterations:1d}'
                 +f' avgouter: {avg_outer:.1f}')
             self.print_info(
