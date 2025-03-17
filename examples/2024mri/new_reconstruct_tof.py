@@ -819,7 +819,7 @@ def experiment(args):
         # run solver, buffering the saving of the solution
         #
         total_iterations = niot_solver.ctrl_get('max_iter')
-        buffer_saving = min(100,total_iterations)
+        buffer_saving = min(total_iterations+1,total_iterations)
 
 
         def solve_and_save(niot_solver, label_dir):
