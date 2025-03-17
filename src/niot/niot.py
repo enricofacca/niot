@@ -1179,6 +1179,12 @@ class NiotSolver:
         #if use_adjoint:
         tape = fire_adj.get_working_tape()
     
+
+        self.print_info(
+                msg=f'Restart? {self.ctrl_get("restart")}', 
+                priority=0, 
+                where=['stdout','log'])
+        
         if not self.ctrl_get('restart'):
             # Initialize the parameter-dependent solvers
             #self.setup()
@@ -1198,17 +1204,18 @@ class NiotSolver:
                 priority=1, 
                 where=['stdout','log'], 
                 color='green')
-            
-            
-            
             self.iteration = 0
             
         # udpack main controls and start main loop
         max_iter = self.ctrl_get('max_iter')
-
+        self.print_info(
+                msg=f'TODO {max_iter=}', 
+                priority=0, 
+                where=['stdout','log'])
         
         ierr_dmk = 0
-        while ierr_dmk == 0 and self.iteration < max_iter:
+        self.local_iteration = 0
+        while ierr_dmk == 0 and self.local_iteration < max_iter:
             # update with restarts
             tic = time.time()
             msg = f"\nIt: {self.iteration+1} method {self.ctrl_get(['dmk','type'])}"
@@ -1218,7 +1225,7 @@ class NiotSolver:
             # clean memory every 10 iterations
             update_time = time.time() -tic
 
-            if self.iteration%5 == 0:
+            if self.local_iteration%5 == 0:
                 #if use_adjoint :
                     # Clear tape is required to avoid memory accumalation
                     # It works but I don't know why
@@ -1239,8 +1246,10 @@ class NiotSolver:
                 break
 
             # study state of convergence
+            self.local_iteration += 1
             self.iteration += 1
-            if self.iteration == max_iter:
+
+            if self.local_iteration == max_iter:
                 ierr_dmk = 1
             
             # compute residuum
