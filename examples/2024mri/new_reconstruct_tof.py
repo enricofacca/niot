@@ -439,7 +439,14 @@ def experiment(args):
 
 
     # create ensemble of processors
-    my_ensemble = Ensemble(COMM_WORLD, args.n_ensemble)
+    if args.n_ensemble == COMM_WORLD.size:
+        my_ensemble = None
+        comm = COMM_WORLD
+        use_ensemble = False
+    else:
+        my_ensemble = Ensemble(COMM_WORLD, args.n_ensemble)
+        comm = my_ensemble.comm
+        use_ensemble = True
     
     #
     # check if h5 already exists or build it, but it may run out of memory
@@ -451,16 +458,19 @@ def experiment(args):
         PETSc.Sys.Print(f"Checkpoint not found. Creating it but we may run out of memory.\n"
                         f"Consider running mpiexec -n {args.n_ensemble} python build_checkpointfile.py "
                         )
-        if my_ensemble.ensemble_comm.rank == 0:
-            setup_h5(args.mri, threshold, comm=my_ensemble.comm)
-        my_ensemble.ensemble_comm.barrier()
+        if use_ensemble:
+            if my_ensemble.ensemble_comm.rank == 0:
+                setup_h5(args.mri, threshold, comm=comm)
+            my_ensemble.ensemble_comm.barrier()
+        else:
+            setup_h5(args.mri, threshold, comm=comm)
         PETSc.Sys.Print(f"Checkpoint created")
 
 
     #
     # load data
     #
-    with CheckpointFile(h5_file, 'r',comm=my_ensemble.comm) as afile:
+    with CheckpointFile(h5_file, 'r',comm=comm) as afile:
         mesh = afile.load_mesh("mesh")
         PETSc.Sys.Print(f"mesh",end=" ")
         tof = afile.load_function(mesh, "tof")
@@ -479,7 +489,8 @@ def experiment(args):
         PETSc.Sys.Print(f"external network",end=" ")
       
     PETSc.Sys.Print(f"Checkpoint loaded")
-    my_ensemble.ensemble_comm.barrier()
+    if use_ensemble:
+        my_ensemble.ensemble_comm.barrier()
 
     mesh.nx = original_dimensions[0]
     mesh.ny = original_dimensions[1]
@@ -653,28 +664,39 @@ def experiment(args):
     def lol(a, n):
         k, m = divmod(len(a), n)
         return (a[i*k+min(i, m):(i+1)*k+min(i+1, m)] for i in range(n))
-    sub_combinations = list(lol(combinations, my_ensemble.ensemble_comm.size))
-    todo = sub_combinations[my_ensemble.ensemble_comm.rank]
+    
+    if use_ensemble:
+        sub_combinations = list(lol(combinations, my_ensemble.ensemble_comm.size))
+        todo = sub_combinations[my_ensemble.ensemble_comm.rank]
+        for i in range(my_ensemble.ensemble_comm.size):
+            if i == my_ensemble.ensemble_comm.rank:
+                print(f"ENSEMBLE {i}")
+                for j, comb in enumerate(todo):
+                    label = "_".join(labels(**comb))
+                    if my_ensemble.comm.rank == 0:
+                        print(f"{j} {label}")   
+            my_ensemble.ensemble_comm.barrier()
 
-    for i in range(my_ensemble.ensemble_comm.size):
-        if i == my_ensemble.ensemble_comm.rank:
-            print(f"ENSEMBLE {i}")
-            for j, comb in enumerate(todo):
-                label = "_".join(labels(**comb))
-                if my_ensemble.comm.rank == 0:
-                    print(f"{j} {label}")   
         my_ensemble.ensemble_comm.barrier()
+        PETSc.Sys.Print(f"{my_ensemble.ensemble_comm.rank=} {len(todo)=}")
+    else:
+        todo = combinations
+        PETSc.Sys.Print(f"TODO {len(todo)=}")
+    
+    
 
-    my_ensemble.ensemble_comm.barrier()
 
-
-    PETSc.Sys.Print(f"{my_ensemble.ensemble_comm.rank=} {len(todo)=}")
+    
     for i, combination in enumerate(todo):
         # set label and directory
         label = "_".join(labels(**combination))
-        PETSc.Sys.Print(f"{i} {my_ensemble.ensemble_comm.rank=} {label}")
+        if use_ensemble:
+            PETSc.Sys.Print(f"{i} {my_ensemble.ensemble_comm.rank=} {label}")
+        else:
+            PETSc.Sys.Print(f"{i} {label}")
+
         label_dir = os.path.join(out_directory,label)
-        mpi_mkdir(label_dir, my_ensemble.comm)
+        mpi_mkdir(label_dir, comm)
         
         # get git version used 
         git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
@@ -723,10 +745,6 @@ def experiment(args):
         confidence = set_confidence(combination["confidence"], **input_data)
         
 
-        # setup solvers
-        if my_ensemble.comm.rank == 0:
-            print(f"BEGIN {i+1}/{len(todo)} ensemble {my_ensemble.ensemble_comm.rank}: {label}")
-        
         # setup solver
         niot_solver = NiotSolver(btp, 
                              corrupted,  
