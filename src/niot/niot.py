@@ -780,6 +780,48 @@ class NiotSolver:
                 where=['stdout','log'],
             )
         
+        # set up the optimization algorithm
+        use_adjoint = self.ctrl_get('use_adjoint')   
+
+
+        # set up gradient computation
+        dw = self.ctrl_get('discrepancy_weight')
+        self.discrepancy_weight.assign(dw)
+        
+
+
+        # Discrepancy 
+        self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
+        if dw > 0:
+            
+            if use_adjoint:
+                # The following is required to keep track of the 
+                # adjoint computation, like when the map from tdens to image is 
+                # defined as the solution of a PDE (for example the poruous media map).
+                self.adj_discrepancy_fun = assemble(self.discrepancy_form)
+                self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.adj_discrepancy_fun, fire_adj.Control(self.tdens_h))
+            else:
+                # Simple derivative computation
+                # It uses less memory, but it requires the functional
+                # as combination of operations manegable by automatic differiantion.
+                #self.gradient_discrepancy = assemble(derivative(self.lagrangian_fun, self.tdens_h))
+                self.gradient_discrepancy_form = derivative(self.discrepancy_form, 
+                                                            self.tdens_h,
+                                                            coefficient_derivatives=self.tdens2image_map.cd)
+                
+        # Penalization
+        pw = self.ctrl_get('penalization_weight')
+        self.penalization_weight.assign(pw)
+        self.penalization_form = self.penalization_weight * self.penalization(self.pot_h,self.tdens_h)
+        if abs(pw) > 1e-16:
+            if use_adjoint:
+                self.adj_penalization_fun = assemble(self.penalization_form)
+                self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.adj_penalization_fun, fire_adj.Control(self.tdens_h))
+            else:
+                self.gradient_penalization_form = derivative(self.penalization_form, self.tdens_h)
+
+
+        
 
     def setup_tdensimage(self):
         """
@@ -976,24 +1018,19 @@ class NiotSolver:
 
             # Discrepancy 
             if dw > 0:
-                discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
-                self.lagrangian_fun = assemble(discrepancy_form)  
-                
                 if use_adjoint :
                     # The following is required to keep track of the 
                     # adjoint computation, like when the map from tdens to image is 
                     # defined as the solution of a PDE (for example the poruous media map).
-                    self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
-                    self.gradient_discrepancy = self.lagrangian_fun_reduced.derivative()
+                    self.adj_discrepancy_fun = assemble(self.discrepancy_form)
+                    self.adj_discrepancy_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
+                    self.gradient_discrepancy = self.adj_discrepancy_fun_reduced.derivative()
                 else:
                     # Simple derivative computation
                     # It uses less memory, but it requires the functional
                     # as combination of operations manegable by automatic differiantion.
-                    #self.gradient_discrepancy = assemble(derivative(self.lagrangian_fun, self.tdens_h))
-                    self.gradient_discrepancy = assemble(derivative(discrepancy_form, self.tdens_h, coefficient_derivatives=self.tdens2image_map.cd))
-                    
-                
-                
+                    self.gradient_discrepancy = assemble(self.gradient_discrepancy_form)
+
                 with self.gradient_discrepancy.dat.vec_ro as gD:
                     msg = utilities.msg_bounds(gD,'grad discrepancy   ')
                     self.print_info(
@@ -1004,16 +1041,15 @@ class NiotSolver:
             else:
                 self.gradient_discrepancy.assign(0.0)
 
+            PETSc.Sys.Print(f"penalization weight {pw} {use_adjoint}")
             # Penalization
             if pw > 0:
-                self.penalization_form = self.penalization_weight * self.penalization(pot,self.tdens_h)
-                
                 if use_adjoint:
-                    self.lagrangian_fun = assemble(self.penalization_form)
-                    self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
-                    self.gradient_penalization = self.lagrangian_fun_reduced.derivative()
+                    self.adj_penalization_fun = assemble(self.penalization_form)
+                    self.adj_penalization_fun_reduced = fire_adj.ReducedFunctional(self.adj_penalization_fun, fire_adj.Control(self.tdens_h))
+                    self.gradient_penalization = self.adj_penalization_fun_reduced.derivative()
                 else:
-                    self.gradient_penalization = assemble(derivative(self.penalization_form, self.tdens_h))
+                    self.gradient_penalization = assemble(self.gradient_penalization_form)
                 
                 with self.gradient_penalization.dat.vec_ro as gP:
                     msg = utilities.msg_bounds(gP,'grad penalty       ')
