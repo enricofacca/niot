@@ -134,7 +134,7 @@ def set_sink(option="segmented", **kargs):
         brain_mask = kargs['brain_mask']
         aseg = kargs['aseg']
         main_network = kargs['main_network'] 
-        constant_absorption = 1.0
+        constant_absorption = kargs['constant_absorption']
         DG0 = tof.function_space()
         
         sink = Function(tof.function_space(), name="sink")
@@ -533,6 +533,17 @@ def experiment(args):
 
             confidence = Function(main_network.function_space(), name="confidence")
             confidence.interpolate(10 * conditional(main_network > 0, 1, 0))
+            return confidence
+        elif option == "main_plus_eps":
+            PETSc.Sys.Print(f"Using main network as confidence")
+            # get main network
+            try:
+                main_network = kwargs['main_network']
+            except:
+                raise ValueError("main_network not provided")
+
+            confidence = Function(main_network.function_space(), name="confidence")
+            confidence.interpolate(1e-4 + 100 * conditional(main_network > 0, 1, 0))
             return confidence
         else:
             raise ValueError(f"Unknown confidence option {option}")
