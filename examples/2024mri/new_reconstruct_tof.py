@@ -80,47 +80,6 @@ def build_meshes_from_numpy(data, mesh_type="simplicial",lengths=None, comm=COMM
     else:
         cartesian_mesh = mesh
     return mesh, cartesian_mesh
-
-def load_data(field, coarseness, data_folder="../../../mri/",mesh_type="simplicial"):
-
-    data = np.load(f'{data_folder}/{field}.npy')
-
-    
-
-    PETSc.Sys.Print(f"Data shape: {data.shape}") 
-
-
-    if coarseness > 1:
-        PETSc.Sys.Print('coarsening image')
-        data = zoom(data, (1/coarseness,1/coarseness,1/coarseness), order=0)
-        PETSc.Sys.Print(data.shape)
-
-
-    
-    # create mesh
-    PETSc.Sys.Print('building mesh')
-    start = time.time()
-    lengths = [1.0,data.shape[1]/data.shape[0],data.shape[2]/data.shape[0]]
-    mesh = i2d.build_mesh_from_numpy(data, mesh_type=mesh_type,lengths=lengths,label_boundary=True)
-    if mesh_type == "simplicial":
-        cartesian_mesh = i2d.cartesian_grid_3d(data.shape,lengths)
-    else:
-        cartesian_mesh = mesh
-    
-    #mesh = Mesh("Cube-03.msh")
-    #mesh.name = 'mesh'
-    #mesh.init()
-    end = time.time()
-    PETSc.Sys.Print(f'mesh built {end-start}s')
-
-    # convert to firedrake
-    PETSc.Sys.Print('converting image to firedrake')
-    start = time.time()
-    tof_fire = i2d.numpy2firedrake(mesh, data, name="TOF")
-    end = time.time()
-    PETSc.Sys.Print(f'image converted {end-start}s')
-
-    return tof_fire, cartesian_mesh
     
 
 def set_sink(option="segmented", **kargs):
