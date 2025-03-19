@@ -543,7 +543,7 @@ def experiment(args):
                 raise ValueError("main_network not provided")
 
             confidence = Function(main_network.function_space(), name="confidence")
-            confidence.interpolate(1e-4 + 100 * conditional(main_network > 0, 1, 0))
+            confidence.interpolate(1e-6 + 10 * conditional(main_network > 0, 1, 0))
             return confidence
         else:
             raise ValueError(f"Unknown confidence option {option}")
