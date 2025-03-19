@@ -1,0 +1,1 @@
+for trust in main_plus_eps; do for discr in 1e-2 1e-3 1e-4 1e-5; do for ini in high_gaussian one; do sed 's/thrs/450/' base_option.json | sed "s|trust|${trust}|" | sed "s|discr|${discr}|" | sed "s|t0|${ini}|"> sub.json ; cmd=$(python submit.py --json sub.json --c 2 --np 4 --ne 4 --s niot_128gb_1); bash -c "${cmd}"; sleep 15; done; done; done
