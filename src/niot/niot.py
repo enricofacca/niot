@@ -4,6 +4,10 @@ from copy import deepcopy as cp
 import gc
 import sys
 
+
+import warnings
+warnings.filterwarnings("ignore")
+
 import numpy as np
 import scipy as sp
 import scipy.sparse.linalg as splinalg
@@ -706,7 +710,6 @@ class NiotSolver:
         log_verbose = self.ctrl_get('log_verbose')
         if log_verbose > 0:
             log_file = self.ctrl_get('log_file')
-            print(f'Log file: {log_file}')
             try:
                 os.remove(log_file)
             except OSError:
@@ -769,17 +772,6 @@ class NiotSolver:
         max_iter = self.ctrl_get('max_iter')
         wd = self.ctrl_get('discrepancy_weight')
 
-        msg = (
-            f' wd: {wd :.2e} '
-            +f' map: {map_description}'
-            + f' max_iter: {max_iter}'
-                )
-        self.print_info(
-                msg, 
-                priority=0,
-                where=['stdout','log'],
-            )
-        
         # set up the optimization algorithm
         use_adjoint = self.ctrl_get('use_adjoint')   
 
@@ -1076,7 +1068,6 @@ class NiotSolver:
             else:
                 self.gradient_discrepancy.assign(0.0)
 
-            PETSc.Sys.Print(f"penalization weight {pw} {use_adjoint}")
             # Penalization
             if pw > 0:
                 if use_adjoint:
@@ -1264,11 +1255,6 @@ class NiotSolver:
         tape = fire_adj.get_working_tape()
     
 
-        self.print_info(
-                msg=f'Restart? {self.ctrl_get("restart")}', 
-                priority=0, 
-                where=['stdout','log'])
-        
         if not self.ctrl_get('restart'):
             # Initialize the parameter-dependent solvers
             #self.setup()
@@ -1292,10 +1278,6 @@ class NiotSolver:
             
         # udpack main controls and start main loop
         max_iter = self.ctrl_get('max_iter')
-        self.print_info(
-                msg=f'TODO {max_iter=}', 
-                priority=0, 
-                where=['stdout','log'])
         
         ierr_dmk = 0
         self.local_iteration = 0
