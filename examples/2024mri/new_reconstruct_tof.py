@@ -11,7 +11,7 @@ from niot import utilities
 from niot import optimal_transport as ot
 from niot import NiotSolver
 from niot import SpaceDiscretization
-from build_checkpointfile import setup_h5
+from build_checkpointfile import setup_h5, write_h5
 #from memory_profiler import profile
 
 from connected_components_tof import save_main_and_external_network_as_nifti
@@ -326,7 +326,6 @@ def set_corrupted_network(**kargs):
 def experiment(args):
     results = args.out
     
-    print(f"RUNNING {args.options}")
     # load options from json file
     try:
         with open(args.options, 'r') as f:
@@ -349,8 +348,18 @@ def experiment(args):
     if len(options["threshold"]) > 1:
         raise ValueError("Only one threshold is allowed")
     threshold = options["threshold"][0]
-    PETSc.Sys.Print(f"RUNNING {args.mri} {threshold:.1e}")
-
+    PETSc.Sys.Print(f"**** SETUP ****** ")
+    PETSc.Sys.Print(f"Inputs: {args.mri}")
+    PETSc.Sys.Print(f"Options:")
+    for key, value in options.items():
+        PETSc.Sys.Print(f"{key} : {value}")
+    PETSc.Sys.Print(f"PID: {os.getpid()}")
+    git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
+    PETSc.Sys.Print(f"GIT has: {git_hash}")
+    PETSc.Sys.Print(f"nproc: {COMM_WORLD.size} n_ensemble: {args.n_ensemble}")
+    PETSc.Sys.Print(f"********************* ")
+    PETSc.Sys.Print(f" ")
+    
     # make directories
     mpi_mkdir(results)
 
@@ -359,9 +368,7 @@ def experiment(args):
     else:
         input_name = os.path.basename(args.mri)
     test_case = f"{input_name}_threshold_{threshold:.1e}"
-    PETSc.Sys.Print(f"RUNNING {test_case}")
-    
-    
+        
     tof_data = nibabel.load(f"{args.mri}/TOF.nii.gz")
     affine = tof_data.affine
     original_dimensions = tof_data.header.get_data_shape()[:3]
@@ -405,14 +412,17 @@ def experiment(args):
         my_ensemble = None
         comm = COMM_WORLD
         use_ensemble = False
+        color_rank = 0
     else:
         my_ensemble = Ensemble(COMM_WORLD, args.n_ensemble)
         comm = my_ensemble.comm
         use_ensemble = True
+        color_rank = my_ensemble.ensemble_comm.rank
     
     #
     # check if h5 already exists or build it, but it may run out of memory
     #
+    PETSc.Sys.Print(f"**** Inputs loading ****")
     h5_file = f"{args.mri}/inputs_t{threshold:.2e}_nproc{args.n_ensemble}.h5"
     if os.path.exists(h5_file):
         PETSc.Sys.Print(f"Found checkpoint file {h5_file}")
@@ -422,11 +432,14 @@ def experiment(args):
                         )
         if use_ensemble:
             if my_ensemble.ensemble_comm.rank == 0:
-                setup_h5(args.mri, threshold, comm=comm)
+                data = setup_h5(args.mri, threshold, comm=comm)
+                write_h5(args.mri, threshold, comm, args.n_ensemble, data=data)
             my_ensemble.ensemble_comm.barrier()
         else:
-            setup_h5(args.mri, threshold, comm=comm)
-        PETSc.Sys.Print(f"Checkpoint created")
+            data = setup_h5(args.mri, threshold, comm=comm)
+            write_h5(args.mri, threshold, comm, args.n_ensemble, data=data)
+        PETSc.Sys.Print(f"Checkpoint created h5_file={h5_file}")
+    
 
 
     #
@@ -451,6 +464,8 @@ def experiment(args):
         PETSc.Sys.Print(f"external network",end=" ")
       
     PETSc.Sys.Print(f"Checkpoint loaded")
+    PETSc.Sys.Print(f"**** Inputs loaded ****")
+    PETSc.Sys.Print(f"")
     if use_ensemble:
         my_ensemble.ensemble_comm.barrier()
 
@@ -486,7 +501,6 @@ def experiment(args):
         if option == "one":
             return Constant(1.0)            
         elif option == "main_network":
-            PETSc.Sys.Print(f"Using main network as confidence")
             # get main network
             try:
                 main_network = kwargs['main_network']
@@ -502,23 +516,28 @@ def experiment(args):
             confidence = Function(main_network.function_space(), name="confidence")
             confidence.interpolate( # inside, we trust the network
                                     conditional(brain_mask > 1e-16, 1, 0)
-                                    10  * conditional(main_network > 0, 1, 0)
+                                    * 10  * conditional(main_network > 0, 1, 0)
                                    # outside, strong confidence, where we set no network
                                    + 1000 * conditional(brain_mask<=1e-16, 1, 0)
                                    )
             return confidence
         elif option == "main_plus_eps":
-            PETSc.Sys.Print(f"Using main network as confidence")
             # get main network
             try:
                 main_network = kwargs['main_network']
             except:
                 raise ValueError("main_network not provided")
+            
+            # get brain mask
+            try:
+                brain_mask = kwargs['brain_mask']
+            except:
+                raise ValueError("brain_mask not provided")
 
             confidence = Function(main_network.function_space(), name="confidence")
             confidence.interpolate( # inside, we trust the network plus a small value
                                     conditional(brain_mask > 1e-16, 1, 0)
-                                    (1e-6+ 10  * conditional(main_network > 0, 1, 0) )
+                                    * (1e-6+ 10  * conditional(main_network > 0, 1, 0) )
                                    # outside, strong confidence, where we set no network
                                    + 1000 * conditional(brain_mask<=1e-16, 1, 0)
                                    )
@@ -657,23 +676,15 @@ def experiment(args):
         k, m = divmod(len(a), n)
         return (a[i*k+min(i, m):(i+1)*k+min(i+1, m)] for i in range(n))
     
+    PETSc.Sys.Print(f"**** RUNNING ****** ")
     if use_ensemble:
         sub_combinations = list(lol(combinations, my_ensemble.ensemble_comm.size))
         todo = sub_combinations[my_ensemble.ensemble_comm.rank]
-        for i in range(my_ensemble.ensemble_comm.size):
-            if i == my_ensemble.ensemble_comm.rank:
-                print(f"ENSEMBLE {i}")
-                for j, comb in enumerate(todo):
-                    label = "_".join(labels(**comb))
-                    if my_ensemble.comm.rank == 0:
-                        print(f"{j} {label}")   
-            my_ensemble.ensemble_comm.barrier()
-
         my_ensemble.ensemble_comm.barrier()
-        PETSc.Sys.Print(f"{my_ensemble.ensemble_comm.rank=} {len(todo)=}")
+        PETSc.Sys.Print(f"color {color_rank} TODO :{len(todo)=}",comm=comm)
     else:
         todo = combinations
-        PETSc.Sys.Print(f"TODO {len(todo)=}")
+        PETSc.Sys.Print(f"color {color_rank} TODO {len(todo)=}",comm=comm)
     
     
 
@@ -682,11 +693,6 @@ def experiment(args):
     for i, combination in enumerate(todo):
         # set label and directory
         label = "_".join(labels(**combination))
-        if use_ensemble:
-            PETSc.Sys.Print(f"{i} {my_ensemble.ensemble_comm.rank=} {label}")
-        else:
-            PETSc.Sys.Print(f"{i} {label}")
-
         label_dir = os.path.join(out_directory,label)
         mpi_mkdir(label_dir, comm)
         
@@ -697,10 +703,6 @@ def experiment(args):
         # save a copy of current combination as json
         with open(f"{label_dir}/option.json", 'w') as f:
             json.dump(combination4save, f, indent=4)
-
-        # print combination
-        for key, value in combination.items():
-            PETSc.Sys.Print(f"{key} : {value}")
 
 
         #
@@ -764,7 +766,7 @@ def experiment(args):
         niot_solver.ctrl_set('max_iter', max_iter)
         
         niot_solver.ctrl_set('max_restart', 4)
-        niot_solver.ctrl_set('verbose', 1)
+        niot_solver.ctrl_set('verbose', 0)
 
         # time discretization
         method = "tdens_mirror_descent_explicit"
@@ -794,29 +796,24 @@ def experiment(args):
         save_inputs = True
         if save_inputs:
             filename = f"{label_dir}/corrupted.nii.gz"
-            PETSc.Sys.Print(f"Saving {filename}")
             save_as_nifti(corrupted, affine, filename)
 
             filename = f"{label_dir}/sink.nii.gz"
-            PETSc.Sys.Print(f"Saving {filename}")
             save_as_nifti(sink, affine, filename)
 
             if combination["initial"] != "one":
                 filename = f"{label_dir}/initial.nii.gz"
-                PETSc.Sys.Print(f"Saving {filename}")
                 save_as_nifti(initial, affine, filename)
 
 
             if combination["confidence"] != "one":
                 filename = f"{label_dir}/confidence.nii.gz"
-                PETSc.Sys.Print(f"Saving {filename}")
                 confidence_np = i2d.firedrake2numpy(confidence)
                 nibabel.save(nibabel.Nifti1Image(confidence_np, affine), filename)
                 confidence_np = None
 
             if combination["kappa"] != "one":
                 filename = f"{label_dir}/kappa.nii.gz"
-                PETSc.Sys.Print(f"Saving {filename}")
                 kappa_np = i2d.firedrake2numpy(btp.kappa)
                 nibabel.save(nibabel.Nifti1Image(kappa_np, affine), filename)
                 kappa_np = None
@@ -829,13 +826,16 @@ def experiment(args):
         # run solver, buffering the saving of the solution
         #
         total_iterations = niot_solver.ctrl_get('max_iter')
-        buffer_saving = min(500,total_iterations)
+        try: 
+            buffer = combination["buffer"]
+        except:
+            buffer = 500
+        
+        buffer_saving = min(buffer,total_iterations)
 
 
         def solve_and_save(niot_solver, label_dir, n_buffer):
             n_iter = niot_solver.ctrl_get('max_iter')
-            PETSc.Sys.Print(f"TODO {n_iter}")
-            
             # solve
             ierr = niot_solver.solve()
 
@@ -852,7 +852,6 @@ def experiment(args):
             pot_np = i2d.firedrake2numpy(pot)
             pot = None
             filename=f"{label_dir}/pot_{n_buffer}.nii.gz"
-            PETSc.Sys.Print(f"Saving {filename} ")
             nibabel.save(nibabel.Nifti1Image(pot_np, affine), filename)
             pot_np = None
             gc.collect()
@@ -861,16 +860,18 @@ def experiment(args):
         # run and save
         niot_solver.ctrl_set('max_iter', total_iterations%buffer_saving)
         solve_and_save(niot_solver, label_dir, 0)
-        PETSc.Sys.Print(f"First {total_iterations%buffer_saving} iterations done")
+        PETSc.Sys.Print(f"color {color_rank} - First {total_iterations%buffer_saving} iterations done - {label}",comm=comm)
+        
 
         # run and save, skipping initial steps
         niot_solver.ctrl_set('max_iter',buffer_saving)
         niot_solver.ctrl_set('restart',True)
         for i in range(total_iterations//buffer_saving):
             interval = [i*buffer_saving,(i+1)*buffer_saving]
-            PETSc.Sys.Print(f"Starting {interval[0]} {interval[1]} of {total_iterations:.1f} - {label}")
+            tic = time.time()
             solve_and_save(niot_solver, label_dir, i+1)
-            
+            cpu = time.time() - tic
+            PETSc.Sys.Print(f"color {color_rank} - Done {interval[1]/total_iterations*100:.1f}% of {total_iterations}- avg cpu {cpu/buffer_saving:.1f} s - {label}",comm=comm)
 
         gc.collect()
         
