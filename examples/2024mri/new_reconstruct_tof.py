@@ -304,7 +304,9 @@ def set_corrupted_network(**kargs):
         
     DG0 = tof.function_space()
     corrupted = Function(DG0, name="corrupted")
-    corrupted.interpolate(tof 
+    corrupted.interpolate(
+                        conditional(brain_mask > 1e-10, 1, 0) *(
+                        tof 
                         * conditional(external_network > 0, 0, 1) # exclude external network
                         * conditional(tof > threshold_network, 1, 0) 
                         * conditional(brain_mask > 1e-10, 1, 0) # only the main brain 
@@ -313,6 +315,7 @@ def set_corrupted_network(**kargs):
                         * conditional(external_network > 0, 0, 1) # exclude external network
                         * conditional(tof > threshold_network, 1, 0)
                         * conditional(main_network > 0, 1, 0) # restore main network
+                        )
     )
     
     return corrupted
@@ -489,9 +492,20 @@ def experiment(args):
                 main_network = kwargs['main_network']
             except:
                 raise ValueError("main_network not provided")
+            
+            # get brain mask
+            try:
+                brain_mask = kwargs['brain_mask']
+            except:
+                raise ValueError("brain_mask not provided")
 
             confidence = Function(main_network.function_space(), name="confidence")
-            confidence.interpolate(10 * conditional(main_network > 0, 1, 0))
+            confidence.interpolate( # inside, we trust the network
+                                    conditional(brain_mask > 1e-16, 1, 0)
+                                    10  * conditional(main_network > 0, 1, 0)
+                                   # outside, strong confidence, where we set no network
+                                   + 1000 * conditional(brain_mask<=1e-16, 1, 0)
+                                   )
             return confidence
         elif option == "main_plus_eps":
             PETSc.Sys.Print(f"Using main network as confidence")
@@ -502,7 +516,12 @@ def experiment(args):
                 raise ValueError("main_network not provided")
 
             confidence = Function(main_network.function_space(), name="confidence")
-            confidence.interpolate(1e-6 + 10 * conditional(main_network > 0, 1, 0))
+            confidence.interpolate( # inside, we trust the network plus a small value
+                                    conditional(brain_mask > 1e-16, 1, 0)
+                                    (1e-6+ 10  * conditional(main_network > 0, 1, 0) )
+                                   # outside, strong confidence, where we set no network
+                                   + 1000 * conditional(brain_mask<=1e-16, 1, 0)
+                                   )
             return confidence
         else:
             raise ValueError(f"Unknown confidence option {option}")
@@ -526,8 +545,11 @@ def experiment(args):
                 raise ValueError("main_network not provided")
 
             kappa = Function(t1.function_space(), name="kappa")
-            kappa.interpolate(1.0 
-                              + conditional(main_network>0,0,1) 
+            kappa.interpolate(# base value is value (Euclidean distace)
+                              1.0
+                              # outsise the main network, we penalize the passage 
+                              + conditional(main_network > 0, 0, 1) 
+                              # but only in the region where t1 is high
                               * (
                                   conditional(t1 > 400, 5, 0)
                                   + conditional(t1 > 500, 5, 0)
