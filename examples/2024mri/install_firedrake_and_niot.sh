@@ -4,6 +4,9 @@
 sudo apt -y update
 sudo apt -y upgrade
 
+# get current directory
+wrkdir=$(pwd)
+
 
 # PETSC
 curl -O https://raw.githubusercontent.com/firedrakeproject/firedrake/master/scripts/firedrake-configure
@@ -13,8 +16,8 @@ export PETSC_CONFIGURE_OPTIONS="--download-hypre --download-spai"
 git clone --depth 1 https://github.com/firedrakeproject/petsc.git
 cd petsc/
 python3 ../firedrake-configure --show-petsc-configure-options| xargs -L1 ./configure
-make PETSC_DIR=/home/ubuntu/petsc PETSC_ARCH=arch-firedrake-default all
-make PETSC_DIR=/home/ubuntu/petsc PETSC_ARCH=arch-firedrake-default check
+make PETSC_DIR=${wrkdir}/petsc PETSC_ARCH=arch-firedrake-default all
+make PETSC_DIR=${wrkdir}/petsc PETSC_ARCH=arch-firedrake-default check
 cd ..
 
 # FIREDRAKE
