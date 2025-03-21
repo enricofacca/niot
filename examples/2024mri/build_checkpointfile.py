@@ -145,6 +145,12 @@ def setup_h5(mri_directory, threshold, comm=COMM_WORLD):
     external_network_np = None
     gc.collect()
 
+    return cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets
+
+def write_h5(mri_directory, threshold, comm, n_proc, data):
+    # unpack data
+    cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets = data
+
     #
     # save to h5
     #
@@ -185,4 +191,8 @@ if __name__ == '__main__':
     parser.add_argument('--threshold', type=float, default=250)
     args = parser.parse_args()
 
-    setup_h5(args.mri, args.threshold)
+    data = setup_h5(args.mri, args.threshold)
+    n_proc = COMM_WORLD.size
+    write_h5(args.mri, args.threshold, COMM_WORLD, n_proc, data)
+    
+    
