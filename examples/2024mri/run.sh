@@ -28,6 +28,7 @@ cd examples/2024mri/
 # run the recostruction
 formatted_c=$(printf "%02d" ${c})
 dir="./data/subj0_box_c${formatted_c}/"
+export OMP_NUM_THREADS=1
 nohup mpiexec -n ${np} python ./new_reconstruct_tof.py --mri ${dir} --option options.json --n_ensemble ${ne} > submitted/${label}_c${c}.out 2> submitted/${label}_c${c}.err &
 sleep 1
 # %%
