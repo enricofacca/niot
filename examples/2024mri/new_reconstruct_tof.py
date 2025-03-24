@@ -311,7 +311,9 @@ def set_corrupted_network(**kargs):
                         * conditional(tof > threshold_network, 1, 0) 
                         * conditional(brain_mask > 1e-10, 1, 0) # only the main brain 
                         * conditional(main_network > 0, 0, 1) # remove main network
-                        + tof 
+                        )
+                        + conditional(brain_mask <= 1e-10, 1, 0) *(
+                        tof 
                         * conditional(external_network > 0, 0, 1) # exclude external network
                         * conditional(tof > threshold_network, 1, 0)
                         * conditional(main_network > 0, 1, 0) # restore main network
@@ -538,7 +540,7 @@ def experiment(args):
             confidence.interpolate( # inside, we trust the network plus a small value
                                     conditional(brain_mask > 1e-16, 1, 0)
                                     * (1e-6+ 10  * conditional(main_network > 0, 1, 0) )
-                                   # outside, strong confidence, where we set no network
+                                   # outside, strong cce, where we set no network
                                    + 1000 * conditional(brain_mask<=1e-16, 1, 0)
                                    )
             return confidence
