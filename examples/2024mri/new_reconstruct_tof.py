@@ -299,26 +299,19 @@ def set_corrupted_network(**kargs):
     main_network = kargs['main_network']
     external_network = kargs['external_network']
     brain_mask = kargs['brain_mask']
-    threshold_network = kargs['threshold']
+    threshold_network = kargs['threshold_tof']
 
         
     DG0 = tof.function_space()
     corrupted = Function(DG0, name="corrupted")
     corrupted.interpolate(
-                        conditional(brain_mask > 1e-10, 1, 0) *(
-                        tof 
+                        tof * conditional(main_network > 0, 1, 0) # the main we must fit
+                        + 
+                        tof * conditional(main_network > 0, 0, 1) # the rest
+                        * conditional(brain_mask > 1e-10, 1, 0) #within the brain
+                        * conditional(tof > threshold_network, 1, 0) # only values above the threshold
                         * conditional(external_network > 0, 0, 1) # exclude external network
-                        * conditional(tof > threshold_network, 1, 0) 
-                        * conditional(brain_mask > 1e-10, 1, 0) # only the main brain 
-                        * conditional(main_network > 0, 0, 1) # remove main network
                         )
-                        + conditional(brain_mask <= 1e-10, 1, 0) *(
-                        tof 
-                        * conditional(external_network > 0, 0, 1) # exclude external network
-                        * conditional(tof > threshold_network, 1, 0)
-                        * conditional(main_network > 0, 1, 0) # restore main network
-                        )
-    )
     
     return corrupted
 
@@ -350,6 +343,7 @@ def experiment(args):
     if len(options["threshold"]) > 1:
         raise ValueError("Only one threshold is allowed")
     threshold = options["threshold"][0]
+    threshold_tof = 250
     PETSc.Sys.Print(f"**** SETUP ****** ")
     PETSc.Sys.Print(f"Inputs: {args.mri}")
     PETSc.Sys.Print(f"Options:")
@@ -369,7 +363,7 @@ def experiment(args):
         input_name = os.path.basename(os.path.dirname(args.mri))
     else:
         input_name = os.path.basename(args.mri)
-    test_case = f"{input_name}_threshold_{threshold:.1e}"
+    test_case = f"{input_name}_threshold_{threshold:.2e}"
         
     tof_data = nibabel.load(f"{args.mri}/TOF.nii.gz")
     affine = tof_data.affine
@@ -494,7 +488,8 @@ def experiment(args):
         "main_network": main_network, 
         "external_network": external_network,
         "cartesian_mesh": cartesian_mesh,
-        "threshold": threshold
+        "threshold": threshold,
+        "threshold_tof" : threshold_tof
     }
 
 
@@ -517,10 +512,9 @@ def experiment(args):
 
             confidence = Function(main_network.function_space(), name="confidence")
             confidence.interpolate( # inside, we trust the network
-                                    conditional(brain_mask > 1e-16, 1, 0)
-                                    * 10  * conditional(main_network > 0, 1, 0)
+                                    100  * conditional(main_network > 0, 1, 0)
                                    # outside, strong confidence, where we set no network
-                                   + 1000 * conditional(brain_mask<=1e-16, 1, 0)
+                                   + 100 * conditional(brain_mask<=1e-16, 1, 0)
                                    )
             return confidence
         elif option == "main_plus_eps":
@@ -538,10 +532,10 @@ def experiment(args):
 
             confidence = Function(main_network.function_space(), name="confidence")
             confidence.interpolate( # inside, we trust the network plus a small value
-                                    conditional(brain_mask > 1e-16, 1, 0)
-                                    * (1e-6+ 10  * conditional(main_network > 0, 1, 0) )
+                                    conditional(brain_mask>1e-10, 1, 0)
+                                    * (1e-6 + 100  * conditional(main_network > 0, 1, 0) )
                                    # outside, strong cce, where we set no network
-                                   + 1000 * conditional(brain_mask<=1e-16, 1, 0)
+                                   + 100 * conditional(brain_mask<=1e-10, 1, 0)
                                    )
             return confidence
         else:
