@@ -37,7 +37,6 @@ for i, nii_file in enumerate(nii_files):
     dx, dy, dz = epi_img.header['pixdim'][1:4]
     offset = epi_img.affine[:3, 3]
 
-    print(i ,nii_file, epi_img_data.shape)
     if i == 0:
         old_shape = epi_img_data.shape
         old_size = epi_img.header['pixdim'][1:4]
