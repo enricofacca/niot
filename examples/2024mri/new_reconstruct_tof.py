@@ -15,7 +15,7 @@ from build_checkpointfile import setup_h5, write_h5
 #from memory_profiler import profile
 
 from connected_components_tof import save_main_and_external_network_as_nifti
-
+from firedrake.__future__ import interpolate
 from niot.conductivity2image import HeatMap
 import subprocess
 from firedrake import *
@@ -82,71 +82,27 @@ def build_meshes_from_numpy(data, mesh_type="simplicial",lengths=None, comm=COMM
     return mesh, cartesian_mesh
     
 
-def set_sink(option="segmented", **kargs):
+def set_sink(option_type="segmented", **kargs):
     """
     Set sink
-    """
+    """ 
     
-    if option == "segmented":
-        
+    if option_type == "segmented":    
         tof = kargs['tof']
         brain_mask = kargs['brain_mask']
         aseg = kargs['aseg']
         main_network = kargs['main_network'] 
-        constant_absorption = kargs['constant_absorption']
+        absorption = kargs['absorption']
         DG0 = tof.function_space()
         
-        sink = Function(tof.function_space(), name="sink")
-        sink.interpolate(- conditional(aseg > 0, constant_absorption,0)
+        sink = Function(tof.function_space(), name=f"sink{absorption:.1e}")
+        sink.interpolate(- conditional(aseg > 0, absorption,0)
                         * conditional(main_network > 0, 0, 1) ) # remove blood vessels outside the mask 
     else:
-        raise ValueError(f"Unknown sink option {option}")
+        raise ValueError(f"Unknown sink option {option_type}")
 
     return sink
 
-
-
-def setup_btp(brain_mask, inlets, corrupted, kappa, constant_absorption = 1):
-    mesh = brain_mask.function_space().mesh()
-    
-    # convert to firedrake
-    DG0 = FunctionSpace(mesh,"DG",0)
-    sink = Function(DG0,name="sink")
-   
-    #source.interpolate(conditional(z<15,1,0)*conditional(tof_fire>250,1,0))
-    R = FunctionSpace(mesh,"R",0)
-    source = Function(R,val=0.0, name="source")
-    # above 150 define the approximate support of absortion
-    # above 250 is remove beacuse where we know we have blood vessels
-    #sink.interpolate(conditional(tof_fire>threshold_domain,1,0) 
-    #                 * conditional(tof_fire<|etwork,1,0))
-    
-    threshold_sink = 1e-10
-    sink.interpolate(-conditional(brain_mask > threshold_sink, constant_absorption,0)
-                     * conditional(corrupted>0,0,1)) # remove blood vessels outside the mask 
-    
-
-    mass_source = assemble(source*dx)
-    mass_sink = assemble(sink*dx)
-
-    #source /= mass_source
-    #figu /= mass_sink
-    PETSc.Sys.Print(f"{mass_source=:.2e} {mass_sink=:.2e}")
-
-    # Define the branched transport problem
-    gamma=0.5
-    
-    inlet_pressure = Function(inlets.function_space())
-    inlet_pressure.assign(0.0)
-    weak_Dirichlet = [(inlet_pressure, ds_b, inlets)]
-    #strong_Dirichlet = [(source, ds_b, inlets)]
-    btp = ot.BranchedTransportProblem(source, sink, 
-                                      gamma=gamma, 
-                                      Dirichlet = None,
-                                      weak_Dirichlet = weak_Dirichlet,
-                                      kappa=kappa)
-
-    return btp
     
 
 
@@ -170,7 +126,19 @@ def labels(**kargs):
     
     try:
         confidence = kargs["confidence"]
-        label.append(f'conf'+confidence)
+        if isinstance(confidence, str):
+            label.append(f'conf'+confidence)
+        elif isinstance(confidence, dict):
+            confidence_type = confidence['type']
+            if confidence_type == "main_plus_eps":
+                try:
+                    eps = confidence['eps']
+                except:
+                    raise ValueError("eps_confidence not provided")
+                label.append(f'confmain_plus_eps{eps:.1e}')
+        else:
+            raise ValueError(f"Unknown confidence type {confidence_type}")
+        
     except:
         raise ValueError("conf not provided")
     
@@ -343,7 +311,14 @@ def experiment(args):
     if len(options["threshold"]) > 1:
         raise ValueError("Only one threshold is allowed")
     threshold = options["threshold"][0]
-    threshold_tof = 250
+
+    try:    
+        threshold_tof = options["threshold_tof"]
+    except:
+        threshold_tof = [250]
+        options["threshold_tof"] = threshold_tof
+    
+
     PETSc.Sys.Print(f"**** SETUP ****** ")
     PETSc.Sys.Print(f"Inputs: {args.mri}")
     PETSc.Sys.Print(f"Options:")
@@ -487,17 +462,36 @@ def experiment(args):
         "inlets": inlets, 
         "main_network": main_network, 
         "external_network": external_network,
-        "cartesian_mesh": cartesian_mesh,
-        "threshold": threshold,
-        "threshold_tof" : threshold_tof
+        "cartesian_mesh": cartesian_mesh
     }
 
 
     # confidence data
-    def set_confidence(option, **kwargs):
-        if option == "one":
-            return Constant(1.0)            
-        elif option == "main_network":
+    def set_confidence(**kwargs):
+        try:
+            option = kwargs["confidence"]
+        except:
+            raise ValueError("confidence not provided")
+    
+        PETSc.Sys.Print(option)
+
+        if isinstance(option, str):
+            option_type = option
+        elif isinstance(option, dict):
+            option_type = option["type"]
+        else:
+            raise ValueError(f"Unknown confidence type {option}")
+    
+        PETSc.Sys.Print(f"{option_type=}")
+        
+        common_name = "conf"
+
+
+        if option_type == "one":
+            return Constant(1.0, name=f"{common_name}one")
+        
+        
+        elif option_type == "main_network":
             # get main network
             try:
                 main_network = kwargs['main_network']
@@ -510,14 +504,16 @@ def experiment(args):
             except:
                 raise ValueError("brain_mask not provided")
 
-            confidence = Function(main_network.function_space(), name="confidence")
-            confidence.interpolate( # inside, we trust the network
+            confidence = assemble(interpolate( # inside, we trust the network
                                     100  * conditional(main_network > 0, 1, 0)
                                    # outside, strong confidence, where we set no network
-                                   + 100 * conditional(brain_mask<=1e-16, 1, 0)
+                                   + 100 * conditional(brain_mask<=1e-16, 1, 0),
+                                   main_network.function_space())
                                    )
+            confidence.rename(f"{common_name}main_network")
             return confidence
-        elif option == "main_plus_eps":
+        
+        elif option_type == "main_plus_eps":
             # get main network
             try:
                 main_network = kwargs['main_network']
@@ -529,27 +525,51 @@ def experiment(args):
                 brain_mask = kwargs['brain_mask']
             except:
                 raise ValueError("brain_mask not provided")
+            
+            # get brain mask
+            try:
+                eps = option['eps']
+            except:
+                raise ValueError("eps_confidence provided")
 
-            confidence = Function(main_network.function_space(), name="confidence")
-            confidence.interpolate( # inside, we trust the network plus a small value
-                                    conditional(brain_mask>1e-10, 1, 0)
-                                    * (1e-6 + 100  * conditional(main_network > 0, 1, 0) )
-                                   # outside, strong cce, where we set no network
-                                   + 100 * conditional(brain_mask<=1e-10, 1, 0)
-                                   )
+            confidence = assemble(
+                interpolate( # inside, we trust the network plus a small value
+                            conditional(brain_mask>1e-10, 1, 0)
+                            * (eps + 100  * conditional(main_network > 0, 1, 0) )
+                            # outside, strong cce, where we set no network
+                            + 100 * conditional(brain_mask<=1e-10, 1, 0), 
+                            main_network.function_space()
+                            )
+                        )
+            confidence.rename(f"confmain_plus_eps{eps}")
+            
             return confidence
+        
         else:
             raise ValueError(f"Unknown confidence option {option}")
 
     
-    def set_kappa(option, **kwargs):
+    def set_kappa(**kwargs):
         """
         Set kappa function.
         In the region with high value of kappa the network passage is penalized.
         """
-        if option == "one":
-            return 1.0
-        elif option == "t1":
+        try:
+            option = kwargs["kappa"]
+        except:
+            raise ValueError("kappa not provided")
+            
+        if isinstance(option, str):
+            option_type = option
+        elif isinstance(option, dict):
+            option_type = option["type"]
+        else:
+            raise ValueError(f"Unknown kappa type {option}")
+        
+        
+        if option_type == "one":
+            return Constant(1.0, name="kappaone")
+        elif option_type == "t1":
             try:
                 t1 = kwargs['t1']
             except:
@@ -559,7 +579,7 @@ def experiment(args):
             except:
                 raise ValueError("main_network not provided")
 
-            kappa = Function(t1.function_space(), name="kappa")
+            kappa = Function(t1.function_space(), name="kappat1")
             kappa.interpolate(# base value is value (Euclidean distace)
                               1.0
                               # outsise the main network, we penalize the passage 
@@ -573,9 +593,11 @@ def experiment(args):
         else:
             raise ValueError(f"Unknown kappa option {option}")
         
-    def set_initial_guess(option, **kargs):        
+    def set_initial_guess(option, **kargs):
+        common_name = "ini"
+        
         if option == "one":
-            return Constant(1.0)
+            return Constant(1.0,name=common_name+"one")
 
         if option == "low":
             try:
@@ -584,7 +606,7 @@ def experiment(args):
                 raise ValueError("corrupted not provided")
             
             heat = HeatMap(space, scaling=1.0, sigma=1e1)
-            low = Function(space, name="low", label=f"use heat map with sigma=1e1 and lift by 1e-4")
+            low = Function(space, name=common_name+"low_heat", label=f"use heat map with sigma=1e1 and lift by 1e-4")
             low.assign(heat(corrupted+1e-4) + 1e-4)
             return low
         
@@ -595,7 +617,7 @@ def experiment(args):
                 raise ValueError("corrupted not provided")
             
             low = set_initial_guess("low", corrupted)
-            medium = Function(space,name="MEDIUM")
+            medium = Function(space,name=common_name+"medium_heat")
             medium.assign(heat(low+1e-4) + 1e-4)
             return medium
         
@@ -606,7 +628,7 @@ def experiment(args):
                 raise ValueError("corrupted not provided")
             
             medium = set_initial_guess("medium", corrupted)
-            high = Function(space,name="HIGH")
+            high = Function(space,name=common_name+"low_heat")
             high.assign(heat(medium+1e-4) + 1e-4)
             return high
 
@@ -619,7 +641,7 @@ def experiment(args):
             
             corrupted_np = i2d.firedrake2numpy(corrupted)
             low_np = gaussian_filter(corrupted_np, sigma=4, truncate=1e0)
-            low = i2d.numpy2firedrake(cartesian_mesh, low_np, name="LOW")
+            low = i2d.numpy2firedrake(cartesian_mesh, low_np, name=common_name+"low_gaussian")
             low += 1e-4
             return low
         
@@ -632,7 +654,7 @@ def experiment(args):
             low = set_initial_guess("low_gaussian", corrupted=corrupted)
             low_np = i2d.firedrake2numpy(low)
             medium_np = gaussian_filter(low_np, sigma=4, truncate=1e0)
-            medium = i2d.numpy2firedrake(cartesian_mesh, medium_np, name="MEDIUM")
+            medium = i2d.numpy2firedrake(cartesian_mesh, medium_np, name=common_name+"medium_gaussian")
             medium += 1e-4
             return medium
         
@@ -645,7 +667,7 @@ def experiment(args):
             medium = set_initial_guess("medium_gaussian", corrupted=corrupted)
             medium_np = i2d.firedrake2numpy(medium)
             high_np = gaussian_filter(medium_np, sigma=4, truncate=1e0)
-            high = i2d.numpy2firedrake(cartesian_mesh, high_np, name="HIGH")
+            high = i2d.numpy2firedrake(cartesian_mesh, high_np, name=common_name+"high_gaussian")
             high += 1e-4
             return high
         
@@ -658,16 +680,9 @@ def experiment(args):
     combinations = list(product_dict(**options))
 
 
-    test_poisson = False
-    if test_poisson:
-        btp = setup_btp(brain_mask, inlets, corrupted,  kappa, constant_absorption = 1.0)
-        poisson(cartesian_mesh, btp)
-        exit()
-
-
     
     
-    # divide the combinations in the ensemble
+    # split the combinations in the ensemble
     def lol(a, n):
         k, m = divmod(len(a), n)
         return (a[i*k+min(i, m):(i+1)*k+min(i+1, m)] for i in range(n))
@@ -687,36 +702,21 @@ def experiment(args):
 
     
     for i, combination in enumerate(todo):
-        # set label and directory
-        label = "_".join(labels(**combination))
-        label_dir = os.path.join(out_directory,label)
-        mpi_mkdir(label_dir, comm)
-        
-        # get git version used 
-        git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
-        combination4save = cp(combination)
-        combination4save["git_hash"] = git_hash
-        # save a copy of current combination as json
-        with open(f"{label_dir}/option.json", 'w') as f:
-            json.dump(combination4save, f, indent=4)
-
-
         #
         # set corrupted network
         #
-        corrupted = set_corrupted_network(**input_data)
+        corrupted = set_corrupted_network(**combination, **input_data)
         
         #
         # btp inputs
         #
-        absortion = combination["absorption"]
-        sink = set_sink(option="segmented", **input_data, constant_absorption = absortion)
+        sink = set_sink(option_type="segmented",**combination, **input_data)
 
         R = FunctionSpace(cartesian_mesh,"R",0)
         source = Function(R, name="source")
         source.assign(0.0)
 
-        kappa = set_kappa(combination["kappa"], **input_data)
+        kappa = set_kappa(**combination, **input_data)
 
 
         inlet_pressure = Function(inlets.function_space())
@@ -732,7 +732,50 @@ def experiment(args):
         #
         # set confidence
         #
-        confidence = set_confidence(combination["confidence"], **input_data)
+        confidence = set_confidence(**combination, **input_data)
+        
+        #
+        # set initial guess
+        # 
+        initial = set_initial_guess(combination["initial"], corrupted=corrupted)
+
+        
+        # 
+        # set labels defining the experiment
+        # 
+        labels = [f"wd{combination['wd']:.1e}",
+                  initial.name(),
+                  confidence.name(),
+                  ]
+
+        tdens2image = combination["map"]
+        if tdens2image['type'] == 'identity':
+            labels.append(f'mapidentity')
+        elif tdens2image['type'] == 'heat':
+            labels.append(f"mapheat{tdens2image['sigma']:.1e}")
+        elif tdens2image['type'] == 'pm':
+            labels.append(f"mapipm{tdens2image['sigma']:.1e}")
+        else:
+            raise ValueError(f'Unknown tdens2image {tdens2image}')
+        
+        labels.append(sink.name())
+        labels.append(kappa.name())
+        
+
+        label = "_".join(labels)
+        label_dir = os.path.join(out_directory,label)
+        mpi_mkdir(label_dir, comm)
+
+
+        # get git version used 
+        git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
+        combination4save = cp(combination)
+        combination4save["git_hash"] = git_hash
+        # save a copy of current combination as json
+        with open(f"{label_dir}/option.json", 'w') as f:
+            json.dump(combination4save, f, indent=4)
+        
+        
         
 
         # setup solver
@@ -786,7 +829,6 @@ def experiment(args):
         niot_solver.setup()
         
         # set intial guess
-        initial = set_initial_guess(combination["initial"], corrupted=corrupted)
         niot_solver.set_solution(tdens=initial)
         
         save_inputs = True
