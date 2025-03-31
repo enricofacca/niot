@@ -183,82 +183,6 @@ def select_slice(tof_np, out_directory):
     i2d.numpy2image(tof_bottom_np, f"{out_directory}/tof_bottom.png") 
 
 
-#@profile
-def poisson(cartesian_mesh, btp):
-    """
-    Test solver for possion equation
-    """
-
-    SD = SpaceDiscretization(cartesian_mesh, "DG", 0)
-
-    # the forcing term
-    pot_space = FunctionSpace(cartesian_mesh,"DG",0)
-    pot_h = Function(pot_space, name="pot_h")
-
-    energy_form = SD.Laplacian_Lagrangian(pot_h)
-    PDE = derivative(energy_form, pot_h)
-    a = derivative(PDE, pot_h)
-
-    test = TestFunction(SD.pot_space)
-    L = (btp.source - btp.sink) * test * dx
-
-    # fix boundary conditions
-    PETSc.Sys.Print(f"Imposing Dirichlet weakly :")
-    # impose weak Dirichlet BCsdegree
-    a = SD.apply_weak_Dirichlet_lhs(btp.weak_Dirichlet, a)# penalty=1e6)
-    L = SD.apply_weak_Dirichlet_rhs(btp.weak_Dirichlet, L)#, penalty=1e6)
-    bcs = None
-        
-
-    # set nullspace (if no Dirichlet BCs)
-    bcs = None
-    nullspace = None
-    
-
-    # solver of poisson equation
-    petsc_controls ={
-        "snes_monitor": None,
-        # krylov solver controls
-        'ksp_type': 'cg',
-        'pc_type': 'hypre',
-        'ksp_atol': 1e-16,
-        'ksp_rtol': 1e-5,
-        'ksp_dtol': 1e5,
-        'ksp_max_it' : 1000,
-        'ksp_initial_guess_nonzero': True, 
-        'ksp_norm_type': 'unpreconditioned',
-        #'ksp_monitor_true_residual' : None, 
-    }
-    if cartesian_mesh.geometric_dimension() == 3:
-        hypre_ctrl_3d = {
-                        # tuning parameters for the multigrid
-                        # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
-                        "pc_hypre_type": "boomeramg",
-                        "pc_hypre_boomeramg_strong_threshold": 0.75,
-                        "pc_hypre_boomeramg_max_iter": 1,
-                        "pc_hypre_boomeramg_agg_nl": 3,
-                        "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
-                    }
-        petsc_controls.update(hypre_ctrl_3d)
-
-
-    problem = LinearVariationalProblem(a, L, pot_h, bcs=bcs)
-    solver = LinearVariationalSolver(problem, 
-                                     solver_parameters=petsc_controls, 
-                                     nullspace=nullspace)
-    
-    # solve problem
-    solver.solve()
-    #solver.snes.ksp.view()
-    ksp_iterations = solver.snes.ksp.getIterationNumber()
-
-    PETSc.Sys.Print(f"Number of iterations: {ksp_iterations}")
-
-    # save solution to pvd
-    out_file = File(f'pot.pvd')
-    out_file.write(pot_h)
-
-
 def set_corrupted_network(**kargs):
     """
     Set corrupted network
@@ -473,8 +397,6 @@ def experiment(args):
         except:
             raise ValueError("confidence not provided")
     
-        PETSc.Sys.Print(option)
-
         if isinstance(option, str):
             option_type = option
         elif isinstance(option, dict):
@@ -482,14 +404,22 @@ def experiment(args):
         else:
             raise ValueError(f"Unknown confidence type {option}")
     
-        PETSc.Sys.Print(f"{option_type=}")
-        
+        # assign keyword for common name
         common_name = "conf"
 
+        #
+        # select option
+        #
 
-        if option_type == "one":
-            return Constant(1.0, name=f"{common_name}one")
         
+        if option == "one":
+            try:
+                mesh = kwargs['cartesian_mesh']
+            except:
+                raise ValueError("cartesian_mesh not provided")
+            one = Function(FunctionSpace(mesh,"R",0), name=common_name+"one")
+            one.assign(1.0)
+            return one
         
         elif option_type == "main_network":
             # get main network
@@ -566,9 +496,16 @@ def experiment(args):
         else:
             raise ValueError(f"Unknown kappa type {option}")
         
-        
-        if option_type == "one":
-            return Constant(1.0, name="kappaone")
+        common_name = "kappa"
+        if option == "one":
+            try:
+                mesh = kwargs['cartesian_mesh']
+            except:
+                raise ValueError("cartesian_mesh not provided")
+            one = Function(FunctionSpace(mesh,"R",0), name=common_name+"one")
+            one.assign(1.0)
+            return one
+       
         elif option_type == "t1":
             try:
                 t1 = kwargs['t1']
@@ -579,7 +516,7 @@ def experiment(args):
             except:
                 raise ValueError("main_network not provided")
 
-            kappa = Function(t1.function_space(), name="kappat1")
+            kappa = Function(t1.function_space(), name=common_name+"t1")
             kappa.interpolate(# base value is value (Euclidean distace)
                               1.0
                               # outsise the main network, we penalize the passage 
@@ -593,48 +530,54 @@ def experiment(args):
         else:
             raise ValueError(f"Unknown kappa option {option}")
         
-    def set_initial_guess(option, **kargs):
+    def set_initial_guess(option, **kwargs):
         common_name = "ini"
         
         if option == "one":
-            return Constant(1.0,name=common_name+"one")
+            try:
+                mesh = kwargs['cartesian_mesh']
+            except:
+                raise ValueError("cartesian_mesh not provided")
+            one = Function(FunctionSpace(mesh,"R",0), name=common_name+"one")
+            one.assign(1.0)
+            return one
 
         if option == "low":
             try:
-                corrupted = kargs['corrupted']
+                corrupted = kwargs['corrupted']
             except:
                 raise ValueError("corrupted not provided")
             
-            heat = HeatMap(space, scaling=1.0, sigma=1e1)
-            low = Function(space, name=common_name+"low_heat", label=f"use heat map with sigma=1e1 and lift by 1e-4")
+            heat = HeatMap(corrupted.function_space(), scaling=1.0, sigma=1e1)
+            low = Function(corrupted.function_space(), name=common_name+"low_heat", label=f"use heat map with sigma=1e1 and lift by 1e-4")
             low.assign(heat(corrupted+1e-4) + 1e-4)
             return low
         
         if option == "medium":
             try:
-                corrupted = kargs['corrupted']
+                corrupted = kwargs['corrupted']
             except:
                 raise ValueError("corrupted not provided")
             
             low = set_initial_guess("low", corrupted)
-            medium = Function(space,name=common_name+"medium_heat")
+            medium = Function(corrupted.function_space(),name=common_name+"medium_heat")
             medium.assign(heat(low+1e-4) + 1e-4)
             return medium
         
         if option == "high":
             try:
-                corrupted = kargs['corrupted']
+                corrupted = kwargs['corrupted']
             except:
                 raise ValueError("corrupted not provided")
             
             medium = set_initial_guess("medium", corrupted)
-            high = Function(space,name=common_name+"low_heat")
+            high = Function(corrupted.function_space(),name=common_name+"low_heat")
             high.assign(heat(medium+1e-4) + 1e-4)
             return high
 
         if option == "low_gaussian":
             try:
-                corrupted = kargs['corrupted']
+                corrupted = kwargs['corrupted']
             except:
                 raise ValueError("corrupted not provided")
             
@@ -647,7 +590,7 @@ def experiment(args):
         
         if option == "medium_gaussian":
             try:
-                corrupted = kargs['corrupted']
+                corrupted = kwargs['corrupted']
             except:
                 raise ValueError("corrupted not provided")
             
@@ -660,7 +603,7 @@ def experiment(args):
         
         if option == "high_gaussian":
             try:
-                corrupted = kargs['corrupted']
+                corrupted = kwargs['corrupted']
             except:
                 raise ValueError("corrupted not provided")
             
@@ -737,7 +680,7 @@ def experiment(args):
         #
         # set initial guess
         # 
-        initial = set_initial_guess(combination["initial"], corrupted=corrupted)
+        initial = set_initial_guess(combination["initial"], corrupted=corrupted, **input_data)
 
         
         # 
