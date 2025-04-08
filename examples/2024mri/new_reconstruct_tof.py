@@ -191,7 +191,7 @@ def set_corrupted_network(**kargs):
     main_network = kargs['main_network']
     external_network = kargs['external_network']
     brain_mask = kargs['brain_mask']
-    threshold_network = kargs['threshold_tof']
+    threshold_tof = kargs['threshold_tof']
 
         
     DG0 = tof.function_space()
@@ -201,7 +201,7 @@ def set_corrupted_network(**kargs):
                         + 
                         tof * conditional(main_network > 0, 0, 1) # the rest
                         * conditional(brain_mask > 1e-10, 1, 0) #within the brain
-                        * conditional(tof > threshold_network, 1, 0) # only values above the threshold
+                        * conditional(tof > threshold_tof, 1, 0) # only values above the threshold
                         * conditional(external_network > 0, 0, 1) # exclude external network
                         )
     
@@ -527,6 +527,26 @@ def experiment(args):
                                   + conditional(t1 > 500, 5, 0)
                                 ) )
             return kappa
+        elif option_type == "white":
+            try:
+                t1 = kwargs['t1']
+            except:
+                raise ValueError("t1 not provided")
+            try:
+                main_network = kwargs['main_network']
+            except:
+                raise ValueError("main_network not provided")
+
+            kappa = Function(t1.function_space(), name=common_name+"white")
+            kappa.interpolate(# base value is value (Euclidean distace)
+                              1.0
+                              # outsise the main network, we penalize the passage 
+                              + conditional(main_network > 0, 0, 1) 
+                              # but only in the region where t1 is high
+                              * (
+                                  conditional(t1 > 500, 10, 0)
+                                ) )
+            return kappa
         else:
             raise ValueError(f"Unknown kappa option {option}")
         
@@ -703,6 +723,8 @@ def experiment(args):
         
         labels.append(sink.name())
         labels.append(kappa.name())
+        threshold_tof = combination["threshold_tof"]
+        labels.append(f"tof{threshold_tof:.2e}")
         
 
         label = "_".join(labels)
