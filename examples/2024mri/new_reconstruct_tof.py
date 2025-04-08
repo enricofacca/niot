@@ -471,7 +471,7 @@ def experiment(args):
                             main_network.function_space()
                             )
                         )
-            confidence.rename(f"confmain_plus_eps{eps}")
+            confidence.rename(f"confmain_plus_eps{eps:.2e}")
             
             return confidence
         
@@ -816,6 +816,15 @@ def experiment(args):
 
 
         def solve_and_save(niot_solver, label_dir, n_buffer):
+            
+            # select if we just want the latest solution 
+            update_solution = True
+            if update_solution:
+                file_label = "final"
+            else:
+                file_label = f"{n_buffer:02}"
+                
+            
             n_iter = niot_solver.ctrl_get('max_iter')
             # solve
             ierr = niot_solver.solve()
@@ -823,16 +832,17 @@ def experiment(args):
             # save solution
             pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
             
+            
             tdens_np = i2d.firedrake2numpy(tdens)
             tdens = None
-            filename=f"{label_dir}/tdens_{n_buffer}.nii.gz"
+            filename=f"{label_dir}/tdens_{file_label}.nii.gz"
             nibabel.save(nibabel.Nifti1Image(tdens_np, affine), filename)
             tdens_np = None
             gc.collect()
             
             pot_np = i2d.firedrake2numpy(pot)
             pot = None
-            filename=f"{label_dir}/pot_{n_buffer}.nii.gz"
+            filename=f"{label_dir}/pot_{file_label}.nii.gz"
             nibabel.save(nibabel.Nifti1Image(pot_np, affine), filename)
             pot_np = None
             gc.collect()
