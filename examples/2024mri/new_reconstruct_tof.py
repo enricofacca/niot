@@ -529,22 +529,25 @@ def experiment(args):
             return kappa
         elif option_type == "white":
             try:
-                t1 = kwargs['t1']
+                aseg = kwargs['aseg']
             except:
-                raise ValueError("t1 not provided")
+                raise ValueError("aseg not provided")
             try:
                 main_network = kwargs['main_network']
             except:
                 raise ValueError("main_network not provided")
 
-            kappa = Function(t1.function_space(), name=common_name+"white")
+            kappa = Function(aseg.function_space(), name=common_name+"white")
             kappa.interpolate(# base value is value (Euclidean distace)
                               1.0
                               # outsise the main network, we penalize the passage 
                               + conditional(main_network > 0, 0, 1) 
                               # but only in the region where t1 is high
-                              * (
-                                  conditional(t1 > 500, 10, 0)
+                              * ( 
+                                  # left hemisphere white matter is labeled 2
+                                  10 * conditional( aseg > 1.9, 1, 0) * conditional( aseg < 2.1, 1, 0)
+                                  # right hemisphere white matter is labeled 41
+                                + 10 * conditional( aseg > 40.9, 1, 0) * conditional( aseg < 41.1, 1, 0)
                                 ) )
             return kappa
         else:
