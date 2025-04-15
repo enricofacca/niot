@@ -540,6 +540,23 @@ def experiment(args):
                                   conditional(t1 > 400, 5, 0)
                                   + conditional(t1 > 500, 5, 0)
                                 ) )
+        elif option_type == "t1white":
+            try:
+                t1 = kwargs['t1']
+            except:
+                raise ValueError("t1 not provided")
+            try:
+                main_network = kwargs['main_network']
+            except:
+                raise ValueError("main_network not provided")
+
+            kappa = Function(t1.function_space(), name=common_name+"t1white")
+            kappa.interpolate(# base value is value (Euclidean distace)
+                              1.0
+                              # outsise the main network, we penalize the passage 
+                              + conditional(main_network > 0, 0, 1) 
+                              # but only in the region where t1 is high
+                              * conditional(t1 > 500, 10, 0) )
             return kappa
         elif option_type == "white":
             try:
