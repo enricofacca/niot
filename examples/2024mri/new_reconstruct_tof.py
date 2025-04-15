@@ -95,9 +95,23 @@ def set_sink(option_type="segmented", **kargs):
         absorption = kargs['absorption']
         DG0 = tof.function_space()
         
+        def indicator_regions(labels,aseg):
+            """
+            Return an expression 
+            """
+            indicator = 0.0
+            eps = 1.0e-4
+            for label in labels:
+                indicator += (conditional(aseg > label-eps, 1, 0) 
+                            *conditional(aseg < label+eps, 1, 0))
+            return indicator        
+
+        # get the sink
         sink = Function(tof.function_space(), name=f"sink{absorption:.1e}")
+        indicator_empty = indicator_regions([4,5,14,15,24,43,44],aseg)
         sink.interpolate(- conditional(aseg > 0, absorption,0)
-                        * conditional(main_network > 0, 0, 1) ) # remove blood vessels outside the mask 
+                        * conditional(main_network > 0, 0, 1)
+                        * (1-indicator_empty)) # remove blood vessels outside the mask 
     else:
         raise ValueError(f"Unknown sink option {option_type}")
 
