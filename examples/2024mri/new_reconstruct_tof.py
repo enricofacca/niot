@@ -635,11 +635,16 @@ def experiment(args):
             except:
                 raise ValueError("corrupted not provided")
             
+            try: 
+                map = kwargs['map']
+                scaling = map['scaling']
+            except:
+                raise ValueError("map not provided")
             
-            corrupted_np = i2d.firedrake2numpy(corrupted)
+            corrupted_np = i2d.firedrake2numpy(corrupted)/scaling
             low_np = gaussian_filter(corrupted_np, sigma=4, truncate=1e0)
             low = i2d.numpy2firedrake(cartesian_mesh, low_np, name=common_name+"low_gaussian")
-            low += 1e-4
+            low += 1e-2
             return low
         
         if option == "medium_gaussian":
