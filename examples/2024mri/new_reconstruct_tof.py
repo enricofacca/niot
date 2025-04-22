@@ -668,6 +668,27 @@ def experiment(args):
             high += 1e-4
             return high
         
+        if option == "main_network":
+            try:
+                main_network = kwargs['main_network']
+            except:
+                raise ValueError("main_network not provided")
+            
+            try: 
+                map = kwargs['map']
+                scaling = map['scaling']
+            except:
+                raise ValueError("map not provided")
+            
+            try:
+                tof = kwargs['tof']
+            except:
+                raise ValueError("tof not provided")
+            
+            initial = Function(main_network.function_space(), name=common_name+"main_network")
+            initial.interpolate(tof/scaling*conditional(main_network > 0, 1, 0))
+            return initial
+        
         else:
             raise ValueError(f"Unknown initial guess option {option}")
         
@@ -734,7 +755,7 @@ def experiment(args):
         #
         # set initial guess
         # 
-        initial = set_initial_guess(combination["initial"], corrupted=corrupted, **input_data)
+        initial = set_initial_guess(combination["initial"], map=combination["map"], corrupted=corrupted, **input_data)
 
         
         # 
