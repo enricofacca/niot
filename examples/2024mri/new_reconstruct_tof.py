@@ -511,7 +511,8 @@ def experiment(args):
             raise ValueError(f"Unknown kappa type {option}")
         
         common_name = "kappa"
-        if option == "one":
+
+        if option_type == "one":
             try:
                 mesh = kwargs['cartesian_mesh']
             except:
@@ -529,17 +530,30 @@ def experiment(args):
                 main_network = kwargs['main_network']
             except:
                 raise ValueError("main_network not provided")
+            
+            try:
+                level1 = options["level1"]
+            except:
+                level1 = 200
+            
+            try: 
+                level2 = options["level2"]
+            except:
+                level2 = 500
+            
 
-            kappa = Function(t1.function_space(), name=common_name+"t1")
+            name = f"{common_name}t1_{level1:.0f}_{level2:.0f}"
+            kappa = Function(t1.function_space(), name=name)
             kappa.interpolate(# base value is value (Euclidean distace)
                               1.0
                               # outsise the main network, we penalize the passage 
                               + conditional(main_network > 0, 0, 1) 
                               # but only in the region where t1 is high
                               * (
-                                  conditional(t1 > 400, 5, 0)
-                                  + conditional(t1 > 500, 5, 0)
+                                  conditional(t1 > level1, 5, 0)
+                                  + conditional(t1 > level2, 5, 0)
                                 ) )
+            return kappa
         elif option_type == "t1white":
             try:
                 t1 = kwargs['t1']
