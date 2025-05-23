@@ -667,7 +667,7 @@ def experiment(args):
             except:
                 raise ValueError("corrupted not provided")
             
-            low = set_initial_guess("low_gaussian", corrupted=corrupted)
+            low = set_initial_guess("low_gaussian", **kwargs)
             low_np = i2d.firedrake2numpy(low)
             medium_np = gaussian_filter(low_np, sigma=4, truncate=1e0)
             medium = i2d.numpy2firedrake(cartesian_mesh, medium_np, name=common_name+"medium_gaussian")
