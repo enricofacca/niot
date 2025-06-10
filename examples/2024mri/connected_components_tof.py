@@ -2,6 +2,10 @@ import nibabel
 import numpy as np
 import argparse
 import cc3d
+from skimage.morphology import skeletonize
+import localthickness as lt
+import copy as cp
+
 
 
 def connected_components(np_data, threshold, connectivity=26):
@@ -64,26 +68,110 @@ def find_external_network(labels_np):
         external_np[location] = 1
     return external_np
 
-def save_main_and_external_network_as_nifti(dir_nii, threshold):
+def save_main_and_external_network_as_nifti(dir_nii, threshold, blur=0.0):
+    
     # load tof data and get basic info
     tof_data = nibabel.load(f"{dir_nii}TOF.nii.gz")
     tof_np = tof_data.get_fdata()
+
+    # set common label
+    label = f"t{threshold:.2e}"
+    if blur > 0:
+        label += f"_blur{blur:.2e}"
+    print(f"Label: {label}")
+
+    # blur 
+    if blur > 0:
+        from scipy.ndimage import gaussian_filter
+        # get pixel size
+        hx, hy, hz = tof_data.header['pixdim'][1:4]
+        tof_np = gaussian_filter(tof_np, sigma=blur*hx)
+
 
     # separe connected components
     labels_np, nlabels = connected_components(tof_np, threshold)
     print(f"Found {nlabels=} with tof>={threshold:.2e}")
     labels_np = main_network_equal_one(labels_np, nlabels, tof_np)
     nibabel.save(nibabel.Nifti1Image(labels_np, tof_data.affine), 
-                 f"{dir_nii}connected_components_t{threshold:.2e}.nii.gz")
+                 f"{dir_nii}connected_components_{label}.nii.gz")
 
     # save as nifti 
     main_network = np.zeros_like(labels_np, dtype=np.uint8)
     main_network[labels_np == 1] = 1
-    print(f"Saving main network to {dir_nii}main_network_t{threshold:.2e}.nii.gz")
+    outfilename = f"{dir_nii}main_network_{label}.nii.gz"
+    print(f"Saving main network {outfilename}")
     nibabel.save(nibabel.Nifti1Image(main_network, tof_data.affine), 
-                 f"{dir_nii}main_network_t{threshold:.2e}.nii.gz")
+                 outfilename)
 
-   
+
+    # get the skeleton of main network
+    skeleton_np = skeletonize(main_network)
+
+    # compute local thickness of the main network
+    thickness_np = lt.local_thickness(main_network)
+
+
+    # convert to integer
+    skeleton_np = skeleton_np.astype(np.uint8)
+
+    # save as nifti 
+    outfilename = f"{dir_nii}skeleton_{label}.nii.gz"
+    print(f"Saving skeleton to {outfilename}")
+    nibabel.save(nibabel.Nifti1Image(skeleton_np, tof_data.affine), 
+                 outfilename)
+    
+    # save local thickness
+    outfilename = f"{dir_nii}thickness_{label}.nii.gz"
+    print(f"Saving local thickness to {outfilename}")
+    nibabel.save(nibabel.Nifti1Image(thickness_np, tof_data.affine), 
+                 outfilename)
+    
+    def indices_surronding_box(array):
+        """
+        Given a nd-array, find the indices that contains all 
+        nonzeros values.
+        """
+        indices = np.where(array > 0)
+        min_indices = np.min(indices, axis=1)
+        max_indices = np.max(indices, axis=1)
+        return min_indices, max_indices
+
+    
+    # save skeleton with local thickness
+    skeleton_thickness_np = skeleton_np * thickness_np
+    # restrict data to top surrounding box
+    min_indices, max_indices = indices_surronding_box(skeleton_thickness_np)
+    skeleton_thickness_np = skeleton_thickness_np[min_indices[0]:max_indices[0]+1,
+                              min_indices[1]:max_indices[1]+1,
+                              min_indices[2]:max_indices[2]+1]
+    
+    offsets = [hx*min_indices[0],
+               hy*min_indices[1],
+               hz*min_indices[2]]
+    
+    new_affine = cp.copy(tof_data.affine)
+    new_affine[0,0] = hx
+    new_affine[1,1] = hy
+    new_affine[2,2] = hz
+
+    new_affine[0,3] += offsets[0]
+    new_affine[1,3] += offsets[1]
+    new_affine[2,3] += offsets[2]
+    
+    new_header = cp.copy(tof_data.header)
+    new_header['pixdim'][1:4] = skeleton_thickness_np.shape
+    
+    out = nibabel.Nifti1Image(skeleton_thickness_np, new_affine, header=new_header)
+    out.header["qoffset_x"] = 0.0
+    out.header["qoffset_y"] = 0.0
+    out.header["qoffset_z"] = 0.0
+    
+    outfilename = f"{dir_nii}skeleton_thickness_{label}.nii.gz"
+    print(f"Saving skeleton with local thickness to {outfilename}")
+    nibabel.save(out, outfilename)
+
+
+
     # find inlets of external network
     print(f"Saving external network to {dir_nii}external_network_t{threshold:.2e}.nii.gz")
     external_np = find_external_network(labels_np)
@@ -96,9 +184,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--mri', type=str)
     parser.add_argument('--threshold', type=float)
+    parser.add_argument('--blur', type=float, default=0.0)
     args = parser.parse_args()
 
-    save_main_and_external_network_as_nifti(args.mri, args.threshold)
+    save_main_and_external_network_as_nifti(args.mri, args.threshold, args.blur)
+
+    
 
     
     
