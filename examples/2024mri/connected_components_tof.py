@@ -109,6 +109,8 @@ def save_main_and_external_network_as_nifti(dir_nii, threshold, blur=0.0):
 
     # compute local thickness of the main network
     thickness_np = lt.local_thickness(main_network)
+    # scale by thickness 
+    thickness_np *= hx
 
 
     # convert to integer
