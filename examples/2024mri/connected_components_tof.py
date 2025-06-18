@@ -173,10 +173,11 @@ def save_main_and_external_network_as_nifti(dir_nii, threshold, blur=0.0):
 
 
     # find inlets of external network
-    print(f"Saving external network to {dir_nii}external_network_t{threshold:.2e}.nii.gz")
+    outfilename = f"{dir_nii}external_network_{label}.nii.gz"
+    print(f"Saving external network to {outfilename}")
     external_np = find_external_network(labels_np)
     nibabel.save(nibabel.Nifti1Image(external_np, tof_data.affine), 
-                 f"{dir_nii}external_network_t{threshold:.2e}.nii.gz")
+                 outfilename)
     
 
 
