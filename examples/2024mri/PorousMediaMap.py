@@ -36,6 +36,12 @@ from niot import image2dat as i2d
 import nibabel
 
 
+def save_as_nifti(function, affine, filename):
+    function_np = i2d.firedrake2numpy(function)
+    nibabel.save(nibabel.Nifti1Image(function_np, affine), filename)
+    function_np = None
+    gc.collect()
+    return
 
 tape = fire_adj.get_working_tape()
 
@@ -93,6 +99,8 @@ def skeletonthickness_to_tubular(skeleton_thickness, h, cond_zero, exponent_p, v
     # where the /h**(dim-1) is to get a dirac like measure
     dim_domain = mesh.geometric_dimension()
     cond.interpolate(1e-15+cond_zero*(radius**exponent_p) / (h**(dim_domain-1)))
+    cond.rename('cond')
+
     
     #cond.vector()[:] = 100*(np.ones(cond.vector().local_size())+rand(cond.vector().local_size()))
     #test_adjoint(cond, exponent_m, sigma=sigma, scaling=1.0, nsteps=1000)
@@ -129,7 +137,7 @@ def skeletonthickness_to_tubular(skeleton_thickness, h, cond_zero, exponent_p, v
             print(f'Saving {filename}')      
             utilities.save2pvd(pm_map.images[i],filename)
 
-    return image
+    return cond, image
 
 if (__name__ == '__main__'):
 
@@ -161,7 +169,7 @@ if (__name__ == '__main__'):
                                              name="st")
     
     
-    tubular = skeletonthickness_to_tubular(
+    cond, tubular = skeletonthickness_to_tubular(
             skeleton_thickness,         
             exponent_p=exponent_p,
             h=hx,
@@ -169,17 +177,12 @@ if (__name__ == '__main__'):
             verbose=True,
             save=False)
     
-
     
-    def save_as_nifti(function, affine, filename):
-        function_np = i2d.firedrake2numpy(function)
-        nibabel.save(nibabel.Nifti1Image(function_np, affine), filename)
-        function_np = None
-        gc.collect()
-        return
     filename = f"tubular_c{args.cond:.2e}.nii.gz"
     save_as_nifti(tubular, skeleton_thickness_nii.affine, filename) 
     
+    filename = f"cond_c{args.cond:.2e}.nii.gz"
+    save_as_nifti(cond, skeleton_thickness_nii.affine, filename)
 
     
     # for threshold in [ 1e-3]:
