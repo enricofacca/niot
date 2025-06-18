@@ -752,7 +752,7 @@ def experiment(args):
             except:
                 raise ValueError("cartesian_mesh not provided")
             
-            h = ( mesh.max - mesh.min ) / mesh.nz
+            h = ( mesh.zmax - mesh.zmin ) / mesh.nz
             
             try:
                 lift = option["lift"]
