@@ -759,7 +759,7 @@ def experiment(args):
             except:
                 lift = 1e-15
            
-            dim = mesh().geometric_dimension()
+            dim = mesh.geometric_dimension()
             exponent_p = 4.0 if dim == 3 else 3.0
             initial = Function(skeleton.function_space(), name=common_name+"skeleton_thickness")
             initial.interpolate(mu0*skeleton * (thickness/2) ** exponent_p / h ** (dim-1))           
