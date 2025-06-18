@@ -1,11 +1,18 @@
 {
-    "threshold":[450],
-    "wd": [1e-4],
-    "initial": ["one"],
+    "blur": [1.5],
+    "threshold":[250],
+    "wd": [0.0],
+    "initial": [{
+        "type" : "skeleton_thichness",
+        "mu0": 100,
+        "lift": 1e-3
+        }],
     "confidence": ["main_network"],
     "map": [
     {"type": "identity", "scaling": 10}
     ],
     "kappa": ["t1"],
-    "absorption": [1e-3]
+    "absorption": [1.00e-3],
+    "max_iter": [0],
+    "buffer" : [500]
 }
