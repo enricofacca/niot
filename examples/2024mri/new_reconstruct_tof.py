@@ -969,7 +969,7 @@ def experiment(args):
         except:
             buffer = 500
         
-        buffer_saving = min(buffer,total_iterations)
+        buffer_saving = max(1,min(buffer,total_iterations))
 
 
         def solve_and_save(niot_solver, label_dir, n_buffer):
