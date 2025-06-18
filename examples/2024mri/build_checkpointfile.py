@@ -183,9 +183,11 @@ def write_h5(mri_directory, threshold, blur, comm, n_proc, data):
     # save to h5
     #
     cartesian_mesh.name = "mesh"
-    label = f"t{threshold:.2e}"
     if blur > 0:
-        label += f"_blur{blur:.2e}"
+        PETSc.Sys.Print(f"Connected components with threshold {threshold:.2e} and blur {blur:.2e}")
+        label = f"t{threshold:.2e}_blur{blur:.2e}"  
+    else: 
+        label = f"t{threshold:.2e}"
     h5_filename = f"{mri_directory}/inputs_{label}_nproc{n_proc}.h5"
     
     # removing file if it exists

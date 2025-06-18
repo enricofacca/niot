@@ -339,7 +339,11 @@ def experiment(args):
     # check if h5 already exists or build it, but it may run out of memory
     #
     PETSc.Sys.Print(f"**** Inputs loading ****")
-    h5_file = f"{args.mri}/inputs_t{threshold:.2e}_nproc{args.n_ensemble}.h5"
+    if blur > 0:
+        label = f"t{threshold:.2e}_blur{blur:.2e}"  
+    else: 
+        label = f"t{threshold:.2e}"
+    h5_file = f"{args.mri}/inputs_{label}_nproc{args.n_ensemble}.h5"
     if os.path.exists(h5_file):
         PETSc.Sys.Print(f"Found checkpoint file {h5_file}")
     else:   
