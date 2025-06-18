@@ -382,6 +382,10 @@ def experiment(args):
         PETSc.Sys.Print(f"main network",end="")
         external_network = afile.load_function(mesh, "external_network")
         PETSc.Sys.Print(f"external network",end=" ")
+        skeleton = afile.load_function(mesh, "skeleton")
+        PETSc.Sys.Print(f"skeleton",end="")
+        thickness = afile.load_function(mesh, "thickness")
+        PETSc.Sys.Print(f"thickness",end=" ")
       
     PETSc.Sys.Print(f"Checkpoint loaded")
     PETSc.Sys.Print(f"**** Inputs loaded ****")
@@ -399,8 +403,6 @@ def experiment(args):
     mesh.zmin = 0.0
     mesh.zmax = lengths[2]
     
-
-
     cartesian_mesh = mesh
     
     input_data = { 
@@ -411,7 +413,9 @@ def experiment(args):
         "inlets": inlets, 
         "main_network": main_network, 
         "external_network": external_network,
-        "cartesian_mesh": cartesian_mesh
+        "cartesian_mesh": cartesian_mesh,
+        "skeleton" : skeleton,
+        "thickness": thickness,
     }
 
 
