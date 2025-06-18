@@ -141,12 +141,12 @@ def setup_h5(mri_directory, threshold, blur = 0.0, comm=COMM_WORLD):
     gc.collect()
 
     # read skeleton mask of main network
-    file_nii = f"{dir_nii}/_t{label}.nii.gz"
+    file_nii = f"{dir_nii}/skeleton_{label}.nii.gz"
     file_npy = f"{dir_nii}/skeleton_{label}.npy"   
     save_as_npy(file_nii, file_npy, comm=comm)
     skeleton_np = np.load(file_npy,mmap_mode='r')
-    skeleton = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name="main_network")
-    PETSc.Sys.Print(f"Main network done")
+    skeleton = i2d.numpy2firedrake(cartesian_mesh, skeleton_np, name="skeleton")
+    PETSc.Sys.Print(f"Skeleton done")
     skeleton_np = None
     gc.collect()
 
@@ -231,6 +231,6 @@ if __name__ == '__main__':
 
     data = setup_h5(args.mri, args.threshold, args.blur, COMM_WORLD)
     n_proc = COMM_WORLD.size
-    write_h5(args.mri, args.threshold, COMM_WORLD, n_proc, data)
+    write_h5(args.mri, args.threshold, args.blur, COMM_WORLD, n_proc, data)
     
     
