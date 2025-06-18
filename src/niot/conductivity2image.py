@@ -7,6 +7,7 @@
 #   to transform a conductivity field into an image. 
 #   Both are implemented as pyadjoint blocks.
 # """
+import gc
 
 from firedrake import FunctionSpace
 from firedrake import Function, TestFunction, TrialFunction # this are methods
