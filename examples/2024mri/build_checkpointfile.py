@@ -25,7 +25,7 @@ def clean_npy_file(file_npy):
         pass
 
 
-def setup_h5(mri_directory, threshold, comm=COMM_WORLD):
+def setup_h5(mri_directory, threshold, blur = 0.0, comm=COMM_WORLD):
     n_proc = comm.size
 
     # load tof data and get basic info
@@ -126,8 +126,13 @@ def setup_h5(mri_directory, threshold, comm=COMM_WORLD):
     
     
     # main and external network
-    file_nii = f"{dir_nii}/main_network_t{threshold:.2e}.nii.gz"
-    file_npy = f"{dir_nii}/main_network_t{threshold:.2e}.npy"   
+    if blur > 0:
+        PETSc.Sys.Print(f"Connected components with threshold {threshold:.2e} and blur {blur:.2e}")
+        label = f"t{threshold:.2e}_blur{blur:.2e}"  
+    else: 
+        label = f"t{threshold:.2e}"
+    file_nii = f"{dir_nii}/main_network_{label}.nii.gz"
+    file_npy = f"{dir_nii}/main_network_{label}.npy"   
     save_as_npy(file_nii, file_npy, comm=comm)
     main_network_np = np.load(file_npy,mmap_mode='r')
     main_network = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name="main_network")
@@ -135,9 +140,31 @@ def setup_h5(mri_directory, threshold, comm=COMM_WORLD):
     main_network_np = None
     gc.collect()
 
+    # read skeleton mask of main network
+    file_nii = f"{dir_nii}/_t{label}.nii.gz"
+    file_npy = f"{dir_nii}/skeleton_{label}.npy"   
+    save_as_npy(file_nii, file_npy, comm=comm)
+    skeleton_np = np.load(file_npy,mmap_mode='r')
+    skeleton = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name="main_network")
+    PETSc.Sys.Print(f"Main network done")
+    skeleton_np = None
+    gc.collect()
+
+    # read local thickness of main network
+    file_nii = f"{dir_nii}/thickness_{label}.nii.gz"
+    file_npy = f"{dir_nii}/thickness_{label}.npy"   
+    save_as_npy(file_nii, file_npy, comm=comm)
+    thickness_np = np.load(file_npy,mmap_mode='r')
+    thickness = i2d.numpy2firedrake(cartesian_mesh, thickness_np, name="thickness")
+    PETSc.Sys.Print(f"Local thickness done")
+    thickness_np = None
+    gc.collect()
+
+    
+
     # external network
-    file_nii = f"{dir_nii}/external_network_t{threshold:.2e}.nii.gz"
-    file_npy = f"{dir_nii}/external_network_t{threshold:.2e}.npy"   
+    file_nii = f"{dir_nii}/external_network_{label}.nii.gz"
+    file_npy = f"{dir_nii}/external_network_{label}.npy"   
     save_as_npy(file_nii, file_npy, comm=comm)
     external_network_np = np.load(file_npy,mmap_mode='r')
     external_network = i2d.numpy2firedrake(cartesian_mesh, external_network_np, name="external_network")
@@ -145,17 +172,21 @@ def setup_h5(mri_directory, threshold, comm=COMM_WORLD):
     external_network_np = None
     gc.collect()
 
-    return cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets
+    return cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets, skeleton, thickness
 
-def write_h5(mri_directory, threshold, comm, n_proc, data):
+
+def write_h5(mri_directory, threshold, blur, comm, n_proc, data):
     # unpack data
-    cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets = data
+    cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets, skeleton, thickness = data
 
     #
     # save to h5
     #
     cartesian_mesh.name = "mesh"
-    h5_filename = f"{mri_directory}/inputs_t{threshold:.2e}_nproc{n_proc}.h5"
+    label = f"t{threshold:.2e}"
+    if blur > 0:
+        label += f"_blur{blur:.2e}"
+    h5_filename = f"{mri_directory}/inputs_{label}_nproc{n_proc}.h5"
     
     # removing file if it exists
     if os.path.exists(h5_filename):
@@ -181,6 +212,10 @@ def write_h5(mri_directory, threshold, comm, n_proc, data):
         PETSc.Sys.Print(f" external_network ", end="")
         afile.save_function(inlets)
         PETSc.Sys.Print(f" inlets ", end="")
+        afile.save_function(skeleton)
+        PETSc.Sys.Print(f" skeleton ", end="")
+        afile.save_function(thickness)
+        PETSc.Sys.Print(f" thickness ", end="")
     PETSc.Sys.Print(f" - done")
     
         
@@ -188,10 +223,13 @@ def write_h5(mri_directory, threshold, comm, n_proc, data):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--mri', type=str)
-    parser.add_argument('--threshold', type=float, default=250)
+    parser.add_argument('--threshold', type=float, default=250,
+                        help="Threshold for Tof. Default is 250.")
+    parser.add_argument('--blur', type=float, default=0.0, 
+                        help="Blur for connected components. If 0, no blur is applied.")
     args = parser.parse_args()
 
-    data = setup_h5(args.mri, args.threshold)
+    data = setup_h5(args.mri, args.threshold, args.blur, COMM_WORLD)
     n_proc = COMM_WORLD.size
     write_h5(args.mri, args.threshold, COMM_WORLD, n_proc, data)
     
