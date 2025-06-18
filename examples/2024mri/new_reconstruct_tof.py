@@ -617,7 +617,7 @@ def experiment(args):
         elif isinstance(option, dict):
             option_type = option["type"]
         else:
-            raise ValueError(f"Unknown kappa type {option}")
+            raise ValueError(f"Unknown initial {option}")
 
         
         if option_type == "one":

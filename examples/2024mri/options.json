@@ -3,7 +3,7 @@
     "threshold":[250],
     "wd": [0.0],
     "initial": [{
-        "type" : "skeleton_thichness",
+        "type" : "skeleton_thickness",
         "mu0": 100,
         "lift": 1e-3
         }],
