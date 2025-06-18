@@ -233,6 +233,7 @@ def experiment(args):
             options = json.load(f)
     except:
         options = {
+            "blur": [0.0],
             "threshold": [1e-3],
             "wd": [1e-4],  
             "initial": ["one"],
@@ -255,7 +256,13 @@ def experiment(args):
     except:
         threshold_tof = [250]
         options["threshold_tof"] = threshold_tof
-    
+
+    try:    
+        blur = options["blur"][0]
+    except:
+        blur = 0.0
+        options["blur"] = [blur]
+        
 
     PETSc.Sys.Print(f"**** SETUP ****** ")
     PETSc.Sys.Print(f"Inputs: {args.mri}")
@@ -341,12 +348,12 @@ def experiment(args):
                         )
         if use_ensemble:
             if my_ensemble.ensemble_comm.rank == 0:
-                data = setup_h5(args.mri, threshold, comm=comm)
-                write_h5(args.mri, threshold, comm, args.n_ensemble, data=data)
+                data = setup_h5(args.mri, threshold, blur, comm=comm)
+                write_h5(args.mri, threshold, blur, comm, args.n_ensemble, data=data)
             my_ensemble.ensemble_comm.barrier()
         else:
-            data = setup_h5(args.mri, threshold, comm=comm)
-            write_h5(args.mri, threshold, comm, args.n_ensemble, data=data)
+            data = setup_h5(args.mri, threshold, blur, comm=comm)
+            write_h5(args.mri, threshold, blur, comm, args.n_ensemble, data=data)
         PETSc.Sys.Print(f"Checkpoint created h5_file={h5_file}")
     
 
@@ -600,8 +607,16 @@ def experiment(args):
         
     def set_initial_guess(option, **kwargs):
         common_name = "ini"
+
+        if isinstance(option, str):
+            option_type = option
+        elif isinstance(option, dict):
+            option_type = option["type"]
+        else:
+            raise ValueError(f"Unknown kappa type {option}")
+
         
-        if option == "one":
+        if option_type == "one":
             try:
                 mesh = kwargs['cartesian_mesh']
             except:
@@ -610,7 +625,7 @@ def experiment(args):
             one.assign(1.0)
             return one
 
-        if option == "low":
+        if option_type == "low":
             try:
                 corrupted = kwargs['corrupted']
             except:
@@ -621,7 +636,7 @@ def experiment(args):
             low.assign(heat(corrupted+1e-4) + 1e-4)
             return low
         
-        if option == "medium":
+        if option_type == "medium":
             try:
                 corrupted = kwargs['corrupted']
             except:
@@ -632,7 +647,7 @@ def experiment(args):
             medium.assign(heat(low+1e-4) + 1e-4)
             return medium
         
-        if option == "high":
+        if option_type == "high":
             try:
                 corrupted = kwargs['corrupted']
             except:
@@ -643,7 +658,7 @@ def experiment(args):
             high.assign(heat(medium+1e-4) + 1e-4)
             return high
 
-        if option == "low_gaussian":
+        if option_type == "low_gaussian":
             try:
                 corrupted = kwargs['corrupted']
             except:
@@ -661,7 +676,7 @@ def experiment(args):
             low += 1e-2
             return low
         
-        if option == "medium_gaussian":
+        if option_type == "medium_gaussian":
             try:
                 corrupted = kwargs['corrupted']
             except:
@@ -674,7 +689,7 @@ def experiment(args):
             medium += 1e-4
             return medium
         
-        if option == "high_gaussian":
+        if option_type == "high_gaussian":
             try:
                 corrupted = kwargs['corrupted']
             except:
@@ -687,7 +702,7 @@ def experiment(args):
             high += 1e-4
             return high
         
-        if option == "main_network":
+        if option_type == "main_network":
             try:
                 main_network = kwargs['main_network']
             except:
@@ -708,6 +723,47 @@ def experiment(args):
             initial.interpolate(tof/scaling*conditional(main_network > 0, 1, 0))
             return initial
         
+        if option_type == "skeleton_thickness":
+            try:
+                skeleton = kwargs["skeleton"]
+            except:
+                raise ValueError("skeleton not provided")
+            
+            try:
+                thickness = kwargs["thickness"]
+            except:
+                raise ValueError("thickness not provided")
+            
+            try:
+                mu0 = option["mu0"]
+            except:
+                raise ValueError("mu0 not provided")
+            
+            try:
+                mesh = kwargs['cartesian_mesh']
+            except:
+                raise ValueError("cartesian_mesh not provided")
+            
+            try:
+                h = ( mesh.max - mesh.min ) / mesh.nz
+            except:
+                raise ValueError("mesh not provided")
+
+            try:
+                lift = option["lift"]
+            except:
+                lift = 1e-15
+           
+            dim = mesh().geometric_dimension()
+            exponent_p = 4.0 if dim == 3 else 3.0
+            initial = Function(skeleton.function_space(), name=common_name+"skeleton_thickness")
+            initial.interpolate(mu0*skeleton * (thickness/2) ** exponent_p / h ** (dim-1))           
+            initial += lift
+
+            return initial
+
+
+
         else:
             raise ValueError(f"Unknown initial guess option {option}")
         
