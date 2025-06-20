@@ -770,7 +770,6 @@ def experiment(args):
             try:
                 sigma_heat = option["sigma_heat"]
                 heat = HeatMap(initial.function_space(), scaling=1.0, sigma=sigma_heat)
-                try:
                 initial.assign(heat(initial))
             except:
                 pass
