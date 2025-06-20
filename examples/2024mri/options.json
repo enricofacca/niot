@@ -2,17 +2,20 @@
     "blur": [1.5],
     "threshold":[250],
     "wd": [0.0],
-    "initial": [{
-        "type" : "skeleton_thickness",
-        "mu0": 100,
-        "lift": 1e-3
-        }],
+    "initial": [
+        {
+            "type" : "skeleton_thickness",
+            "mu0": 100,
+            "lift": 1e-4,
+            "sigma_heat" : 1e1
+        }
+    ],
     "confidence": ["main_network"],
     "map": [
     {"type": "identity", "scaling": 10}
     ],
-    "kappa": ["t1"],
+    "kappa": ["one"],
     "absorption": [1.00e-3],
-    "max_iter": [0],
-    "buffer" : [500]
+    "max_iter": [500],
+    "buffer" : [100]
 }

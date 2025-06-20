@@ -758,12 +758,22 @@ def experiment(args):
                 lift = option["lift"]
             except:
                 lift = 1e-15
+
+            
            
             dim = mesh.geometric_dimension()
             exponent_p = 4.0 if dim == 3 else 3.0
             initial = Function(skeleton.function_space(), name=common_name+"skeleton_thickness")
             initial.interpolate(mu0*skeleton * (thickness/2) ** exponent_p / h ** (dim-1))           
             initial += lift
+
+            try:
+                sigma_heat = option["sigma_heat"]
+                heat = HeatMap(initial.function_space(), scaling=1.0, sigma=sigma_heat)
+                try:
+                initial.assign(heat(initial))
+            except:
+                pass
 
             return initial
 
