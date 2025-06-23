@@ -7,7 +7,7 @@
             "type" : "skeleton_thickness",
             "mu0": 100,
             "lift": 1e-4,
-            "sigma_heat" : 1e0
+            "sigma_heat" : 1e-1
         }
     ],
     "confidence": ["main_network"],
