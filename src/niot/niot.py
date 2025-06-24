@@ -21,7 +21,7 @@ import time
 #from memory_profiler import profile
 
 
-from . conductivity2image import IdentityMap, HeatMap, PorousMediaMap
+from . conductivity2image import IdentityMap, HeatMap, PorousMediaMap, Barenblatt
 from . import utilities
 from . import optimal_transport as ot
 from . import linear_algebra_utilities as linalg
@@ -847,8 +847,28 @@ class NiotSolver:
             self.tdens2image = lambda x: self.tdens2image_map(x)
 
         elif tdens2image == 'pm':
-            sigma = self.ctrl_get(['tdens2image', 'pm','sigma'])
-            exponent_m = self.ctrl_get(['tdens2image', 'pm','exponent_m'])
+            try:
+                sigma = self.ctrl_get(['tdens2image', 'pm','sigma'])
+                exponent_m = self.ctrl_get(['tdens2image', 'pm','exponent_m'])
+                scaling = self.ctrl_get(['tdens2image', 'scaling'])
+            except:
+                cond_zero = self.ctrl_get(['tdens2image', 'pm','cond_zero'])
+                exponent_p = self.ctrl_get(['tdens2image', 'pm','exponent_p'])
+                scaling = 1.0
+                dim = self.mesh.geometric_dimension() 
+
+                dim = self.mesh.geometric_dimension()
+                if exponent_p < dim-1:
+                    raise ValueError('p<d')
+                exponent_m = (2 + exponent_p - dim - 1 ) / (exponent_p - dim -1 )
+
+                Bar = Barenblatt(exponent_m,dim-1)
+            
+                # find the time to get 
+                # M = M_0 * (r(\sigma))**p 
+                # sigma = (cond_zero**(-1/exponent_p) * K_md ** (-1/2) * B **(1/2))**(1/beta)
+                sigma = Bar.sigma(cond_zero,exponent_p)
+            
             self.tdens2image_map = PorousMediaMap(
                 self.fems.tdens_space,
                 scaling=scaling, 

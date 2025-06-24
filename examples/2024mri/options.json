@@ -1,7 +1,7 @@
 {
     "blur": [1.5],
     "threshold":[250],
-    "wd": [0.0],
+    "wd": [1e-3],
     "initial": [
         {
             "type" : "skeleton_thickness",
