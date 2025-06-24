@@ -868,7 +868,7 @@ class NiotSolver:
                 scaling=scaling, 
                 sigma=sigma,
                 exponent_m=exponent_m,
-                nsteps=8,
+                nsteps=5,
                 name=label_pm)
             self.tdens2image = lambda x: self.tdens2image_map(x)
 
@@ -1307,7 +1307,7 @@ class NiotSolver:
         #if use_adjoint:
         tape = fire_adj.get_working_tape()
     
-
+        self.compute_residuum(self.sol)
         if not self.ctrl_get('restart'):
             # Initialize the parameter-dependent solvers
             #self.setup()
@@ -1332,7 +1332,7 @@ class NiotSolver:
         # udpack main controls and start main loop
         max_iter = self.ctrl_get('max_iter')
         
-        self.compute_residuum(self.sol)
+        
 
 
         ierr_dmk = 0
