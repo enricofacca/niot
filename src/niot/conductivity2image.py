@@ -36,7 +36,7 @@ from . import linear_algebra_utilities as linalg
 import numpy as np
 from scipy.integrate import quad
 from scipy.special import gamma
-from scipy.optimize import newton
+from scipy.optimize import newton, root_scalar
 
 class Conductivity2ImageMap:
     """
@@ -454,7 +454,7 @@ class PorousMediaMap(Conductivity2ImageMap):
                            + ( 1 - r ** (n -1) ) / (1 - r)**2 )
             return value
             
-        rate = newton(f, self.sigma / n , fprime=df)
+        rate = newton(f, x0 = self.sigma / (dt0 * n ) , fprime=df)
         if self.verbose > 0:
             PETSc.Sys.Print('sigma',self.sigma,'rate=',rate,'steps=',self.nsteps,'dt0=',dt0,'f',f(rate))
 
