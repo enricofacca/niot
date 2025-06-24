@@ -868,7 +868,7 @@ class NiotSolver:
                 scaling=scaling, 
                 sigma=sigma,
                 exponent_m=exponent_m,
-                nsteps=5,
+                nsteps=8,
                 name=label_pm)
             self.tdens2image = lambda x: self.tdens2image_map(x)
 
@@ -1409,7 +1409,7 @@ class NiotSolver:
     def weighted_mass(self, pot, tdens):
         '''
         Weighted tdens mass
-        :math:`\int_{\Omega}\frac{1}{2\gamma} \mu^{\gamma} dx`
+        :math:`int_{\Omega}\frac{1}{2\gamma} \mu^{\gamma} dx`
         '''
         return  0.5 * (tdens ** self.btp.gamma) /  self.btp.gamma  * dx
 
@@ -1418,7 +1418,7 @@ class NiotSolver:
         Definition of the penalization functional as the branched transport energy
         in FCP2021 (use Citations.print_all() to see the reference)
         The penalization is defined as
-        :math:`\int_{\Omega} f u dx - \frac{\mu |\nabla u|^2}{2}+ \frac{1}{2\gamma} \mu^{\gamma} dx`
+        :math:`int_{\Omega} f u dx - \frac{\mu |\nabla u|^2}{2}+ \frac{1}{2\gamma} \mu^{\gamma} dx`
         '''
         otp_pen = self.joule(pot, tdens) + self.weighted_mass(pot,tdens)
 

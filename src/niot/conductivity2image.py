@@ -346,7 +346,6 @@ class PorousMediaMap(Conductivity2ImageMap):
         deg = space.ufl_element().degree()
 
         if len(deg)>0:
-            print(f"deg {deg=}")
             degree = deg[0]
         else:
             degree = deg
@@ -354,7 +353,6 @@ class PorousMediaMap(Conductivity2ImageMap):
         d_inter = d_face_interior(space.mesh())
 
         
-        print(f"degree {degree=}")
         
         if degree > 0:
             pm_Laplacian_PDE = permeability * inner(grad(self.image_h) ,grad(test)) * dx  
