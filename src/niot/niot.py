@@ -1062,12 +1062,13 @@ class NiotSolver:
 
             # Discrepancy 
             if dw > 0:
-                self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
+                
                 if use_adjoint :
                     # The following is required to keep track of the 
                     # adjoint computation, like when the map from tdens to image is 
                     # defined as the solution of a PDE (for example the poruous media map).
                     fire_adj.continue_annotation()
+                    self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
                     self.adj_discrepancy_fun = assemble(self.discrepancy_form)
                     self.adj_discrepancy_fun_reduced = fire_adj.ReducedFunctional(self.adj_discrepancy_fun, fire_adj.Control(self.tdens_h))
                     self.gradient_discrepancy = self.adj_discrepancy_fun_reduced.derivative()
@@ -1075,6 +1076,7 @@ class NiotSolver:
                     tape = fire_adj.get_working_tape()
                     tape.clear_tape()
                 else:
+                    self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
                     self.gradient_discrepancy_form = derivative(self.discrepancy_form, 
                                                                  self.tdens_h,
                                                                  coefficient_derivatives=self.tdens2image_map.cd)
