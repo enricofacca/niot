@@ -440,7 +440,7 @@ class PorousMediaMap(Conductivity2ImageMap):
                 raise ValueError('Negative conductivity')
             _, max_cond = cond_vec.max()
             PETSc.Sys.Print(f'cond min={min_cond}, max={max_cond}')
-            dt0 = min(1e-5, 1e-5/(max_cond))
+            dt0 = min(1e-4, 1e-4/(max_cond))
             
         PETSc.Sys.Print(f'dt0={dt0}, sigma={self.sigma}', self.nsteps)
         
@@ -454,7 +454,7 @@ class PorousMediaMap(Conductivity2ImageMap):
                            + ( 1 - r ** (n + 1) ) / (1 - r)**2 )
             return value
 
-        sol = root_scalar(f, fprime=df, rtol=1e-3, bracket=[2,10], maxiter=100)
+        sol = root_scalar(f, fprime=df, rtol=1e-3, bracket=[2,20], maxiter=100)
         rate = sol.root   
         #rate = newton(f, x0 = self.sigma / (dt0) , fprime=df)
         if self.verbose > 0:
