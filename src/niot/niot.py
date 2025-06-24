@@ -760,14 +760,6 @@ class NiotSolver:
         
         # open log file
         tdens2image = self.ctrl_get('tdens2image')
-        if tdens2image['type'] == 'identity':
-            map_description = f'mu2iidentity'
-        elif tdens2image['type'] == 'heat':
-           map_description = f"mu2iheat{tdens2image['sigma']:.1e}"
-        elif tdens2image['type'] == 'pm':
-           map_description = f"mu2ipm{tdens2image['sigma']:.1e}"
-        else:
-            raise ValueError(f'Unknown tdens2image {tdens2image}')
         
         max_iter = self.ctrl_get('max_iter')
         wd = self.ctrl_get('discrepancy_weight')
