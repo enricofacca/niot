@@ -14,6 +14,10 @@ from niot import SpaceDiscretization
 from build_checkpointfile import setup_h5, write_h5
 #from memory_profiler import profile
 
+import warnings
+warnings.filterwarnings("ignore")
+
+
 from connected_components_tof import save_main_and_external_network_as_nifti
 from firedrake.__future__ import interpolate
 from niot.conductivity2image import HeatMap
@@ -35,8 +39,6 @@ import nibabel
 
 from scipy.ndimage import gaussian_filter
 
-import warnings
-warnings.filterwarnings("ignore")
 
 np.set_printoptions(formatter={'float': '{:0.2e}'.format})
 
