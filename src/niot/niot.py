@@ -861,7 +861,7 @@ class NiotSolver:
                 dim = self.mesh.geometric_dimension()
                 if exponent_p < dim-1:
                     raise ValueError('p<d')
-                exponent_m = (2 + exponent_p - dim - 1 ) / (exponent_p - dim -1 )
+                exponent_m = (2 + exponent_p - (dim - 1) ) / (exponent_p - (dim - 1 ) )
 
                 Bar = Barenblatt(exponent_m,dim-1)
             
