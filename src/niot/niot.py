@@ -1073,7 +1073,7 @@ class NiotSolver:
                     self.gradient_discrepancy = self.adj_discrepancy_fun_reduced.derivative()
                     fire_adj.stop_annotating()
                     tape = fire_adj.get_working_tape()
-                    tape.clear()
+                    tape.clear_tape()
                 else:
                     self.gradient_discrepancy_form = derivative(self.discrepancy_form, 
                                                                  self.tdens_h,
