@@ -393,7 +393,6 @@ def nested_get(dic, keys, default=None):
     try:        
         value = d[keys[-1]]
     except:
-        print(keys)
         if default is None:
             raise KeyError
         value = default
