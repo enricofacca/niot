@@ -478,7 +478,7 @@ class PorousMediaMap(Conductivity2ImageMap):
             self.pm_solver.solve()
             
             if self.verbose > 0:
-                PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} {self.image_h.dat.data_ro.min}<=IMG<={self.image_h.dat.data_ro.max}')
+                PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} {self.image_h.dat.data_ro.min()}<=IMG<={self.image_h.dat.data_ro.max()}')
                 
             if self.store_images:
                 img = self.image_h.copy(deepcopy=True)
