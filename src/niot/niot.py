@@ -1071,7 +1071,7 @@ class NiotSolver:
                     self.adj_discrepancy_fun = assemble(self.discrepancy_form)
                     self.adj_discrepancy_fun_reduced = fire_adj.ReducedFunctional(self.adj_discrepancy_fun, fire_adj.Control(self.tdens_h))
                     self.gradient_discrepancy = self.adj_discrepancy_fun_reduced.derivative()
-                    fire_adj.stop_annotation()
+                    fire_adj.stop_annotating()
                     tape = fire_adj.get_working_tape()
                     tape.clear()
                 else:
