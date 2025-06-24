@@ -868,7 +868,7 @@ class NiotSolver:
                 scaling=scaling, 
                 sigma=sigma,
                 exponent_m=exponent_m,
-                nsteps=5,
+                nsteps=3,
                 name=label_pm)
             self.tdens2image = lambda x: self.tdens2image_map(x)
 
