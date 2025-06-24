@@ -427,6 +427,12 @@ class PorousMediaMap(Conductivity2ImageMap):
         
         # this command will inject the fun in the pde
         # (I - conductivity) / sigma  - \Delta^m I = 0
+        with conductivity.dat.vec as cond_vec:
+            _, min_cond = cond_vec.min()
+            if min_cond < 0:
+                raise ValueError('Negative conductivity')
+            _, max_cond = cond_vec.max()
+            PETSc.Sys.Print(f'cond min={min_cond}, max={max_cond}')
         assemble(interpolate(conductivity,self.space), tensor=self.tdens4transform)
 
         # estimate for initial time step
@@ -435,9 +441,10 @@ class PorousMediaMap(Conductivity2ImageMap):
             if min_cond < 0:
                 raise ValueError('Negative conductivity')
             _, max_cond = cond_vec.max()
+            PETSc.Sys.Print(f'cond min={min_cond}, max={max_cond}')
             dt0 = min(1e-6, 1e-6/(max_cond))
             
-        print(f'dt0={dt0}, sigma={self.sigma}', self.nsteps)
+        PETSc.Sys.Print(f'dt0={dt0}, sigma={self.sigma}', self.nsteps)
         
         # find optimal expansion
         n = self.nsteps + 1
