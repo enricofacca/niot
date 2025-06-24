@@ -33,7 +33,7 @@ from firedrake import *
 from firedrake.functionspace import DualSpace
 from firedrake.__future__ import interpolate
 import firedrake.adjoint as fire_adj
-        #fire_adj.continue_annotation()
+    fire_adj.continue_annotation()
 
 
 
@@ -1180,7 +1180,7 @@ class NiotSolver:
                 self.regularization_form  = rw * self.regularization(pot, gfvar)
                 if use_adjoint:
                     lagrangian_fun = assemble(self.regularization_form )
-                    lagrangian_fun_reduced = fire_adj.ReducedFunctional(L, fire_adj.Control(gfvar))
+                    lagrangian_fun_reduced = fire_adj.ReducedFunctional(lagrangian_fun, fire_adj.Control(gfvar))
                     self.gradient_regularization = lagrangian_fun_reduced.derivative()
                 else:
                     self.gradient_regularization = assemble(derivative(self.regularization_form, gfvar))
