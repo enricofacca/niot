@@ -33,7 +33,7 @@ from firedrake import *
 from firedrake.functionspace import DualSpace
 from firedrake.__future__ import interpolate
 import firedrake.adjoint as fire_adj
-fire_adj.continue_annotation()
+
 
 
 
@@ -1025,34 +1025,36 @@ class NiotSolver:
             self.regularization_weight.assign(rw)
 
             # Discrepancy 
-            self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
-            if dw > 0:
+            # self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
+            # if dw > 0:
                 
-                if use_adjoint:
-                    # The following is required to keep track of the 
-                    # adjoint computation, like when the map from tdens to image is 
-                    # defined as the solution of a PDE (for example the poruous media map).
-                    self.adj_discrepancy_fun = assemble(self.discrepancy_form)
-                    self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.adj_discrepancy_fun, fire_adj.Control(self.tdens_h))
-                else:
-                    # Simple derivative computation
-                    # It uses less memory, but it requires the functional
-                    # as combination of operations manegable by automatic differiantion.
-                    #self.gradient_discrepancy = assemble(derivative(self.lagrangian_fun, self.tdens_h))
-                    self.gradient_discrepancy_form = derivative(self.discrepancy_form, 
-                                                                self.tdens_h,
-                                                                coefficient_derivatives=self.tdens2image_map.cd)
+            #     if use_adjoint:
+            #         # The following is required to keep track of the 
+            #         # adjoint computation, like when the map from tdens to image is 
+            #         # defined as the solution of a PDE (for example the poruous media map).
+            #         fire_adj.continue_annotation()
+            #         self.adj_discrepancy_fun = assemble(self.discrepancy_form)
+            #         self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.adj_discrepancy_fun, fire_adj.Control(self.tdens_h))
+            #         fire_adj.stop_annotation()
+            #     else:
+            #         # Simple derivative computation
+            #         # It uses less memory, but it requires the functional
+            #         # as combination of operations manegable by automatic differiantion.
+            #         #self.gradient_discrepancy = assemble(derivative(self.lagrangian_fun, self.tdens_h))
+            #         self.gradient_discrepancy_form = derivative(self.discrepancy_form, 
+            #                                                     self.tdens_h,
+            #                                                     coefficient_derivatives=self.tdens2image_map.cd)
                     
-            # Penalization
-            pw = self.ctrl_get('penalization_weight')
-            self.penalization_weight.assign(pw)
-            self.penalization_form = self.penalization_weight * self.penalization(self.pot_h,self.tdens_h)
-            if abs(pw) > 1e-16:
-                if use_adjoint:
-                    self.adj_penalization_fun = assemble(self.penalization_form)
-                    self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.adj_penalization_fun, fire_adj.Control(self.tdens_h))
-                else:
-                    self.gradient_penalization_form = derivative(self.penalization_form, self.tdens_h)
+            # # Penalization
+            # pw = self.ctrl_get('penalization_weight')
+            # self.penalization_weight.assign(pw)
+            # self.penalization_form = self.penalization_weight * self.penalization(self.pot_h,self.tdens_h)
+            # if abs(pw) > 1e-16:
+            #     if use_adjoint:
+            #         self.adj_penalization_fun = assemble(self.penalization_form)
+            #         self.lagrangian_fun_reduced = fire_adj.ReducedFunctional(self.adj_penalization_fun, fire_adj.Control(self.tdens_h))
+            #     else:
+            #         self.gradient_penalization_form = derivative(self.penalization_form, self.tdens_h)
 
                 
 
@@ -1060,13 +1062,18 @@ class NiotSolver:
 
             # Discrepancy 
             if dw > 0:
+                self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
                 if use_adjoint :
                     # The following is required to keep track of the 
                     # adjoint computation, like when the map from tdens to image is 
                     # defined as the solution of a PDE (for example the poruous media map).
+                    fire_adj.continue_annotation()
                     self.adj_discrepancy_fun = assemble(self.discrepancy_form)
                     self.adj_discrepancy_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
                     self.gradient_discrepancy = self.adj_discrepancy_fun_reduced.derivative()
+                    fire_adj.stop_annotation()
+                    tape = fire_adj.get_working_tape()
+                    tape.clear()
                 else:
                     # Simple derivative computation
                     # It uses less memory, but it requires the functional
@@ -1085,6 +1092,7 @@ class NiotSolver:
 
             # Penalization
             if pw > 0:
+                self.penalization_form = self.penalization_weight * self.penalization(self.pot_h,self.tdens_h)
                 if use_adjoint:
                     self.adj_penalization_fun = assemble(self.penalization_form)
                     self.adj_penalization_fun_reduced = fire_adj.ReducedFunctional(self.adj_penalization_fun, fire_adj.Control(self.tdens_h))
@@ -1294,6 +1302,9 @@ class NiotSolver:
         # udpack main controls and start main loop
         max_iter = self.ctrl_get('max_iter')
         
+        self.compute_residuum(self.sol)
+
+
         ierr_dmk = 0
         self.local_iteration = 0
         while ierr_dmk == 0 and self.local_iteration < max_iter:
