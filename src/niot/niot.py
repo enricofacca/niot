@@ -33,7 +33,7 @@ from firedrake import *
 from firedrake.functionspace import DualSpace
 from firedrake.__future__ import interpolate
 import firedrake.adjoint as fire_adj
-    fire_adj.continue_annotation()
+fire_adj.continue_annotation()
 
 
 
@@ -1306,7 +1306,7 @@ class NiotSolver:
             # clean memory every 10 iterations
             update_time = time.time() -tic
 
-            if self.local_iteration%5 == 0:
+            if self.local_iteration%2 == 0:
                 #if use_adjoint :
                     # Clear tape is required to avoid memory accumalation
                     # It works but I don't know why
