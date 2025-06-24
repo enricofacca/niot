@@ -15,7 +15,8 @@
         {
             "type": "pm",
             "exponent_p" : 4, 
-            "cond_zero" : 100
+            "cond_zero" : 100,
+            "scaling" : 1.0
         }
     ],
     "kappa": ["one"],
