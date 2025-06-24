@@ -610,7 +610,7 @@ class NiotSolver:
 
         # The class BranchedTransportProblem
         # that contains the physical information of the problem
-        # and the branched transport exponent gamma 
+        # and the branched transot exponent gamma 
         self.btp = btp
         
         # set img to be inpainted
@@ -851,6 +851,7 @@ class NiotSolver:
                 sigma = self.ctrl_get(['tdens2image', 'pm','sigma'])
                 exponent_m = self.ctrl_get(['tdens2image', 'pm','exponent_m'])
                 scaling = self.ctrl_get(['tdens2image', 'scaling'])
+                label_pm = f'pm_{exponent_m:.1f}_{sigma:.2e}'
             except:
                 cond_zero = self.ctrl_get(['tdens2image', 'pm','cond_zero'])
                 exponent_p = self.ctrl_get(['tdens2image', 'pm','exponent_p'])
@@ -869,12 +870,15 @@ class NiotSolver:
                 # sigma = (cond_zero**(-1/exponent_p) * K_md ** (-1/2) * B **(1/2))**(1/beta)
                 sigma = Bar.sigma(cond_zero,exponent_p)
             
+                label_pm = f'pm_{exponent_p:.1f}_{cond_zero:.2e}'
+
             self.tdens2image_map = PorousMediaMap(
                 self.fems.tdens_space,
                 scaling=scaling, 
                 sigma=sigma,
                 exponent_m=exponent_m,
-                nsteps=5)
+                nsteps=5,
+                name=label_pm)
             self.tdens2image = lambda x: self.tdens2image_map(x)
 
         else:

@@ -305,7 +305,8 @@ class PorousMediaMap(Conductivity2ImageMap):
                  exponent_m=2.0, 
                  sigma=1e-2,
                  nsteps=1,
-                 solver_parameters=None) -> None:
+                 solver_parameters=None,
+                 name=None) -> None:
         self.space = space
         self.scaling = scaling
         self.sigma = sigma
@@ -334,6 +335,7 @@ class PorousMediaMap(Conductivity2ImageMap):
         self.image_h = Function(space)
         self.tdens4transform = Function(space)
         
+        self.name = name
         
         min_image = 1e-14 # a minimim value for the image
         

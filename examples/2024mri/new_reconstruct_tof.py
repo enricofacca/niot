@@ -864,7 +864,11 @@ def experiment(args):
         elif tdens2image['type'] == 'heat':
             labels.append(f"mapheat{tdens2image['sigma']:.1e}")
         elif tdens2image['type'] == 'pm':
-            labels.append(f"mapipm{tdens2image['sigma']:.1e}")
+            try:
+                labels.append(f"mapipm{tdens2image['exponent_p']:.2e}"
+                              +f"_conf{tdens2image['cond_zero']:.2e}")
+            except:
+                labels.append(f"mappm")
         else:
             raise ValueError(f'Unknown tdens2image {tdens2image}')
         
