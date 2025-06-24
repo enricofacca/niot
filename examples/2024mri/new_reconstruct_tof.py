@@ -905,6 +905,10 @@ def experiment(args):
         niot_solver.ctrl_set('regularization_weight', 0.0)
         tdens2image = combination["map"]
         niot_solver.ctrl_set(['tdens2image'], tdens2image)
+        if tdens2image['type'] == 'pm':
+            # we need to use the adjoint to compute the gradient of the discrepancy
+            niot_solver.ctrl_set(['use_adjoint'], True)
+
 
         # optimization
         niot_solver.ctrl_set('optimization_tol', 1e-5)
