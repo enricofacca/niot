@@ -1069,12 +1069,15 @@ class NiotSolver:
                     # defined as the solution of a PDE (for example the poruous media map).
                     fire_adj.continue_annotation()
                     self.adj_discrepancy_fun = assemble(self.discrepancy_form)
-                    self.adj_discrepancy_fun_reduced = fire_adj.ReducedFunctional(self.lagrangian_fun, fire_adj.Control(self.tdens_h))
+                    self.adj_discrepancy_fun_reduced = fire_adj.ReducedFunctional(self.adj_discrepancy_fun, fire_adj.Control(self.tdens_h))
                     self.gradient_discrepancy = self.adj_discrepancy_fun_reduced.derivative()
                     fire_adj.stop_annotation()
                     tape = fire_adj.get_working_tape()
                     tape.clear()
                 else:
+                    self.gradient_discrepancy_form = derivative(self.discrepancy_form, 
+                                                                 self.tdens_h,
+                                                                 coefficient_derivatives=self.tdens2image_map.cd)
                     # Simple derivative computation
                     # It uses less memory, but it requires the functional
                     # as combination of operations manegable by automatic differiantion.
@@ -1098,6 +1101,7 @@ class NiotSolver:
                     self.adj_penalization_fun_reduced = fire_adj.ReducedFunctional(self.adj_penalization_fun, fire_adj.Control(self.tdens_h))
                     self.gradient_penalization = self.adj_penalization_fun_reduced.derivative()
                 else:
+                    self.gradient_penalization_form = derivative(self.penalization_form, self.tdens_h)
                     self.gradient_penalization = assemble(self.gradient_penalization_form)
                 
                 with self.gradient_penalization.dat.vec_ro as gP:
