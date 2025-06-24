@@ -454,7 +454,7 @@ class PorousMediaMap(Conductivity2ImageMap):
                            + ( 1 - r ** (n -1) ) / (1 - r)**2 )
             return value
             
-        rate = newton(f, x0 = self.sigma / (dt0 * n ) , fprime=df)
+        rate = newton(f, x0 = self.sigma / (dt0) , fprime=df)
         if self.verbose > 0:
             PETSc.Sys.Print('sigma',self.sigma,'rate=',rate,'steps=',self.nsteps,'dt0=',dt0,'f',f(rate))
 
