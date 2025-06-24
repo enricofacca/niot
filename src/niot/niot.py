@@ -863,13 +863,44 @@ class NiotSolver:
             
                 label_pm = f'pm_{exponent_p:.1f}_{cond_zero:.2e}'
 
+            solver_parameters={
+                    'snes_type': 'newtonls',
+                    'snes_rtol': 1e-6,
+                    'snes_atol': 1e-6,
+                    'snes_stol': 1e-6,
+                    'snes_max_it': 100,
+                    'snes_linesearch_type':'bt',
+                    'ksp_type': 'gmres',
+                    'ksp_rtol': 1e-8,
+                    'ksp_atol': 1e-8,
+                    'ksp_max_it': 500,
+                    'pc_type': 'hypre',
+                    #'snes_monitor': None,
+                    #'snes_linesearch_monitor': None,
+                    'ksp_monitor': None,
+                    }
+
+            if self.mesh.geometric_dimension() == 3:
+                hypre_ctrl_3d = {
+                            # tuning parameters for the multigrid
+                            # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
+                            "pc_hypre_type": "boomeramg",
+                            "pc_hypre_boomeramg_strong_threshold": 0.75,
+                            "pc_hypre_boomeramg_max_iter": 1,
+                            "pc_hypre_boomeramg_agg_nl": 3,
+                            "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
+                        }
+                solver_parameters.update(hypre_ctrl_3d)
+
             self.tdens2image_map = PorousMediaMap(
                 self.fems.tdens_space,
                 scaling=scaling, 
                 sigma=sigma,
                 exponent_m=exponent_m,
                 nsteps=3,
-                name=label_pm)
+                name=label_pm,
+                solver_parameters=solver_parameters,
+                name="pm")
             self.tdens2image = lambda x: self.tdens2image_map(x)
 
         else:
