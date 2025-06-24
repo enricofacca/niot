@@ -345,7 +345,7 @@ class PorousMediaMap(Conductivity2ImageMap):
         
         deg = space.ufl_element().degree()
 
-        if len(deg)>0:
+        if isinstance(deg, tuple): 
             degree = deg[0]
         else:
             degree = deg
