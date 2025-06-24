@@ -445,13 +445,13 @@ class PorousMediaMap(Conductivity2ImageMap):
         PETSc.Sys.Print(f'dt0={dt0}, sigma={self.sigma}', self.nsteps)
         
         # find optimal expansion
-        n = self.nsteps + 1
+        n = self.nsteps
         def f(r):
-            return self.sigma - dt0 * ( 1 - r ** (n -1) ) / (1 - r)
+            return self.sigma - dt0 * ( 1 - r ** (n + 1) ) / (1 - r)
         
         def df(r):
-            value = dt0 * ( (n - 1) * r ** (n -2) / (1 - r) 
-                           + ( 1 - r ** (n -1) ) / (1 - r)**2 )
+            value = dt0 * ( (n + 1) * r ** (n) / (1 - r) 
+                           + ( 1 - r ** (n + 1) ) / (1 - r)**2 )
             return value
 
         sol = root_scalar(f, fprime=df, rtol=1e-3, bracket=[2,10], maxiter=100)
@@ -478,8 +478,8 @@ class PorousMediaMap(Conductivity2ImageMap):
             self.pm_solver.solve()
             
             if self.verbose > 0:
-                PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} {self.image_h.dat.data_ro.min():.1e}<=IMG<={self.image_h.dat.data_ro.max():.1e}')
-            
+                PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} {self.image_h.dat.data_ro.min}<=IMG<={self.image_h.dat.data_ro.max}')
+                
             if self.store_images:
                 img = self.image_h.copy(deepcopy=True)
                 img.rename(f'img_{i}')
