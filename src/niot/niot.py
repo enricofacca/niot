@@ -1097,38 +1097,38 @@ class NiotSolver:
                     # The following is required to keep track of the 
                     # adjoint computation, like when the map from tdens to image is 
                     # defined as the solution of a PDE (for example the poruous media map).
-                    fire_adj.continue_annotation()
-                    self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
-                    self.adj_discrepancy_fun = assemble(self.discrepancy_form)
-                    self.print_info(
-                        msg="computed discrepancy form",
-                        priority=0, 
-                        where=['stdout','log']
-                        )
-                    self.adj_discrepancy_fun_reduced = fire_adj.ReducedFunctional(self.adj_discrepancy_fun, fire_adj.Control(self.tdens_h))
-                    self.print_info(
-                        msg="computed reduced",
-                        priority=0, 
-                        where=['stdout','log']
-                        )
-                    
-
-                    self.gradient_discrepancy = self.adj_discrepancy_fun_reduced.derivative()
-                    self.print_info(
-                        msg="computed gradient",
-                        priority=0, 
-                        where=['stdout','log']
-                        )
-                    with self.gradient_discrepancy.dat.vec_ro as gD:
-                        msg = utilities.msg_bounds(gD,'grad discrepancy   ')
+                    with fire_adj.continue_annotation():
+                        self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
+                        self.adj_discrepancy_fun = assemble(self.discrepancy_form)
                         self.print_info(
-                            msg=msg,
-                            priority=1, 
+                            msg="computed discrepancy form",
+                            priority=0, 
                             where=['stdout','log']
                             )
-                    fire_adj.stop_annotating()
-                    tape = fire_adj.get_working_tape()
-                    tape.clear_tape()
+                        self.adj_discrepancy_fun_reduced = fire_adj.ReducedFunctional(self.adj_discrepancy_fun, fire_adj.Control(self.tdens_h))
+                        self.print_info(
+                            msg="computed reduced",
+                            priority=0, 
+                            where=['stdout','log']
+                            )
+                        
+
+                        self.gradient_discrepancy = self.adj_discrepancy_fun_reduced.derivative()
+                        self.print_info(
+                            msg="computed gradient",
+                            priority=0, 
+                            where=['stdout','log']
+                            )
+                        with self.gradient_discrepancy.dat.vec_ro as gD:
+                            msg = utilities.msg_bounds(gD,'grad discrepancy   ')
+                            self.print_info(
+                                msg=msg,
+                                priority=0, 
+                                where=['stdout','log']
+                                )
+                        fire_adj.stop_annotating()
+                        tape = fire_adj.get_working_tape()
+                        tape.clear_tape()
                 else:
                     self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
                     self.gradient_discrepancy_form = derivative(self.discrepancy_form, 
