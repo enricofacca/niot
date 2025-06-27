@@ -871,8 +871,8 @@ class NiotSolver:
                     'snes_max_it': 100,
                     'snes_linesearch_type':'bt',
                     'ksp_type': 'gmres',
-                    'ksp_rtol': 1e-8,
-                    'ksp_atol': 1e-8,
+                    'ksp_rtol': 1e-6,
+                    'ksp_atol': 1e-6,
                     'ksp_max_it': 500,
                     'pc_type': 'hypre',
                     #'snes_monitor': None,
@@ -895,9 +895,9 @@ class NiotSolver:
             self.tdens2image_map = PorousMediaMap(
                 self.fems.tdens_space,
                 scaling=scaling, 
-                sigma=sigma,
+                sigma=1e-3,#sigma,
                 exponent_m=exponent_m,
-                nsteps=3,
+                nsteps=1,
                 solver_parameters=solver_parameters,
                 name=label_pm)
             self.tdens2image = lambda x: self.tdens2image_map(x)
@@ -1115,7 +1115,7 @@ class NiotSolver:
 
                     self.gradient_discrepancy = self.adj_discrepancy_fun_reduced.derivative()
                     self.print_info(
-                        msg="computed discrepancy form",
+                        msg="computed gradient",
                         priority=0, 
                         where=['stdout','log']
                         )
