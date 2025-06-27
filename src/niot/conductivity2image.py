@@ -445,21 +445,24 @@ class PorousMediaMap(Conductivity2ImageMap):
         PETSc.Sys.Print(f'dt0={dt0}, sigma={self.sigma}', self.nsteps)
         
         # find optimal expansion
-        n = self.nsteps
-        def f(r):
-            return self.sigma - dt0 * ( 1 - r ** (n + 1) ) / (1 - r)
-        
-        def df(r):
-            value = dt0 * ( (n + 1) * r ** (n) / (1 - r) 
-                           + ( 1 - r ** (n + 1) ) / (1 - r)**2 )
-            return value
+        if self.nsteps > 1:
+            n = self.nsteps
+            def f(r):
+                return self.sigma - dt0 * ( 1 - r ** (n + 1) ) / (1 - r)
+            
+            def df(r):
+                value = dt0 * ( (n + 1) * r ** (n) / (1 - r) 
+                                + ( 1 - r ** (n + 1) ) / (1 - r)**2 )
+                return value
 
-        sol = root_scalar(f, fprime=df, rtol=1e-3, bracket=[2,20], maxiter=100)
-        rate = sol.root   
-        #rate = newton(f, x0 = self.sigma / (dt0) , fprime=df)
-        if self.verbose > 0:
-            PETSc.Sys.Print('sigma',self.sigma,'rate=',rate,'steps=',self.nsteps,'dt0=',dt0,'f',f(rate))
-
+            sol = root_scalar(f, fprime=df, rtol=1e-3, bracket=[2,20], maxiter=100)
+            rate = sol.root   
+            #rate = newton(f, x0 = self.sigma / (dt0) , fprime=df)
+            if self.verbose > 0:
+                PETSc.Sys.Print('sigma',self.sigma,'rate=',rate,'steps=',self.nsteps,'dt0=',dt0,'f',f(rate))
+        else:
+            rate = 1.0
+            dt0 = self.sigma
 
         self.images = []
         total_time = 0.0
