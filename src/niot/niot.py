@@ -875,7 +875,7 @@ class NiotSolver:
                     'ksp_atol': 1e-6,
                     'ksp_max_it': 500,
                     'pc_type': 'hypre',
-                    #'snes_monitor': None,
+                    'snes_monitor': None,
                     #'snes_linesearch_monitor': None,
                     'ksp_monitor': None,
                     }
@@ -895,7 +895,7 @@ class NiotSolver:
             self.tdens2image_map = PorousMediaMap(
                 self.fems.tdens_space,
                 scaling=scaling, 
-                sigma=1e-3,#sigma,
+                sigma=1e-4,#sigma,
                 exponent_m=exponent_m,
                 nsteps=1,
                 solver_parameters=solver_parameters,
