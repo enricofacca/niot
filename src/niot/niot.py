@@ -1328,11 +1328,11 @@ class NiotSolver:
         # Clear tape is required to avoid memory accumalation
         # It works but I don't know why
         # see also https://github.com/firedrakeproject/firedrake/issues/3133
-        use_adjoint = self.ctrl_get("use_adjoint")
+        #use_adjoint = self.ctrl_get("use_adjoint")
         #if use_adjoint:
-        tape = fire_adj.get_working_tape()
+        #tape = fire_adj.get_working_tape()
     
-        self.compute_residuum(self.sol)
+        #self.compute_residuum(self.sol)
         if not self.ctrl_get('restart'):
             # Initialize the parameter-dependent solvers
             #self.setup()
@@ -1372,21 +1372,21 @@ class NiotSolver:
             # clean memory every 10 iterations
             update_time = time.time() -tic
 
-            if self.local_iteration%2 == 0:
-                self.print_info("cleaning tape", priority=2, where=['stdout','log'], color='green')
-                #if use_adjoint :
-                    # Clear tape is required to avoid memory accumalation
-                    # It works but I don't know why
-                    # see also https://github.com/firedrakeproject/firedrake/issues/3133
-                tape.clear_tape()
+            # if self.local_iteration%2 == 0:
+            #     self.print_info("cleaning tape", priority=2, where=['stdout','log'], color='green')
+            #     #if use_adjoint :
+            #         # Clear tape is required to avoid memory accumalation
+            #         # It works but I don't know why
+            #         # see also https://github.com/firedrakeproject/firedrake/issues/3133
+            #     tape.clear_tape()
                         
-                # other clean up taken from 
-                # https://github.com/LLNL/pyMMAopt/commit/e2f83bd932207a8adbd60ae793b3e5a3058daecf
-                #TSFCKernel._cache.clear()
-                #GlobalKernel._cache.clear()
-                gc.collect()
-                petsc4py.PETSc.garbage_cleanup(self.mesh._comm)
-                petsc4py.PETSc.garbage_cleanup(self.mesh.comm)
+            #     # other clean up taken from 
+            #     # https://github.com/LLNL/pyMMAopt/commit/e2f83bd932207a8adbd60ae793b3e5a3058daecf
+            #     #TSFCKernel._cache.clear()
+            #     #GlobalKernel._cache.clear()
+            #     gc.collect()
+            #     petsc4py.PETSc.garbage_cleanup(self.mesh._comm)
+            #     petsc4py.PETSc.garbage_cleanup(self.mesh.comm)
 
             if (ierr != 0):
                 ierr_dmk = 1
