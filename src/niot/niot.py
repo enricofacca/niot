@@ -1373,6 +1373,7 @@ class NiotSolver:
             update_time = time.time() -tic
 
             if self.local_iteration%2 == 0:
+                self.print_info("cleaning tape", priority=2, where=['stdout','log'], color='green')
                 #if use_adjoint :
                     # Clear tape is required to avoid memory accumalation
                     # It works but I don't know why
