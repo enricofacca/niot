@@ -1328,7 +1328,7 @@ class NiotSolver:
         # Clear tape is required to avoid memory accumalation
         # It works but I don't know why
         # see also https://github.com/firedrakeproject/firedrake/issues/3133
-        #use_adjoint = self.ctrl_get("use_adjoint")
+        use_adjoint = self.ctrl_get("use_adjoint")
         #if use_adjoint:
         #tape = fire_adj.get_working_tape()
     
@@ -1440,16 +1440,16 @@ class NiotSolver:
 
         #if self.ctrl_get('log_verbose') > 0:
         #    f_log.close()
-        if use_adjoint:
-            tape.clear_tape()
+        # if use_adjoint:
+        #     tape.clear_tape()
                         
-            # other clean up taken from 
-            # https://github.com/LLNL/pyMMAopt/commit/e2f83bd932207a8adbd60ae793b3e5a3058daecf
-            #TSFCKernel._cache.clear()
-            #GlobalKernel._cache.clear()
-        gc.collect()
-        petsc4py.PETSc.garbage_cleanup(self.mesh._comm)
-        petsc4py.PETSc.garbage_cleanup(self.mesh.comm)
+        #     # other clean up taken from 
+        #     # https://github.com/LLNL/pyMMAopt/commit/e2f83bd932207a8adbd60ae793b3e5a3058daecf
+        #     #TSFCKernel._cache.clear()
+        #     #GlobalKernel._cache.clear()
+        # gc.collect()
+        # petsc4py.PETSc.garbage_cleanup(self.mesh._comm)
+        # petsc4py.PETSc.garbage_cleanup(self.mesh.comm)
 
         return ierr_dmk
               
