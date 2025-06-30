@@ -1114,20 +1114,13 @@ class NiotSolver:
                     # the following is required since the ouptut of the adjoint is stored as function
                     # while is a co-function (is integrated over the mesh)
                     gradient_fun = self.adj_discrepancy_fun_reduced.derivative()
-                    with gradient_fun.dat.vec_ro as gD, self.gradient_penalization.dat.vec as conf_vec:
+                    with gradient_fun.dat.vec_ro as gD, self.gradient_discrepancy.dat.vec as conf_vec:
                         gD.copy(conf_vec)
                     self.print_info(
                         msg="computed gradient",
                         priority=0, 
                         where=['stdout','log']
                         )
-                    with self.gradient_discrepancy.dat.vec_ro as gD:
-                        msg = utilities.msg_bounds(gD,'grad discrepancy   ')
-                        self.print_info(
-                            msg=msg,
-                            priority=0, 
-                            where=['stdout','log']
-                            )
                     fire_adj.pause_annotation()
                     tape = fire_adj.get_working_tape()
                     tape.clear_tape()
