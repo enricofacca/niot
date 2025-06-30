@@ -21,6 +21,6 @@
     ],
     "kappa": ["one"],
     "absorption": [1.00e-3],
-    "max_iter": [2],
-    "buffer" : [1]
+    "max_iter": [20],
+    "buffer" : [5]
 }
