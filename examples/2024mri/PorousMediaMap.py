@@ -100,7 +100,7 @@ def skeletonthickness_to_tubular(skeleton_thickness, h, cond_zero, exponent_p, v
     dim_domain = mesh.geometric_dimension()
     cond_no_dirac = Function(space, name='cond_no_dirac')
     cond_no_dirac.rename('cond_no_dirac')
-    cond_no_dirac.interpolate(1e-15+cond_zero*(radius**exponent_p))
+    cond_no_dirac.interpolate(cond_zero*(radius**exponent_p))
     cond.interpolate(cond_no_dirac / (h**(dim_domain-1)))
     cond.rename('cond')
 
@@ -110,7 +110,8 @@ def skeletonthickness_to_tubular(skeleton_thickness, h, cond_zero, exponent_p, v
 
     # get the max of cond
     M_max = cond_no_dirac.dat.data.max()
-    M_min = cond_no_dirac.dat.data.min()
+    cond_lift = interpolate(conditional(cond_no_dirac<1e-15,1e15,0)+cond_no_dirac, space)
+    M_min = cond_lift.dat.data.min()
     #height = conductivity2image.Barenblatt().height(exponent_m,dim,sigma,M_max)
     height_max = Bar.height(sigma,M_max)
     height_min = Bar.height(sigma,M_min)
