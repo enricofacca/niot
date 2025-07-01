@@ -98,7 +98,10 @@ def skeletonthickness_to_tubular(skeleton_thickness, h, cond_zero, exponent_p, v
     # cond = mu0 * r **p / h**(dim-1) 
     # where the /h**(dim-1) is to get a dirac like measure
     dim_domain = mesh.geometric_dimension()
-    cond.interpolate(1e-15+cond_zero*(radius**exponent_p) / (h**(dim_domain-1)))
+    cond_no_dirac = Function(space, name='cond_no_dirac')
+    cond_no_dirac.rename('cond_no_dirac')
+    cond_no_dirac.interpolate(1e-15+cond_zero*(radius**exponent_p))
+    cond.interpolate(cond_no_dirac / (h**(dim_domain-1)))
     cond.rename('cond')
 
     
@@ -106,14 +109,19 @@ def skeletonthickness_to_tubular(skeleton_thickness, h, cond_zero, exponent_p, v
     #test_adjoint(cond, exponent_m, sigma=sigma, scaling=1.0, nsteps=1000)
 
     # get the max of cond
-    M_max = cond.dat.data.max() * 2 * h 
+    M_max = cond_no_dirac.dat.data.max()
+    M_min = cond_no_dirac.dat.data.min()
     #height = conductivity2image.Barenblatt().height(exponent_m,dim,sigma,M_max)
-    height = Bar.height(sigma,M_max)
+    height_max = Bar.height(sigma,M_max)
+    height_min = Bar.height(sigma,M_min)
     if verbose:
         print(
         f'p={exponent_p:.1e} d={d} m={exponent_m}'
-        + f'B={B:.1e} alpha={alpha:.1e} beta={beta:.1e} K_md={K_md:.1e} sigma={sigma:.1e} f={sigma**alpha:.1e} img_height={height:.1e} M_max={M_max:.1e}')
+        + f'B={B:.1e} alpha={alpha:.1e} beta={beta:.1e} K_md={K_md:.1e} sigma={sigma:.1e} f={sigma**alpha:.1e}"')
+        print(f'M_min{M_min:.1e} M_max={M_max:.1e}')
+        print(f'img_height={height_min:.1e} height_max={height_max:.1e} ')
     
+
     pm_map = conductivity2image.PorousMediaMap(
         space,
         sigma=sigma, 
@@ -142,22 +150,31 @@ def skeletonthickness_to_tubular(skeleton_thickness, h, cond_zero, exponent_p, v
 if (__name__ == '__main__'):
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--st', type=str, default='skeleton_thickness.nii.gz', help='path of nifti file for skeleton thickness')
+    parser.add_argument('--skeleton', type=str, default='skeleton.nii.gz', help='path of nifti file for skeleton')
+    parser.add_argument('--thickness', type=str, default='thickness.nii.gz', help='path of nifti file for thickness')
     parser.add_argument('--cond', type=float, default=1.0)
     args = parser.parse_args()
 
     exponent_p = 4.0
 
     # get data
-    skeleton_thickness_nii = nibabel.load(args.st)
-    skeleton_thickness_np = skeleton_thickness_nii.get_fdata()
-    dimensions = skeleton_thickness_np.shape
-    hx, hy, hz = skeleton_thickness_nii.header['pixdim'][1:4]
+    skeleton_nii = nibabel.load(args.skeleton)
+    skeleton_np = skeleton_nii.get_fdata()
+    dimensions = skeleton_np.shape
+    hx, hy, hz = skeleton_nii.header['pixdim'][1:4]
     lengths = np.array([float(dimensions[0]*hx), 
                         float(dimensions[1]*hy), 
                         float(dimensions[2]*hz)])
+    
+    thickness_nii = nibabel.load(args.thickness)
+    thickness_np = thickness_nii.get_fdata()
+    
+    
+    
+    
+    
     # scale by h, because the skeleton thickness is in pixels
-    skeleton_thickness_np *= hx
+    skeleton_thickness_np = skeleton_np * thickness_np
 
     # define the mesh
     PETSc.Sys.Print(f"Mesh", end="")
@@ -179,10 +196,10 @@ if (__name__ == '__main__'):
     
     
     filename = f"tubular_c{args.cond:.2e}.nii.gz"
-    save_as_nifti(tubular, skeleton_thickness_nii.affine, filename) 
+    save_as_nifti(tubular, skeleton_nii.affine, filename) 
     
     filename = f"cond_c{args.cond:.2e}.nii.gz"
-    save_as_nifti(cond, skeleton_thickness_nii.affine, filename)
+    save_as_nifti(cond, skeleton_nii.affine, filename)
 
     
     # for threshold in [ 1e-3]:
