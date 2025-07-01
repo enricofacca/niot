@@ -128,7 +128,7 @@ def skeletonthickness_to_tubular(skeleton_thickness, h, cond_zero, exponent_p, v
         sigma=sigma, 
         exponent_m=exponent_m, 
         scaling=scaling, 
-        nsteps=10,
+        nsteps=3,
         solver_parameters=solver_parameters)
     image = pm_map(cond)
     name = f'img_pm'
@@ -194,6 +194,8 @@ if (__name__ == '__main__'):
             cond_zero=args.cond,
             verbose=True,
             save=False)
+    print(f'{tubular.dat.data_ro.min():.2e}<=IMG<={tubular.dat.data_ro.max():.2e}')
+    PETSc.Sys.Print(f'{tubular.dat.data_ro.min():.2e}<=IMG<={tubular.dat.data_ro.max():.2e}')
     
     
     filename = f"tubular_c{args.cond:.2e}.nii.gz"
