@@ -446,7 +446,7 @@ class PorousMediaMap(Conductivity2ImageMap):
         
         # find optimal expansion
         if self.nsteps > 1:
-            n = self.nsteps+1
+            n = self.nsteps - 1
             def f(r):
                 return self.sigma - dt0 * ( 1 - r ** (n + 1) ) / (1 - r)
             
