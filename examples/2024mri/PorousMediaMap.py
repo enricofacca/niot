@@ -158,7 +158,7 @@ if (__name__ == '__main__'):
     exponent_p = 4.0
 
     # get data
-    skeleton_nii = nibabel.load(args.skeleton)
+    skeleton_nii = nibabel.load(args.st)
     skeleton_thickness_np = skeleton_nii.get_fdata()
     dimensions = skeleton_thickness_np.shape
     hx, hy, hz = skeleton_nii.header['pixdim'][1:4]
