@@ -455,7 +455,7 @@ class PorousMediaMap(Conductivity2ImageMap):
                                 + ( 1 - r ** (n + 1) ) / (1 - r)**2 )
                 return value
 
-            sol = root_scalar(f, fprime=df, rtol=1e-3, bracket=[2,20], maxiter=100)
+            sol = root_scalar(f, fprime=df, rtol=1e-3, bracket=[1+1e-6,20], maxiter=100)
             rate = sol.root   
             #rate = newton(f, x0 = self.sigma / (dt0) , fprime=df)
             if self.verbose > 0:
