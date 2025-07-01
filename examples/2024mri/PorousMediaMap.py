@@ -115,11 +115,11 @@ def skeletonthickness_to_tubular(skeleton_thickness, h, cond_zero, exponent_p, v
     height_max = Bar.height(sigma,M_max)
     height_min = Bar.height(sigma,M_min)
     if verbose:
-        print(
+        PETSc.Sys.Print(
         f'p={exponent_p:.1e} d={d} m={exponent_m}'
         + f'B={B:.1e} alpha={alpha:.1e} beta={beta:.1e} K_md={K_md:.1e} sigma={sigma:.1e} f={sigma**alpha:.1e}"')
-        print(f'M_min{M_min:.1e} M_max={M_max:.1e}')
-        print(f'img_height={height_min:.1e} height_max={height_max:.1e} ')
+        PETSc.Sys.Print(f'M_min{M_min:.1e} M_max={M_max:.1e}')
+        PETSc.Sys.Print(f'img_height={height_min:.1e} height_max={height_max:.1e} ')
     
 
     pm_map = conductivity2image.PorousMediaMap(
