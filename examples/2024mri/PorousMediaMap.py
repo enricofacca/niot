@@ -150,8 +150,8 @@ def skeletonthickness_to_tubular(skeleton_thickness, h, cond_zero, exponent_p, v
 if (__name__ == '__main__'):
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--skeleton', type=str, default='skeleton.nii.gz', help='path of nifti file for skeleton')
-    parser.add_argument('--thickness', type=str, default='thickness.nii.gz', help='path of nifti file for thickness')
+    parser.add_argument('--st', type=str, default='skeleton.nii.gz', help='path of nifti file for skeleton')
+    #parser.add_argument('--thickness', type=str, default='thickness.nii.gz', help='path of nifti file for thickness')
     parser.add_argument('--cond', type=float, default=1.0)
     args = parser.parse_args()
 
@@ -159,22 +159,22 @@ if (__name__ == '__main__'):
 
     # get data
     skeleton_nii = nibabel.load(args.skeleton)
-    skeleton_np = skeleton_nii.get_fdata()
-    dimensions = skeleton_np.shape
+    skeleton_thickness_np = skeleton_nii.get_fdata()
+    dimensions = skeleton_thickness_np.shape
     hx, hy, hz = skeleton_nii.header['pixdim'][1:4]
     lengths = np.array([float(dimensions[0]*hx), 
                         float(dimensions[1]*hy), 
                         float(dimensions[2]*hz)])
     
-    thickness_nii = nibabel.load(args.thickness)
-    thickness_np = thickness_nii.get_fdata()
+    #thickness_nii = nibabel.load(args.thickness)
+    #thickness_np = thickness_nii.get_fdata()
     
     
     
     
     
     # scale by h, because the skeleton thickness is in pixels
-    skeleton_thickness_np = skeleton_np * thickness_np
+    #skeleton_thickness_np = skeleton_np * thickness_np
 
     # define the mesh
     PETSc.Sys.Print(f"Mesh", end="")
