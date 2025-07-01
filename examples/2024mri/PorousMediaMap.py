@@ -123,6 +123,8 @@ def skeletonthickness_to_tubular(skeleton_thickness, h, cond_zero, exponent_p, v
         PETSc.Sys.Print(f'img_height={height_min:.1e} height_max={height_max:.1e} ')
     
 
+    PETSc.Sys.Print(f'{cond.dat.data_ro.min():.2e}<=IMG<={cond.dat.data_ro.max():.2e}')
+
     pm_map = conductivity2image.PorousMediaMap(
         space,
         sigma=sigma, 
@@ -133,7 +135,7 @@ def skeletonthickness_to_tubular(skeleton_thickness, h, cond_zero, exponent_p, v
     image = pm_map(cond)
     name = f'img_pm'
     image.rename(name)
-    PETSc.Sys.Print(f"Mesh", end="")
+    PETSc.Sys.Print(f'{image.dat.data_ro.min():.2e}<=IMG<={image.dat.data_ro.max():.2e}')
     
     if save:
         filename = f'images_img0.pvd'
