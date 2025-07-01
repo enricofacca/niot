@@ -10,6 +10,7 @@
             "sigma_heat" : 1e-2
         }
     ],
+    "corrupted": ["support"],
     "confidence": ["main_network"],
     "map": [
         {

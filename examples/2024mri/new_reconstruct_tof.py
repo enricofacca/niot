@@ -199,28 +199,50 @@ def select_slice(tof_np, out_directory):
     i2d.numpy2image(tof_bottom_np, f"{out_directory}/tof_bottom.png") 
 
 
-def set_corrupted_network(**kargs):
+def set_corrupted_network(**kwargs):
     """
     Set corrupted network
     """
-    tof = kargs['tof']
-    main_network = kargs['main_network']
-    external_network = kargs['external_network']
-    brain_mask = kargs['brain_mask']
-    threshold_tof = kargs['threshold_tof']
-
-        
-    DG0 = tof.function_space()
-    corrupted = Function(DG0, name="corrupted")
-    corrupted.interpolate(
-                        tof * conditional(main_network > 0, 1, 0) # the main we must fit
-                        + 
-                        tof * conditional(main_network > 0, 0, 1) # the rest
-                        * conditional(brain_mask > 1e-10, 1, 0) #within the brain
-                        * conditional(tof > threshold_tof, 1, 0) # only values above the threshold
-                        * conditional(external_network > 0, 0, 1) # exclude external network
-                        )
+    try:
+        option = kwargs["corrupted"]
+    except:
+        option = "tof"
     
+
+    tof = kwargs['tof']
+    main_network = kwargs['main_network']
+    external_network = kwargs['external_network']
+    brain_mask = kwargs['brain_mask']
+    threshold_tof = kwargs['threshold_tof']
+
+    if option == "tof":    
+        DG0 = tof.function_space()
+        corrupted = Function(DG0, name="tof")
+        corrupted.interpolate(
+                            tof * conditional(main_network > 0, 1, 0) # the main we must fit
+                            + 
+                            tof * conditional(main_network > 0, 0, 1) # the rest
+                            * conditional(brain_mask > 1e-10, 1, 0) #within the brain
+                            * conditional(tof > threshold_tof, 1, 0) # only values above the threshold
+                            * conditional(external_network > 0, 0, 1) # exclude external network
+                            )
+    elif option == "support_tof":
+        DG0 = tof.function_space()
+        corrupted = Function(DG0, name="support")
+        corrupted.interpolate(
+                            conditional(tof > threshold_tof, 1, 0)
+                            * (  conditional(main_network > 0, 1, 0) # the main we must fit
+                                + 
+                                conditional(main_network > 0, 0, 1) # the rest
+                                * conditional(brain_mask > 1e-10, 1, 0) #within the brain
+                                * conditional(tof > threshold_tof, 1, 0) # only values above the threshold
+                                * conditional(external_network > 0, 0, 1) # exclude external network
+                                )
+                            )   
+        
+    else:
+        raise ValueError(f"Unknown corrupted option {option}")
+
     return corrupted
 
 
@@ -874,6 +896,7 @@ def experiment(args):
         else:
             raise ValueError(f'Unknown tdens2image {tdens2image}')
         
+        labels.append(corrupted.name())
         labels.append(sink.name())
         labels.append(kappa.name())
         threshold_tof = combination["threshold_tof"]
