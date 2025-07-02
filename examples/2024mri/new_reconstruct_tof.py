@@ -217,7 +217,7 @@ def set_corrupted_network(**kwargs):
 
     if option == "tof":    
         DG0 = tof.function_space()
-        corrupted = Function(DG0, name="tof")
+        corrupted = Function(DG0, name="OBStof")
         corrupted.interpolate(
                             tof * conditional(main_network > 0, 1, 0) # the main we must fit
                             + 
@@ -226,9 +226,9 @@ def set_corrupted_network(**kwargs):
                             * conditional(tof > threshold_tof, 1, 0) # only values above the threshold
                             * conditional(external_network > 0, 0, 1) # exclude external network
                             )
-    elif option == "support_tof":
+    elif option == "support":
         DG0 = tof.function_space()
-        corrupted = Function(DG0, name="support")
+        corrupted = Function(DG0, name="OBSsupport")
         corrupted.interpolate(
                             conditional(tof > threshold_tof, 1, 0)
                             * (  conditional(main_network > 0, 1, 0) # the main we must fit
