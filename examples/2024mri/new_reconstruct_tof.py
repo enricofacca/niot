@@ -1001,6 +1001,13 @@ def experiment(args):
                 nibabel.save(nibabel.Nifti1Image(kappa_np, affine), filename)
                 kappa_np = None
                 gc.collect()
+
+            if combination["map"]["type"] != "identity":
+                filename = f"{label_dir}/image_reconstruction.nii.gz"
+                image_np = i2d.firedrake2numpy(niot_solver.image_h)
+                nibabel.save(nibabel.Nifti1Image(image_np, affine), filename)
+                image_np = None
+                gc.collect()
             
         
         
