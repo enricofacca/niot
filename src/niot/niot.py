@@ -1372,7 +1372,7 @@ class NiotSolver:
             # clean memory every 10 iterations
             update_time = time.time() -tic
 
-            # if self.local_iteration%2 == 0:
+            if self.local_iteration%2 == 0:
             #     self.print_info("cleaning tape", priority=2, where=['stdout','log'], color='green')
             #     #if use_adjoint :
             #         # Clear tape is required to avoid memory accumalation
@@ -1384,9 +1384,9 @@ class NiotSolver:
             #     # https://github.com/LLNL/pyMMAopt/commit/e2f83bd932207a8adbd60ae793b3e5a3058daecf
             #     #TSFCKernel._cache.clear()
             #     #GlobalKernel._cache.clear()
-            #     gc.collect()
-            #     petsc4py.PETSc.garbage_cleanup(self.mesh._comm)
-            #     petsc4py.PETSc.garbage_cleanup(self.mesh.comm)
+                gc.collect()
+                petsc4py.PETSc.garbage_cleanup(self.mesh._comm)
+                petsc4py.PETSc.garbage_cleanup(self.mesh.comm)
 
             if (ierr != 0):
                 ierr_dmk = 1
