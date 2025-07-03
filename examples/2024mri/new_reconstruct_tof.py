@@ -991,23 +991,15 @@ def experiment(args):
 
             if combination["confidence"] != "one":
                 filename = f"{label_dir}/confidence.nii.gz"
-                confidence_np = i2d.firedrake2numpy(confidence)
-                nibabel.save(nibabel.Nifti1Image(confidence_np, affine), filename)
-                confidence_np = None
+                save_as_nifti(confidence, affine, filename)
 
             if combination["kappa"] != "one":
                 filename = f"{label_dir}/kappa.nii.gz"
-                kappa_np = i2d.firedrake2numpy(btp.kappa)
-                nibabel.save(nibabel.Nifti1Image(kappa_np, affine), filename)
-                kappa_np = None
-                gc.collect()
-
+                save_as_nifti(kappa, affine, filename)
+        
             if combination["map"]["type"] != "identity":
                 filename = f"{label_dir}/image_reconstruction.nii.gz"
-                image_np = i2d.firedrake2numpy(niot_solver.image_h)
-                nibabel.save(nibabel.Nifti1Image(image_np, affine), filename)
-                image_np = None
-                gc.collect()
+                save_as_nifti(niot_solver.image_h, affine, filename)
             
         
         
