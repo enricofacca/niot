@@ -1083,7 +1083,7 @@ if __name__ == "__main__":
     parser.add_argument("--mri", type=str, default="./mri/", help="directory with mri data")
     parser.add_argument("--out", type=str, default="./runs/", help="output directory")
     parser.add_argument("--options", type=str, default="options.json", help="Json file with controls")
-    parser.add_argument("--reuse_h5", tpye=bool, default=False, action='store_true', help="Reuse h5 file with inputs")
+    parser.add_argument("--reuse_h5", type=bool, default=False, help="Reuse h5 file with inputs")
 
     args, unknown = parser.parse_known_args()
 
