@@ -305,6 +305,7 @@ class PorousMediaMap(Conductivity2ImageMap):
                  exponent_m=2.0, 
                  sigma=1e-2,
                  nsteps=1,
+                 dt0=1e-6,
                  solver_parameters=None,
                  name=None) -> None:
         self.space = space
@@ -324,6 +325,7 @@ class PorousMediaMap(Conductivity2ImageMap):
         # to being able the PDE
         self.R = FunctionSpace(space.mesh(), 'R', 0)
         self.dt = Function(self.R)
+        self.dt0 = dt0
 
 
         if nsteps==1:
@@ -384,7 +386,7 @@ class PorousMediaMap(Conductivity2ImageMap):
                 + relaxed_pm)
         Jac = derivative(relaxed_pm_PDE, self.image_h)
         
-        # set porous media problem
+        # set dt0 media problem
         self.pm_problem = NonlinearVariationalProblem(
             self.pm_PDE, self.image_h, J=Jac)
 
@@ -440,7 +442,7 @@ class PorousMediaMap(Conductivity2ImageMap):
                 raise ValueError('Negative conductivity')
             _, max_cond = cond_vec.max()
             PETSc.Sys.Print(f'cond min={min_cond}, max={max_cond}')
-            dt0 = 1e-5#min(1e-6, 1e-6/(max_cond))
+            dt0 = self.dt0#min(1e-6, 1e-6/(max_cond))
             
         PETSc.Sys.Print(f'dt0={dt0}, sigma={self.sigma}', self.nsteps)
         
