@@ -16,12 +16,14 @@
         {
             "type": "pm",
             "exponent_p" : 4, 
-            "cond_zero" : 100,
-            "scaling" : 1.0
+            "cond_zero" : 1,
+            "scaling" : 1.0,
+            "nsteps" : 3,
+            "dt0": 0.001
         }
     ],
     "kappa": ["one"],
     "absorption": [1.00e-3],
-    "max_iter": [20],
-    "buffer" : [5]
+    "max_iter": [200],
+    "buffer" : [50]
 }
