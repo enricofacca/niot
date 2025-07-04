@@ -367,55 +367,63 @@ def experiment(args):
         label = f"t{threshold:.2e}_blur{blur:.2e}"  
     else: 
         label = f"t{threshold:.2e}"
-    h5_file = f"{args.mri}/inputs_{label}_nproc{args.n_ensemble}.h5"
-    if os.path.exists(h5_file):
-        PETSc.Sys.Print(f"Found checkpoint file {h5_file}")
-    else:   
-        PETSc.Sys.Print(f"Checkpoint not found. Creating it but we may run out of memory.\n"
-                        f"Consider running mpiexec -n {args.n_ensemble} python build_checkpointfile.py "
-                        )
-        if use_ensemble:
-            if my_ensemble.ensemble_comm.rank == 0:
+
+    if args.reuse_h5:
+        h5_file = f"{args.mri}/inputs_{label}_nproc{args.n_ensemble}.h5"
+        if os.path.exists(h5_file):
+            PETSc.Sys.Print(f"Found checkpoint file {h5_file}")
+        else:   
+            PETSc.Sys.Print(f"Checkpoint not found. Creating it but we may run out of memory.\n"
+                            f"Consider running mpiexec -n {args.n_ensemble} python build_checkpointfile.py "
+                            )
+            if use_ensemble:
+                if my_ensemble.ensemble_comm.rank == 0:
+                    data = setup_h5(args.mri, threshold, blur, comm=comm)
+                    write_h5(args.mri, threshold, blur, comm, args.n_ensemble, data=data)
+                my_ensemble.ensemble_comm.barrier()
+            else:
                 data = setup_h5(args.mri, threshold, blur, comm=comm)
                 write_h5(args.mri, threshold, blur, comm, args.n_ensemble, data=data)
+            PETSc.Sys.Print(f"Checkpoint created h5_file={h5_file}")
+        
+
+
+        #
+        # load data
+        #
+        with CheckpointFile(h5_file, 'r',comm=comm) as afile:
+            mesh = afile.load_mesh("mesh")
+            PETSc.Sys.Print(f"mesh",end=" ")
+            tof = afile.load_function(mesh, "tof")
+            PETSc.Sys.Print(f"tof",end=" ")
+            aseg = afile.load_function(mesh, "aseg")
+            PETSc.Sys.Print(f"aseg",end=" ")
+            brain_mask = afile.load_function(mesh, "brain_mask")
+            PETSc.Sys.Print(f"brain mask",end=" ")
+            t1 = afile.load_function(mesh, "t1")
+            PETSc.Sys.Print(f"t1",end=" ")
+            inlets = afile.load_function(mesh, "inlets")
+            PETSc.Sys.Print(f"inlets",end=" ")
+            main_network = afile.load_function(mesh, "main_network")
+            PETSc.Sys.Print(f"main network",end="")
+            external_network = afile.load_function(mesh, "external_network")
+            PETSc.Sys.Print(f"external network",end=" ")
+            skeleton = afile.load_function(mesh, "skeleton")
+            PETSc.Sys.Print(f"skeleton",end="")
+            thickness = afile.load_function(mesh, "thickness")
+            PETSc.Sys.Print(f"thickness",end=" ")
+        
+        PETSc.Sys.Print(f"Checkpoint loaded")
+        PETSc.Sys.Print(f"**** Inputs loaded ****")
+        PETSc.Sys.Print(f"")
+        if use_ensemble:
             my_ensemble.ensemble_comm.barrier()
-        else:
-            data = setup_h5(args.mri, threshold, blur, comm=comm)
-            write_h5(args.mri, threshold, blur, comm, args.n_ensemble, data=data)
-        PETSc.Sys.Print(f"Checkpoint created h5_file={h5_file}")
-    
 
-
-    #
-    # load data
-    #
-    with CheckpointFile(h5_file, 'r',comm=comm) as afile:
-        mesh = afile.load_mesh("mesh")
-        PETSc.Sys.Print(f"mesh",end=" ")
-        tof = afile.load_function(mesh, "tof")
-        PETSc.Sys.Print(f"tof",end=" ")
-        aseg = afile.load_function(mesh, "aseg")
-        PETSc.Sys.Print(f"aseg",end=" ")
-        brain_mask = afile.load_function(mesh, "brain_mask")
-        PETSc.Sys.Print(f"brain mask",end=" ")
-        t1 = afile.load_function(mesh, "t1")
-        PETSc.Sys.Print(f"t1",end=" ")
-        inlets = afile.load_function(mesh, "inlets")
-        PETSc.Sys.Print(f"inlets",end=" ")
-        main_network = afile.load_function(mesh, "main_network")
-        PETSc.Sys.Print(f"main network",end="")
-        external_network = afile.load_function(mesh, "external_network")
-        PETSc.Sys.Print(f"external network",end=" ")
-        skeleton = afile.load_function(mesh, "skeleton")
-        PETSc.Sys.Print(f"skeleton",end="")
-        thickness = afile.load_function(mesh, "thickness")
-        PETSc.Sys.Print(f"thickness",end=" ")
-      
-    PETSc.Sys.Print(f"Checkpoint loaded")
-    PETSc.Sys.Print(f"**** Inputs loaded ****")
-    PETSc.Sys.Print(f"")
-    if use_ensemble:
-        my_ensemble.ensemble_comm.barrier()
+    else:
+        data = setup_h5(args.mri, threshold, blur, comm=comm)
+        cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets, skeleton, thickness = data
+        
+        mesh = cartesian_mesh
 
     mesh.nx = original_dimensions[0]
     mesh.ny = original_dimensions[1]
@@ -427,7 +435,6 @@ def experiment(args):
     mesh.zmin = 0.0
     mesh.zmax = lengths[2]
     
-    cartesian_mesh = mesh
     
     input_data = { 
         "tof": tof, 
@@ -1076,7 +1083,8 @@ if __name__ == "__main__":
     parser.add_argument("--mri", type=str, default="./mri/", help="directory with mri data")
     parser.add_argument("--out", type=str, default="./runs/", help="output directory")
     parser.add_argument("--options", type=str, default="options.json", help="Json file with controls")
-    
+    parser.add_argument("--reuse_h5", tpye=bool, default=False, action='store_true', help="Reuse h5 file with inputs")
+
     args, unknown = parser.parse_known_args()
 
     
