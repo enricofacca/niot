@@ -7,3 +7,4 @@ localthickness
 connected-components-3d
 pillow
 matplotlib
+scikit-image
