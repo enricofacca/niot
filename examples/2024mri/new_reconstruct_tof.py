@@ -1025,7 +1025,7 @@ def experiment(args):
         def solve_and_save(niot_solver, label_dir, n_buffer):
             
             # select if we just want the latest solution 
-            update_solution = True
+            update_solution = False
             if update_solution:
                 file_label = "final"
             else:
@@ -1055,7 +1055,7 @@ def experiment(args):
             gc.collect()
             
             if combination["map"]["type"] != "identity":
-                filename = f"{label_dir}/image_reconstruction.nii.gz"
+                filename = f"{label_dir}/image_reconstruction_{file_label}.nii.gz"
                 save_as_nifti(niot_solver.image_h, affine, filename)
             
             
