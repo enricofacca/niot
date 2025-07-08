@@ -7,7 +7,7 @@
             "type" : "skeleton_thickness",
             "mu0": 1,
             "lift": 1e-4,
-            "sigma_heat" : 1e-2
+            "sigma_heat" : 1e-3
         }
     ],
     "corrupted": ["support"],
@@ -24,6 +24,6 @@
     ],
     "kappa": ["t1"],
     "absorption": [1.00e-3],
-    "max_iter": [200],
+    "max_iter": [202],
     "buffer" : [50]
 }
