@@ -24,6 +24,6 @@
     ],
     "kappa": ["t1"],
     "absorption": [1.00e-3],
-    "max_iter": [202],
+    "max_iter": [1002],
     "buffer" : [50]
 }
