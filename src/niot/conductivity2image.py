@@ -320,6 +320,13 @@ class PorousMediaMap(Conductivity2ImageMap):
         self.store_images = False
         """ Store the images at each time step"""
 
+        self.use_stored_images_as_initial_guess = False
+        """ Boolean for activation of using store intermediate images as initial guess"""
+        
+
+        self.stored_images = False
+        """ Boolean to mark if somthing was stored"""
+
         
         # we pass the time step as a constant function
         # to being able the PDE
@@ -328,15 +335,15 @@ class PorousMediaMap(Conductivity2ImageMap):
         self.dt0 = dt0
 
 
-        if nsteps==1:
-            self.dt.assign(sigma)
-        else:
-            # we adaptive the time step to the number of steps
-            self.dt.assign(sigma / nsteps)
+    
         
         self.image_h = Function(space)
         self.tdens4transform = Function(space)
         
+        for i in range(nsteps-1):
+            self.intermediate_images.append(Function(space, name=f'img_{i}'))
+        
+
         self.name = name
         
         min_image = 1e-14 # a minimim value for the image
@@ -471,25 +478,33 @@ class PorousMediaMap(Conductivity2ImageMap):
         self.steps_done = 0
         for i in range(self.nsteps):
             if i > 0:
+                # the the u^{k}=u^{k-1}
                 self.tdens4transform.assign(self.image_h)
-            
+
+            if self.use_stored_images_as_initial_guess and self.stored_images:
+                # this step should not be annotated
+                self.image_h.assign(self.intermediate_images[i],annotate=False)
+            else:
+                # set u_0 as initial guess, otherwise u^{k-1} will be also initial guess
+                if i == 0:
+                    self.image_h.assign(conductivity,annotate=False)
 
          
             # assign self.dt, change the expression in the PDE
             dt = dt0*rate**(i)
             total_time += dt
             self.dt.assign(dt)
-            # invoke the solver
+            
+            # invoke the solver to get u^{k+1}
             self.pm_solver.solve()
             
             if self.verbose > 0:
                 PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} {self.image_h.dat.data_ro.min()}<=IMG<={self.image_h.dat.data_ro.max()}')
                 
-            if self.store_images:
-                img = self.image_h.copy(deepcopy=True)
-                img.rename(f'img_{i}')
-                self.images.append(img)
-            
+            if i < self.nsteps-1 and self.store_images:
+                self.images_stored = True
+                self.intermediate_images[i].assign(self.image_h,annotate=False)
+                
             self.steps_done += 1
         
         
