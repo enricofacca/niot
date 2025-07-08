@@ -340,6 +340,7 @@ class PorousMediaMap(Conductivity2ImageMap):
         self.image_h = Function(space)
         self.tdens4transform = Function(space)
         
+        self.intermediate_images = []
         for i in range(nsteps-1):
             self.intermediate_images.append(Function(space, name=f'img_{i}'))
         
