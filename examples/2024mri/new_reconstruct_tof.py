@@ -1004,12 +1004,6 @@ def experiment(args):
                 filename = f"{label_dir}/kappa.nii.gz"
                 save_as_nifti(kappa, affine, filename)
         
-            if combination["map"]["type"] != "identity":
-                filename = f"{label_dir}/image_reconstruction.nii.gz"
-                save_as_nifti(niot_solver.image_h, affine, filename)
-            
-        
-        
         
         #
         # run solver, buffering the saving of the solution
@@ -1054,6 +1048,11 @@ def experiment(args):
             nibabel.save(nibabel.Nifti1Image(pot_np, affine), filename)
             pot_np = None
             gc.collect()
+            
+            if combination["map"]["type"] != "identity":
+                filename = f"{label_dir}/image_reconstruction.nii.gz"
+                save_as_nifti(niot_solver.image_h, affine, filename)
+            
             
 
         # run and save
