@@ -790,15 +790,20 @@ def experiment(args):
             except:
                 lift = 1e-15
 
+
+            # get brain mask
+            try:
+                brain_mask = kwargs['brain_mask']
+            except:
+                raise ValueError("brain_mask not provided")
+
             
            
             dim = mesh.geometric_dimension()
             exponent_p = 4.0 if dim == 3 else 3.0
             name = common_name+f"pou_{mu0:.2e}"
             initial = Function(skeleton.function_space(), name=name)
-            initial.interpolate(mu0*skeleton * (thickness/2) ** exponent_p / h ** (dim-1))           
-            initial += lift
-
+            initial.interpolate(mu0*skeleton * (thickness/2) ** exponent_p / h ** (dim-1) + lift * conditional(brain_mask > 1e-10, 1, 0))
             try:
                 sigma_heat = option["sigma_heat"]
                 heat = HeatMap(initial.function_space(), scaling=1.0, sigma=sigma_heat)
