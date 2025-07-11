@@ -17,7 +17,7 @@
             "type": "pm",
             "exponent_p" : 4, 
             "cond_zero" : 1,
-            "scaling" : 1.0,
+            "scaling" : 0.1,
             "nsteps" : 3,
             "dt0": 0.0005
         }
