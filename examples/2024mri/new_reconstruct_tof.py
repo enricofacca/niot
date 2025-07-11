@@ -596,8 +596,8 @@ def experiment(args):
                               + conditional(main_network > 0, 0, 1) 
                               # but only in the region where t1 is high
                               * (
-                                  conditional(t1 > level1, 5, 0)
-                                  + conditional(t1 > level2, 5, 0)
+                                  conditional(t1 > level1, 2, 0)
+                                  + conditional(t1 > level2, 2, 0)
                                 ) )
             return kappa
         elif option_type == "t1white":

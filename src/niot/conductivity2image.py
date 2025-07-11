@@ -500,15 +500,20 @@ class PorousMediaMap(Conductivity2ImageMap):
             self.pm_solver.solve()
             
             if self.verbose > 0:
-                PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} {self.image_h.dat.data_ro.min()}<=IMG<={self.image_h.dat.data_ro.max()}')
+                with self.image_h.dat.vec as img_vec:
+                    PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e}' +utilities.msg_bounds(img_vec,'IMG'))
                 
             if i < self.nsteps-1 and self.store_images:
-                self.images_stored = True
                 self.intermediate_images[i].assign(self.image_h,annotate=False)
+
                 
             self.steps_done += 1
         
-        
+        # set the flag equal to true
+        if self.store_images:
+            self.images_stored = True
+
+
         # we scale here so we return a function 
         # otherwise (scaling * image) is an expression
         min_img = self.image_h.dat.data_ro.min()
@@ -516,7 +521,9 @@ class PorousMediaMap(Conductivity2ImageMap):
             self.image_h -= min_img
         self.image_h *= self.scaling
         if self.verbose > 0:
-            PETSc.Sys.Print(f'{self.image_h.dat.data_ro.min():.1e}<=IMG<={self.image_h.dat.data_ro.max():.1e}')
+            with self.image_h.dat.vec as img_vec:
+                PETSc.Sys.Print(utilities.msg_bounds(img_vec,'IMG'))
+                
 
         return self.image_h
 

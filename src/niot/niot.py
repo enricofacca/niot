@@ -1468,6 +1468,7 @@ class NiotSolver:
         '''
         # print min and max of tdens
         self.image_h = self.tdens2image_map(tdens)
+        PETSc.Sys.Print(f'{self.image_h.dat.data_ro.min():.1e}<=IMG<={self.image_h.dat.data_ro.max():.1e}')
         #scaling = self.ctrl_get(['tdens2image', 'scaling'])
         dis = self.confidence * 0.5 * (self.image_h - self.img_observed)**2 * dx
         return dis
