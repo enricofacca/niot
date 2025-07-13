@@ -164,7 +164,7 @@ if (__name__ == '__main__'):
         PETSc.Sys.Print(utilities.msg_bounds(tubular_vec, 'IMG'))
     
     filename = f"tubular_c{args.cond:.2e}.nii.gz"
-    save_as_nifti(tubular, tdens.affine, filename) 
+    save_as_nifti(tubular, tdens_nii.affine, filename) 
     
     
     # for threshold in [ 1e-3]:
