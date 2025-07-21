@@ -846,7 +846,7 @@ class NiotSolver:
             except:
                 cond_zero = self.ctrl_get(['tdens2image', 'pm','cond_zero'])
                 exponent_p = self.ctrl_get(['tdens2image', 'pm','exponent_p'])
-                scaling = 1.0
+                scaling = self.ctrl_get(['tdens2image', 'pm','scaling'])
                 dim = self.mesh.geometric_dimension() 
 
                 dim = self.mesh.geometric_dimension()
@@ -861,7 +861,7 @@ class NiotSolver:
                 # sigma = (cond_zero**(-1/exponent_p) * K_md ** (-1/2) * B **(1/2))**(1/beta)
                 sigma = Bar.sigma(cond_zero,exponent_p)
             
-                label_pm = f'pm_{exponent_p:.1f}_{cond_zero:.2e}'
+                label_pm = f'pm_{exponent_p:.1f}_{cond_zero:.2e}_{scaling:.2e}'
 
             solver_parameters={
                     'snes_type': 'newtonls',
@@ -894,7 +894,7 @@ class NiotSolver:
 
             self.tdens2image_map = PorousMediaMap(
                 self.fems.tdens_space,
-                scaling=scaling, 
+                scaling=self.ctrl_get(['tdens2image', 'pm','scaling']),
                 sigma=sigma,
                 exponent_m=exponent_m,
                 nsteps=self.ctrl_get(['tdens2image', 'pm','nsteps']),
