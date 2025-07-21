@@ -501,7 +501,7 @@ class PorousMediaMap(Conductivity2ImageMap):
             
             if self.verbose > 0:
                 with self.image_h.dat.vec as img_vec:
-                    PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e}' +utilities.msg_bounds(img_vec,'IMG'))
+                    PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} ' +utilities.msg_bounds(img_vec,'IMG'))
                 
             if i < self.nsteps-1 and self.store_images:
                 self.intermediate_images[i].assign(self.image_h,annotate=False)
