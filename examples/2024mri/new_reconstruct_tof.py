@@ -903,7 +903,7 @@ def experiment(args):
             try:
                 labels.append(f"mapipm"
                               +f"_cond{tdens2image['cond_zero']:.2e}"
-                              +f"_scale{tdens2image['scale']:.2e}")
+                              +f"_scale{tdens2image['scaling']:.2e}")
             except:
                 labels.append(f"mappm")
         else:
