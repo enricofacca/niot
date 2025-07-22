@@ -910,7 +910,7 @@ class NiotSolver:
             self.tdens2image_map.store_images = True
             """ Store the images at each time step"""
 
-            self.tdens2image_map.use_stored_images_as_initial_guess = True
+            self.tdens2image_map.use_stored_images_as_initial_guess = False#True
             """ Boolean for activation of using store intermediate images as initial guess"""
         
 
