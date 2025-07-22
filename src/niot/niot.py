@@ -813,6 +813,10 @@ class NiotSolver:
         self.image_h = Function(self.fems.tdens_space)
         self.image_h.rename('image_h') # used by tdens2image map
 
+        self.reconstruction = Function(self.fems.tdens_space)
+        self.reconstruction.rename('reconstruction') 
+
+
         self.tdens4transform = Function(self.fems.tdens_space)
         self.tdens4transform.rename('tdens4transform') # used by tdens2image map
         
@@ -1143,6 +1147,9 @@ class NiotSolver:
                     # as combination of operations manegable by automatic differiantion.
                     self.gradient_discrepancy = assemble(self.gradient_discrepancy_form)
 
+
+
+                # print the gradient discrepancy
                 with self.gradient_discrepancy.dat.vec_ro as gD:
                     msg = utilities.msg_bounds(gD,'grad discrepancy   ')
                     self.print_info(
@@ -1152,6 +1159,11 @@ class NiotSolver:
                         )
             else:
                 self.gradient_discrepancy.assign(0.0)
+
+            with self.reconstruction.dat.vec as rec_vec, self.image_h.dat.vec as img_vec:
+                # print bounds
+                PETSc.Sys.Print(utilities.msg_bounds(img_vec,'IMG'))
+                PETSc.Sys.Print(utilities.msg_bounds(rec_vec,'REC'))
 
             # Penalization
             if pw > 0:
@@ -1468,6 +1480,10 @@ class NiotSolver:
         '''
         # print min and max of tdens
         self.image_h = self.tdens2image_map(tdens)
+        with self.image_h.dat.vec as img_vec, self.reconstruction.dat.vec as img_rec_vec:
+            img_vec.copy(img_rec_vec)
+            PETSc.Sys.Print(utilities.msg_bounds(img_rec_vec,'IMG recosntruction'))
+            
         dis = self.confidence * 0.5 * (self.image_h - self.img_observed)**2 * dx
         return dis
     
