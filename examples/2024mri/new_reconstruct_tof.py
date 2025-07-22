@@ -1057,8 +1057,12 @@ def experiment(args):
             
             if combination["map"]["type"] != "identity":
                 filename = f"{label_dir}/image_reconstruction_{file_label}.nii.gz"
-                save_as_nifti(niot_solver.image_h, affine, filename)
-            
+                save_as_nifti(niot_solver.reconstruction, affine, filename)
+                for i, img in enumerate(self.tdens2image_map.intermediate_images):
+                    filename = f"{label_dir}/image_intermediate_{file_label}_{i}.nii.gz"
+                    save_as_nifti(img, affine, filename)
+                
+                
             
 
         # run and save
