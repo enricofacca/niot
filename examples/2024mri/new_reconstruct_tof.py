@@ -586,9 +586,20 @@ def experiment(args):
                 level2 = options["level2"]
             except:
                 level2 = 500
+
+
+            try:
+                kappa1 = options["kappa1"]
+            except:
+                kappa1 = 2
+            
+            try: 
+                kappa2 = options["kappa2"]
+            except:
+                kappa2 = 4
             
 
-            name = f"{common_name}t1_{level1:.0f}_{level2:.0f}"
+            name = f"{common_name}t1_{level1:.0f}k{kappa1:.1e}_{level2:.0f}k{kappa2:.1e}"
             kappa = Function(t1.function_space(), name=name)
             kappa.interpolate(# base value is value (Euclidean distace)
                               1.0
@@ -596,9 +607,10 @@ def experiment(args):
                               + conditional(main_network > 0, 0, 1) 
                               # but only in the region where t1 is high
                               * (
-                                  conditional(t1 > level1, 2, 0)
-                                  + conditional(t1 > level2, 2, 0)
-                                ) )
+                                  kappa1 * conditional(t1 > level1, 1, 0) * conditional(t1 < level2, 1, 0)
+                                  + kappa2 * conditional(t1 > level2, 1, 0)
+                                ) 
+                        )
             return kappa
         elif option_type == "t1white":
             try:
@@ -1055,7 +1067,8 @@ def experiment(args):
             pot_np = None
             gc.collect()
             
-            if combination["map"]["type"] != "identity":
+            save_intermediate = False
+            if save_intermediate and combination["map"]["type"] != "identity":
                 filename = f"{label_dir}/image_reconstruction_{file_label}.nii.gz"
                 save_as_nifti(niot_solver.reconstruction, affine, filename)
                 for i, img in enumerate(niot_solver.tdens2image_map.intermediate_images):
