@@ -568,6 +568,7 @@ def experiment(args):
             return one
        
         elif option_type == "t1":
+            PETSc.Sys.Print(options)
             try:
                 t1 = kwargs['t1']
             except:
