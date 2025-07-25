@@ -568,7 +568,7 @@ def experiment(args):
             return one
        
         elif option_type == "t1":
-            PETSc.Sys.Print(options)
+            PETSc.Sys.Print(option)
             try:
                 t1 = kwargs['t1']
             except:
@@ -579,23 +579,23 @@ def experiment(args):
                 raise ValueError("main_network not provided")
             
             try:
-                level1 = options["level1"]
+                level1 = option["level1"]
             except:
                 level1 = 200
             
             try: 
-                level2 = options["level2"]
+                level2 = option["level2"]
             except:
                 level2 = 500
 
 
             try:
-                kappa1 = options["kappa1"]
+                kappa1 = option["kappa1"]
             except:
                 kappa1 = 2
             
             try: 
-                kappa2 = options["kappa2"]
+                kappa2 = option["kappa2"]
             except:
                 kappa2 = 4
             
