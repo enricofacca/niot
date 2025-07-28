@@ -1054,24 +1054,18 @@ def experiment(args):
             pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
             
             
-            tdens_np = i2d.firedrake2numpy(tdens)
-            tdens = None
             filename=f"{label_dir}/tdens_{file_label}.nii.gz"
-            nibabel.save(nibabel.Nifti1Image(tdens_np, affine), filename)
-            tdens_np = None
-            gc.collect()
+            save_as_nifti(tdens, affine, filename)
             
-            pot_np = i2d.firedrake2numpy(pot)
-            pot = None
             filename=f"{label_dir}/pot_{file_label}.nii.gz"
-            nibabel.save(nibabel.Nifti1Image(pot_np, affine), filename)
-            pot_np = None
-            gc.collect()
-            
+            save_as_nifti(pot, affine, filename)
+        
+            filename = f"{label_dir}/image_reconstruction_{file_label}.nii.gz"
+            save_as_nifti(niot_solver.reconstruction, affine, filename)
+                
+
             save_intermediate = False
             if save_intermediate and combination["map"]["type"] != "identity":
-                filename = f"{label_dir}/image_reconstruction_{file_label}.nii.gz"
-                save_as_nifti(niot_solver.reconstruction, affine, filename)
                 for i, img in enumerate(niot_solver.tdens2image_map.intermediate_images):
                     filename = f"{label_dir}/image_intermediate_{file_label}_{i}.nii.gz"
                     save_as_nifti(img, affine, filename)
