@@ -1,29 +1,41 @@
 {
     "blur": [1.5],
     "threshold":[250],
-    "wd": [1e-3],
+    "threshold_tof":[200],
+    "wd": [1.1e-2],
     "initial": [
         {
             "type" : "skeleton_thickness",
-            "mu0": 1,
+            "mu0": 100,
             "lift": 1e-4,
             "sigma_heat" : 1e-3
         }
     ],
     "corrupted": ["support"],
-    "confidence": ["main_network"],
+    "confidence": [
+	{
+	    "type":"main_plus_eps",
+	    "eps": 1e-3
+	}
+	],
     "map": [
         {
             "type": "pm",
             "exponent_p" : 4, 
-            "cond_zero" : 1,
-            "scaling" : 0.1,
+            "cond_zero" : 100,
+            "scaling" : 1e-3,
             "nsteps" : 3,
-            "dt0": 0.0005
+            "dt0": 0.000025
         }
     ],
-    "kappa": ["t1"],
+    "kappa": [
+	{
+	    "type":"t1",
+	    "kappa1": 1.5,
+	    "kappa2": 2
+	}
+	],
     "absorption": [1.00e-3],
-    "max_iter": [1002],
-    "buffer" : [50]
+    "max_iter": [502],
+    "buffer" : [20]
 }
