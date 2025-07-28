@@ -252,24 +252,24 @@ def experiment(args):
     results = args.out
     
     # load options from json file
-    try:
-        with open(args.options, 'r') as f:
-            options = json.load(f)
-    except:
-        options = {
-            "blur": [0.0],
-            "threshold": [1e-3],
-            "wd": [1e-4],  
-            "initial": ["one"],
-            "confidence": ["one"],
-            "map": [{"type": "identity", "scaling": 10}],
-            "kappa": ["one","t1"],
-            "absorption": [1e-3]
-            }
-        # print as example
-        for key, value in options.items():
-            PETSc.Sys.Print(f"{key} : {value}")
-        raise ValueError(f"File {args.options} not found")
+    #try:
+    with open(args.options, 'r') as f:
+        options = json.load(f)
+    # except:
+    #     options = {
+    #         "blur": [0.0],
+    #         "threshold": [1e-3],
+    #         "wd": [1e-4],  
+    #         "initial": ["one"],
+    #         "confidence": ["one"],
+    #         "map": [{"type": "identity", "scaling": 10}],
+    #         "kappa": ["one","t1"],
+    #         "absorption": [1e-3]
+    #         }
+    #     # print as example
+    #     for key, value in options.items():
+    #         PETSc.Sys.Print(f"{key} : {value}")
+    #     raise ValueError(f"File {args.options} not found")
         
     if len(options["threshold"]) > 1:
         raise ValueError("Only one threshold is allowed")
