@@ -206,36 +206,90 @@ def set_corrupted_network(**kwargs):
     try:
         option = kwargs["corrupted"]
     except:
-        option = "tof"
-    
+        raise ValueError("corrupted not provided")
+
+    if isinstance(option, str):
+        option_type = option
+    elif isinstance(option, dict):
+        option_type = option["type"]
+    else:
+        raise ValueError(f"Unknown confidence type {option}")
+
+
 
     tof = kwargs['tof']
     main_network = kwargs['main_network']
     external_network = kwargs['external_network']
     brain_mask = kwargs['brain_mask']
-    threshold_tof = kwargs['threshold_tof']
+    
+    if option_type == "tof":
+        try:
+            threshold_tof = option['threshold_tof']
+        except:
+            threshold_tof = 200
 
-    if option == "tof":    
+        name = f"OBSsupport_t{threshold_tof:.2e}"
+
+        try: 
+            blur = option['blur']
+        except:
+            blur = 0.0
+        
+        if blur > 0:
+            tof_np = i2d.firedrake2numpy(tof)
+            mesh = tof.function_space().mesh()
+            hx = mesh.hx
+            tof_np = gaussian_filter(tof_np, sigma=blur*hx)
+            name += f"_blur{blur:.2e}"
+            tof4corrupted = i2d.numpy2firedrake(tof.function_space(), tof_np, name="tof_blurred")
+        else:
+            tof4corrupted = tof
+
+
         DG0 = tof.function_space()
-        corrupted = Function(DG0, name="OBStof")
+        corrupted = Function(DG0, name=name)
         corrupted.interpolate(
-                            tof * conditional(main_network > 0, 1, 0) # the main we must fit
+                            tof4corrupted * conditional(main_network > 0, 1, 0) # the main we must fit
                             + 
-                            tof * conditional(main_network > 0, 0, 1) # the rest
+                            tof4corrupted * conditional(main_network > 0, 0, 1) # the rest
                             * conditional(brain_mask > 1e-10, 1, 0) #within the brain
-                            * conditional(tof > threshold_tof, 1, 0) # only values above the threshold
+                            * conditional(tof4corrupted > threshold_tof, 1, 0) # only values above the threshold
                             * conditional(external_network > 0, 0, 1) # exclude external network
                             )
-    elif option == "support":
+    
+    elif option_type == "support":
+        try:
+            threshold_tof = option['threshold_tof']
+        except:
+            threshold_tof = 200
+
+        name = f"OBSsupport_t{threshold_tof:.2e}"
+
+        try: 
+            blur = option['blur']
+        except:
+            blur = 0.0
+        
+        if blur > 0:
+            tof_np = i2d.firedrake2numpy(tof)
+            mesh = tof.function_space().mesh()
+            hx = mesh.hx
+            tof_np = gaussian_filter(tof_np, sigma=blur*hx)
+            name += f"_blur{blur:.2e}"
+            tof4corrupted = i2d.numpy2firedrake(tof.function_space(), tof_np, name="tof_blurred")
+        else:
+            tof4corrupted = tof
+
+
         DG0 = tof.function_space()
-        corrupted = Function(DG0, name="OBSsupport")
+        corrupted = Function(DG0, name=name)
         corrupted.interpolate(
-                            conditional(tof > threshold_tof, 1, 0)
+                            conditional(tof4corrupted > threshold_tof, 1, 0)
                             * (  conditional(main_network > 0, 1, 0) # the main we must fit
                                 + 
                                 conditional(main_network > 0, 0, 1) # the rest
                                 * conditional(brain_mask > 1e-10, 1, 0) #within the brain
-                                * conditional(tof > threshold_tof, 1, 0) # only values above the threshold
+                                * conditional(tof4corrupted > threshold_tof, 1, 0) # only values above the threshold
                                 * conditional(external_network > 0, 0, 1) # exclude external network
                                 )
                             )   
@@ -275,12 +329,7 @@ def experiment(args):
         raise ValueError("Only one threshold is allowed")
     threshold = options["threshold"][0]
 
-    try:    
-        threshold_tof = options["threshold_tof"]
-    except:
-        threshold_tof = [250]
-        options["threshold_tof"] = threshold_tof
-
+    
     try:    
         blur = options["blur"][0]
     except:
@@ -434,7 +483,11 @@ def experiment(args):
     mesh.ymax = lengths[1]
     mesh.zmin = 0.0
     mesh.zmax = lengths[2]
-    
+    mesh.hx = hx
+    mesh.hy = hy
+    mesh.hz = hz
+
+
     
     input_data = { 
         "tof": tof, 
@@ -925,9 +978,7 @@ def experiment(args):
         labels.append(corrupted.name())
         labels.append(sink.name())
         labels.append(kappa.name())
-        threshold_tof = combination["threshold_tof"]
-        labels.append(f"tof{threshold_tof:.2e}")
-        
+        labels.append(corrupted.name())
 
         label = "_".join(labels)
         label_dir = os.path.join(out_directory,label)
