@@ -1,7 +1,6 @@
 {
     "blur": [1.5],
     "threshold":[250],
-    "threshold_tof":[200],
     "wd": [1.1e-2],
     "initial": [
         {
@@ -11,11 +10,17 @@
             "sigma_heat" : 1e-3
         }
     ],
-    "corrupted": ["support"],
+    "corrupted": [
+        {
+            "type":"support",
+            "threshold_tof": 175,
+            "blur": 1.5
+        }
+        ],
     "confidence": [
 	{
 	    "type":"main_plus_eps",
-	    "eps": 1e-3
+	    "eps": 1e-1
 	}
 	],
     "map": [
