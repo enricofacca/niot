@@ -87,6 +87,9 @@ def save_main_and_external_network_as_nifti(dir_nii, threshold, blur=0.0):
         hx, hy, hz = tof_data.header['pixdim'][1:4]
         tof_np = gaussian_filter(tof_np, sigma=blur*hx)
 
+        nibabel.save(nibabel.Nifti1Image(tof_np, tof_data.affine), 
+                 f"{dir_nii}TOF_blur{blur:.2e}.nii.gz")
+
 
     # separe connected components
     labels_np, nlabels = connected_components(tof_np, threshold)
