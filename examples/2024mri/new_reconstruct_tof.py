@@ -237,7 +237,7 @@ def set_corrupted_network(**kwargs):
         
         if blur > 0:
             tof_np = i2d.firedrake2numpy(tof)
-            mesh = tof.function_space().mesh()
+            mesh = kwargs["cartesian_mesh"]
             hx = mesh.hx
             tof_np = gaussian_filter(tof_np, sigma=blur*hx)
             name += f"_blur{blur:.2e}"
@@ -272,7 +272,7 @@ def set_corrupted_network(**kwargs):
         
         if blur > 0:
             tof_np = i2d.firedrake2numpy(tof)
-            mesh = tof.function_space().mesh()
+            mesh = kwargs["cartesian_mesh"]
             hx = mesh.hx
             tof_np = gaussian_filter(tof_np, sigma=blur*hx)
             name += f"_blur{blur:.2e}"
