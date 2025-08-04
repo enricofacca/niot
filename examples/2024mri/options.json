@@ -20,7 +20,8 @@
     "confidence": [
 	{
 	    "type":"main_plus_eps",
-	    "eps": 1e-1
+	    "eps": 1e-1,
+        "main_confidence": 1000
 	}
 	],
     "map": [

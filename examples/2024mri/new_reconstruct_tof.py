@@ -574,17 +574,22 @@ def experiment(args):
                 eps = option['eps']
             except:
                 raise ValueError("eps_confidence provided")
+            
+            try:
+                main_confidence = kwargs['main_confidence']
+            except:
+                main_confidence = 100
 
             confidence = assemble(
                 interpolate( # inside, we trust the network plus a small value
                             conditional(brain_mask>1e-10, 1, 0)
-                            * (eps + 100  * conditional(main_network > 0, 1, 0) )
+                            * (eps + main_confidence  * conditional(main_network > 0, 1, 0) )
                             # outside, strong cce, where we set no network
-                            + 100 * conditional(brain_mask<=1e-10, 1, 0), 
+                            + main_confidence * conditional(brain_mask<=1e-10, 1, 0), 
                             main_network.function_space()
                             )
                         )
-            confidence.rename(f"confmain_plus_eps{eps:.2e}")
+            confidence.rename(f"confmain_{main_confidence:.2e}_eps{eps:.2e}")
             
             return confidence
         
