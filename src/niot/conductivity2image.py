@@ -333,6 +333,7 @@ class PorousMediaMap(Conductivity2ImageMap):
         self.R = FunctionSpace(space.mesh(), 'R', 0)
         self.dt = Function(self.R)
         self.dt0 = dt0
+        self.last_dt = 0.0
 
 
     
@@ -444,7 +445,7 @@ class PorousMediaMap(Conductivity2ImageMap):
         assemble(interpolate(conductivity,self.space), tensor=self.tdens4transform)
 
         # estimate for initial time step
-        with self.tdens4transform.dat.vec as cond_vec:
+        with conductivity.dat.vec as cond_vec:
             _, min_cond = cond_vec.min()
             if min_cond < 0:
                 raise ValueError('Negative conductivity')
@@ -474,44 +475,58 @@ class PorousMediaMap(Conductivity2ImageMap):
             rate = 1.0
             dt0 = self.sigma
 
-        self.images = []
-        total_time = 0.0
-        self.steps_done = 0
-        for i in range(self.nsteps):
-            if i > 0:
-                # the the u^{k}=u^{k-1}
-                self.tdens4transform.assign(self.image_h)
+        
+        if self.use_stored_images_as_initial_guess and self.stored_images:
+            # this step should not be annotated
+            self.image_h.assign(self.intermediate_images[self.nsteps], annotate=False)
+            self.dt.assign(self.last_dt)
 
-            if self.use_stored_images_as_initial_guess and self.stored_images:
-                # this step should not be annotated
-                self.image_h.assign(self.intermediate_images[i],annotate=False)
-            else:
-                # set u_0 as initial guess, otherwise u^{k-1} will be also initial guess
-                if i == 0:
-                    self.image_h.assign(conductivity,annotate=False)
-
-         
-            # assign self.dt, change the expression in the PDE
-            dt = dt0*rate**(i)
-            total_time += dt
-            self.dt.assign(dt)
-            
             # invoke the solver to get u^{k+1}
             self.pm_solver.solve()
             
             if self.verbose > 0:
                 with self.image_h.dat.vec as img_vec:
-                    PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} ' +utilities.msg_bounds(img_vec,'IMG'))
-                
-            if i < self.nsteps-1 and self.store_images:
-                self.intermediate_images[i].assign(self.image_h,annotate=False)
+                    PETSc.Sys.Print(f"PM with restart")
+                    PETSc.Sys.Print(utilities.msg_bounds(img_vec,'IMG'))
 
+        else:
+            self.images = []
+            total_time = 0.0
+            self.steps_done = 0            
+            for i in range(self.nsteps):
+                if i == 0:
+                    # this is this use the conductivity as initial guess
+                    # it needs to be stored in the adjoint computation
+                    self.image_h.assign(conductivity)
+                else:
+                    # the the u^{k}=u^{k-1}
+                    self.tdens4transform.assign(self.image_h)
+
+         
+                # assign self.dt, change the expression in the PDE
+                dt = dt0*rate**(i)
+                total_time += dt
+                self.dt.assign(dt)
+            
+                # invoke the solver to get u^{k+1}
+                self.pm_solver.solve()
+
+                # print info
+                if self.verbose > 0:
+                    with self.image_h.dat.vec as img_vec:
+                        PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
+                                    + utilities.msg_bounds(img_vec,'IMG'))
+
+                # store images
+                if i < self.nsteps-1 and self.store_images:
+                    self.intermediate_images[i].assign(self.image_h, annotate=False)
+                    self.last_dt = dt
                 
-            self.steps_done += 1
+                self.steps_done += 1
         
         # set the flag equal to true
         if self.store_images:
-            self.images_stored = True
+            self.stored_images = True
 
 
         # we scale here so we return a function 
