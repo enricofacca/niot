@@ -824,12 +824,14 @@ class NiotSolver:
         scaling = self.ctrl_get(['tdens2image', 'scaling'])
         
         
-        #if self.ctrl_get("use_adjoint"):
+        
         #import firedrake.adjoint as fire_adj
         #fire_adj.continue_annotation()
 
 
         if tdens2image == 'identity':
+            self.ctrl_set("use_adjoint", False)
+            PETSc.Sys.Print(f"scaling {scaling}",comm=self.comm)
             self.tdens2image_map = IdentityMap(self.fems.tdens_space, scaling=scaling)
             self.tdens2image = lambda x: self.tdens2image_map(x)
 
