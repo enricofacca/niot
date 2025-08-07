@@ -872,7 +872,7 @@ def experiment(args):
            
             dim = mesh.geometric_dimension()
             exponent_p = 4.0 if dim == 3 else 3.0
-            name = common_name+f"pou_{mu0:.2e}"
+            name = common_name+f"pou_{mu0:.2e}_lift{lift:.2e}"
             initial = Function(skeleton.function_space(), name=name)
             initial.interpolate(mu0*skeleton * (thickness/2) ** exponent_p / h ** (dim-1) + lift * conditional(brain_mask > 1e-10, 1, 0)+ 1e-8)
             try:
