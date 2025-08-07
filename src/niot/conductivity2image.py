@@ -333,16 +333,14 @@ class PorousMediaMap(Conductivity2ImageMap):
         self.R = FunctionSpace(space.mesh(), 'R', 0)
         self.dt = Function(self.R)
         self.dt0 = dt0
-        self.last_dt = 0.0
-
-
+        
     
         
         self.image_h = Function(space)
         self.tdens4transform = Function(space)
         
         self.intermediate_images = []
-        for i in range(nsteps-1):
+        for i in range(nsteps):
             self.intermediate_images.append(Function(space, name=f'img_{i}'))
         
 
@@ -351,7 +349,7 @@ class PorousMediaMap(Conductivity2ImageMap):
         min_image = 1e-14 # a minimim value for the image
         
         # define PDE 
-        test = TestFunction(space)
+        test = TestFunction(slast_pace)
         permeability = self.exponent_m * (self.image_h ) ** (self.exponent_m - 1) #+ min_image
         
         deg = space.ufl_element().degree()
@@ -477,17 +475,37 @@ class PorousMediaMap(Conductivity2ImageMap):
 
         
         if self.use_stored_images_as_initial_guess and self.stored_images:
-            # this step should not be annotated
-            self.image_h.assign(self.intermediate_images[self.nsteps], annotate=False)
-            self.dt.assign(self.last_dt)
+            total_time = 0.0
+            self.steps_done = 0            
+            for i in range(self.nsteps):
+                
+                # used stored solution as initial guess
+                self.image_h.assign(self.intermediate_images[i], annotate=False)
+                
+                if i > 0:                    
+                    # the the u^{k}=u^{k-1}
+                    self.tdens4transform.assign(self.image_h)
 
-            # invoke the solver to get u^{k+1}
-            self.pm_solver.solve()
+         
+                # assign self.dt, change the expression in the PDE
+                dt = dt0*rate**(i)
+                total_time += dt
+                self.dt.assign(dt)
             
-            if self.verbose > 0:
-                with self.image_h.dat.vec as img_vec:
-                    PETSc.Sys.Print(f"PM with restart")
-                    PETSc.Sys.Print(utilities.msg_bounds(img_vec,'IMG'))
+                # invoke the solver to get u^{k+1}
+                self.pm_solver.solve()
+
+                # print info
+                if self.verbose > 0:
+                    with self.image_h.dat.vec as img_vec:
+                        PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
+                                    + utilities.msg_bounds(img_vec,'IMG'))
+
+                # store images
+                if self.store_images:
+                    self.intermediate_images[i].assign(self.image_h, annotate=False)
+                
+                self.steps_done += 1
 
         else:
             self.images = []
@@ -518,9 +536,8 @@ class PorousMediaMap(Conductivity2ImageMap):
                                     + utilities.msg_bounds(img_vec,'IMG'))
 
                 # store images
-                if i < self.nsteps-1 and self.store_images:
+                if self.store_images:
                     self.intermediate_images[i].assign(self.image_h, annotate=False)
-                    self.last_dt = dt
                 
                 self.steps_done += 1
         
