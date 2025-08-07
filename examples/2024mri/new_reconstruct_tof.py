@@ -833,6 +833,77 @@ def experiment(args):
             initial.interpolate(tof/scaling*conditional(main_network > 0, 1, 0))
             return initial
         
+        if option_type == "corrupted":
+            try:
+                main_network = kwargs['main_network']
+            except:
+                raise ValueError("main_network not provided")
+            
+            try:
+                brain_mask = kwargs['brain_mask']
+            except:
+                raise ValueError("brain mask not provided")
+            
+            try:
+                corrupted = kwargs['corrupted']
+            except:
+                raise ValueError("corrupted not provided")
+            
+            try:
+                lift = option["lift"]
+            except:
+                lift = 1e-4
+
+            name = common_name+f"corrupted_lift{lift:.2e}"
+            support = conditional(brain_mask > 1e-10, 1, 0) + conditional(brain_mask > 1e-10, 0, 1) * conditional(main_network > 0, 1, 0)
+            initial = Function(main_network.function_space(), name=name)
+            initial.interpolate(corrupted*support + lift)
+
+            try:
+                sigma_heat = option["sigma_heat"]
+                heat = HeatMap(initial.function_space(), scaling=1.0, sigma=sigma_heat)
+                initial.assign(heat(initial))
+                name += f"_heat{sigma_heat:.2e}"
+                initial.rename(name)
+            except:
+                pass
+
+
+            return initial
+        
+        if option_type == "support":
+            try:
+                main_network = kwargs['main_network']
+            except:
+                raise ValueError("main_network not provided")
+            
+            try:
+                brain_mask = kwargs['brain_mask']
+            except:
+                raise ValueError("brain not provided")
+            
+            try:
+                lift = option["lift"]
+            except:
+                lift = 1e-4
+
+            name = common_name+f"support_lift{lift:.2e}"
+            support = conditional(brain_mask > 1e-10, 1, 0) + conditional(brain_mask > 1e-10, 0, 1) * conditional(main_network > 0, 1, 0)
+            initial = Function(main_network.function_space(), name=name)
+            initial.interpolate(support + lift)
+
+            try:
+                sigma_heat = option["sigma_heat"]
+                heat = HeatMap(initial.function_space(), scaling=1.0, sigma=sigma_heat)
+                initial.assign(heat(initial))
+                name += f"_heat{sigma_heat:.2e}"
+                initial.rename(name)
+            except:
+                pass
+
+
+            return initial
+        
         if option_type == "skeleton_thickness":
             try:
                 skeleton = kwargs["skeleton"]
