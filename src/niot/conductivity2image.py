@@ -349,7 +349,7 @@ class PorousMediaMap(Conductivity2ImageMap):
         min_image = 1e-14 # a minimim value for the image
         
         # define PDE 
-        test = TestFunction(slast_pace)
+        test = TestFunction(space)
         permeability = self.exponent_m * (self.image_h ) ** (self.exponent_m - 1) #+ min_image
         
         deg = space.ufl_element().degree()
