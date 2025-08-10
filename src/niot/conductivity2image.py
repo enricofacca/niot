@@ -548,7 +548,8 @@ class PorousMediaMap(Conductivity2ImageMap):
 
         # we scale here so we return a function 
         # otherwise (scaling * image) is an expression
-        min_img = self.image_h.dat.data_ro.min()
+        with self.image_h.dat.vec as img_vec:
+            min_img = img_vec.min()[1]    
         if min_img < 0:
             self.image_h -= min_img
         self.image_h *= self.scaling
