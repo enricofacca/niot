@@ -11,7 +11,7 @@ from niot import utilities
 from niot import optimal_transport as ot
 from niot import NiotSolver
 from niot import SpaceDiscretization
-from build_checkpointfile import setup_h5, write_h5
+from build_checkpointfile import setup_h5, write_h5, nii2firedrake
 #from memory_profiler import profile
 
 import warnings
@@ -833,6 +833,19 @@ def experiment(args):
             initial.interpolate(tof/scaling*conditional(main_network > 0, 1, 0))
             return initial
         
+        if option_type == "load":
+            try:
+                path = option['path']
+            except:
+                raise ValueError("path initial tdens to provided")
+            
+            try:
+                cartesian_mesh = kwargs["cartesian_mesh"]
+            except:
+                raise ValueError("cartesian_mesh not provided")
+            initial = nii2firedrake(path,cartesian_mesh,name="load",comm=cartesian_mesh.comm)
+            return initial
+        
         if option_type == "corrupted":
             try:
                 main_network = kwargs['main_network']
@@ -1128,6 +1141,13 @@ def experiment(args):
         
         # set intial guess
         niot_solver.set_solution(tdens=initial)
+
+        try:
+            file_nii_pot = combination["initial_pot"]
+            pot = nii2firedrake(file_nii_pot, cartesian_mesh, name="initial_pot",comm=cartesian_mesh.comm)
+            niot_solver.set_solution(pot=pot)
+        except:
+            pass
         
         save_inputs = True
         if save_inputs:
