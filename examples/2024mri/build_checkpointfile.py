@@ -25,6 +25,20 @@ def clean_npy_file(file_npy):
         pass
 
 
+def nii2firedrake(path, cartesian_mesh, name, comm=COMM_WORLD):
+    # load tof data
+    # tof_np = tof_data.get_fdata()
+    file_nii = path
+    file_npy = "temp.npy"
+    save_as_npy(file_nii, file_npy, comm=comm)
+    data_np = np.load(file_npy,mmap_mode='r')
+    data = i2d.numpy2firedrake(cartesian_mesh, data_np, name=name)
+    data_np = None
+    clean_npy_file(file_npy)
+    return data
+
+
+
 def setup_h5(mri_directory, threshold, blur = 0.0, comm=COMM_WORLD):
     n_proc = comm.size
 
