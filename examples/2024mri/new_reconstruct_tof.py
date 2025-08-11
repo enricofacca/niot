@@ -843,7 +843,7 @@ def experiment(args):
                 cartesian_mesh = kwargs["cartesian_mesh"]
             except:
                 raise ValueError("cartesian_mesh not provided")
-            initial = nii2firedrake(path,cartesian_mesh,name="load",comm=cartesian_mesh.comm)
+            initial = nii2firedrake(path,cartesian_mesh,name=common_name+"load",comm=cartesian_mesh.comm)
             return initial
         
         if option_type == "corrupted":
