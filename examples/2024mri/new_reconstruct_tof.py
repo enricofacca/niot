@@ -582,7 +582,7 @@ def experiment(args):
 
             
             PETSc.Sys.Print(option)
-            
+            PETSc.Sys.Print(f"main{main_confidence:.2e}_eps{eps:.2e}")
 
             confidence = assemble(
                 interpolate( # inside, we trust the network plus a small value
