@@ -576,7 +576,7 @@ def experiment(args):
                 raise ValueError("eps_confidence provided")
             
             try:
-                main_confidence = kwargs['main_confidence']
+                main_confidence = option['main_confidence']
             except:
                 main_confidence = 100
 
