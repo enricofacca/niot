@@ -580,6 +580,10 @@ def experiment(args):
             except:
                 main_confidence = 100
 
+            
+            PETSc.Sys.Print(option)
+            
+
             confidence = assemble(
                 interpolate( # inside, we trust the network plus a small value
                             conditional(brain_mask>1e-10, 1, 0)
