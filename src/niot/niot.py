@@ -1534,13 +1534,13 @@ class NiotSolver:
             img_vec.copy(img_rec_vec)
             PETSc.Sys.Print(utilities.msg_bounds(img_rec_vec,'IMG recosntruction'))
 
-        discrepancy_norm = self.ctrl_get('discrepancy_norm')
-        if discrepancy_norm == "l2":
-            dis = self.confidence * 0.5 * (self.image_h - self.img_observed)**2 * dx
-        elif discrepancy_norm == "dual_h1":
-            self.difference_dual_h1.assign(self.image_h - self.img_observed)
-            self.h1_dual_solver.solve()
-            dis = self.fems.Laplacian_Lagrangian(pot, self.confidence)
+        #discrepancy_norm = self.ctrl_get('discrepancy_norm')
+        #if discrepancy_norm == "l2":
+        dis = self.confidence * 0.5 * (self.image_h - self.img_observed)**2 * dx
+        #elif discrepancy_norm == "dual_h1":
+        #    self.difference_dual_h1.assign(self.image_h - self.img_observed)
+        #    self.h1_dual_solver.solve()
+        #    dis = self.fems.Laplacian_Lagrangian(pot, self.confidence)
 
 
         return dis
