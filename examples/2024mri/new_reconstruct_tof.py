@@ -228,7 +228,7 @@ def set_corrupted_network(**kwargs):
         except:
             threshold_tof = 200
 
-        name = f"OBSsupport_t{threshold_tof:.2e}"
+        name = f"OBStof_t{threshold_tof:.2e}"
 
         try: 
             blur = option['blur']
@@ -1068,8 +1068,7 @@ def experiment(args):
         labels.append(corrupted.name())
         labels.append(sink.name())
         labels.append(kappa.name())
-        labels.append(corrupted.name())
-
+        
         label = "_".join(labels)
         label_dir = os.path.join(out_directory,label)
         mpi_mkdir(label_dir, comm)
