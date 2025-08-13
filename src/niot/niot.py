@@ -1548,7 +1548,8 @@ class NiotSolver:
             dis = self.confidence * 0.5 * (self.image_h - self.img_observed)**2 * dx
         elif discrepancy_norm == "dual_h1":
             # this should be stored by adjoint
-            self.difference_dual_h1.assign(self.image_h - self.img_observed)
+            assemble(interpolate(self.image_h - self.img_observed,self.fems.tdens_space), tensor=self.difference_dual_h1)
+            #self.difference_dual_h1.assign(self.image_h - self.img_observed)
             # this A u = b should be
             self.h1_dual_solver.solve()
             dis = self.fems.Laplacian_Lagrangian(self.pot_dual_h1,  self.confidence, cell2face="arithmetic_mean")
