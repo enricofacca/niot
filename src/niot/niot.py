@@ -1160,6 +1160,11 @@ class NiotSolver:
                     # adjoint computation, like when the map from tdens to image is 
                     # defined as the solution of a PDE (for example the poruous media map).
                     fire_adj.continue_annotation()
+                    self.print_info(
+                        msg="Adjoint computation started",
+                        priority=0, 
+                        where=['stdout','log']
+                        )
                     self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
                     self.adj_discrepancy_fun = assemble(self.discrepancy_form)
                     self.print_info(
