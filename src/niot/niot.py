@@ -1543,7 +1543,7 @@ class NiotSolver:
             self.difference_dual_h1.assign(self.image_h - self.img_observed)
             # this A u = b should be
             self.h1_dual_solver.solve()
-            dis = self.fems.Laplacian_Lagrangian(self.pot_dual_h1,  self.confidence, cell2face="arithmetic_mean")
+            dis = self.fems.Laplacian_Lagrangian(self.pot_dual_h1)#,  self.confidence, cell2face="arithmetic_mean")
         else:
             raise ValueError(f'Wrong discrepancy norm {discrepancy_norm=}')
 
