@@ -1129,7 +1129,7 @@ def experiment(args):
         niot_solver.ctrl_set('max_restart', 4)
         niot_solver.ctrl_set('verbose', 0)
 
-        niot_solver.ctrl_set("discepancy_norm", combination["discrepancy_norm"])
+        niot_solver.ctrl_set("discrepancy_norm", combination["discrepancy_norm"])
 
 
 
