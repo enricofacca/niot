@@ -1110,7 +1110,7 @@ def experiment(args):
             # we need to use the adjoint to compute the gradient of the discrepancy
             niot_solver.ctrl_set(['use_adjoint'], True)
 
-        if niot_solver.ctrl_get("discepancy_norm") != "l2":
+        if niot_solver.ctrl_get("discrepancy_norm") != "l2":
             # we need to use the adjoint to compute the gradient of the discrepancy
             niot_solver.ctrl_set(['use_adjoint'], True)
 
