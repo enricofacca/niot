@@ -731,16 +731,16 @@ class NiotSolver:
         self.increment_h.rename('increment_h')
 
         # # function for h^{-1} norm
-        self.pot_dual_h1 = Function(self.fems.pot_space)
+        self.pot_dual_h1 = Function(self.fems.tdens_space)
         self.pot_dual_h1.rename('pot_dual_h1')
-        test = TestFunction(self.fems.pot_space)  
-        trial = TrialFunction(self.fems.pot_space)
+        test = TestFunction(self.fems.tdens_space)  
+        trial = TrialFunction(self.fems.tdens_space)
         self.dual_h1_sigma =  Function(self.ConstansSpace, name="discrepancy_dual_h1_sigma")
         self.dual_h1_sigma = self.ctrl_get('discrepancy_dual_h1_sigma')
         self.dual_h1_form =  self.dual_h1_sigma * inner(test, trial)*dx
-        self.dual_h1_form += self.shift_semi_implicit * self.fems.Laplacian_form(self.fems.pot_space)
+        self.dual_h1_form += self.shift_semi_implicit * self.fems.Laplacian_form(self.fems.tdens_space)
 
-        self.difference_dual_h1 = Function(self.fems.pot_space)
+        self.difference_dual_h1 = Function(self.fems.tdens_space)
         self.difference_dual_h1.rename('difference_dual_h1')
         self.rhs_form_dual_h1 = self.difference_dual_h1 * test * dx
         self.h1_dual_problem = LinearVariationalProblem(self.dual_h1_form, self.rhs_form_dual_h1, self.pot_dual_h1)
