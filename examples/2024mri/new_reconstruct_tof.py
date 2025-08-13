@@ -1110,6 +1110,8 @@ def experiment(args):
             # we need to use the adjoint to compute the gradient of the discrepancy
             niot_solver.ctrl_set(['use_adjoint'], True)
 
+        niot_solver.ctrl_set("discrepancy_norm", combination["discrepancy_norm"])
+
         if niot_solver.ctrl_get("discrepancy_norm") != "l2":
             # we need to use the adjoint to compute the gradient of the discrepancy
             niot_solver.ctrl_set(['use_adjoint'], True)
@@ -1129,7 +1131,7 @@ def experiment(args):
         niot_solver.ctrl_set('max_restart', 4)
         niot_solver.ctrl_set('verbose', 0)
 
-        niot_solver.ctrl_set("discrepancy_norm", combination["discrepancy_norm"])
+        
 
 
 
