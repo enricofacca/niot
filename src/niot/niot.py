@@ -877,8 +877,11 @@ class NiotSolver:
         #fire_adj.continue_annotation()
 
 
-        if tdens2image == 'identity' and self.ctrl_get("discrepancy_norm") == "l2":
-            self.ctrl_set("use_adjoint", False)
+        if tdens2image == 'identity':
+            if self.ctrl_get("discrepancy_norm") == "l2":
+                self.ctrl_set("use_adjoint", False)
+                self.print_info(f'use_adjoint: {self.ctrl_get("use_adjoint")}',
+                        priority=0, where=['stdout','log'])
             PETSc.Sys.Print(f"scaling {scaling}",comm=self.comm)
             self.tdens2image_map = IdentityMap(self.fems.tdens_space, scaling=scaling)
             self.tdens2image = lambda x: self.tdens2image_map(x)
