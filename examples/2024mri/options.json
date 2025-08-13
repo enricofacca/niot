@@ -2,6 +2,7 @@
     "blur": [1.5],
     "threshold":[250],
     "wd": [1.1e-2],
+    "discrepancy_norm" : ["l2"],
     "initial": [
         {
             "type" : "skeleton_thickness",
@@ -12,7 +13,7 @@
     ],
     "corrupted": [
         {
-            "type":"support",
+            "type":"tof",
             "threshold_tof": 175,
             "blur": 1.5
         }
@@ -20,8 +21,8 @@
     "confidence": [
 	{
 	    "type":"main_plus_eps",
-	    "eps": 1e-1,
-        "main_confidence": 1000
+	    "eps": 1e0,
+        "main_confidence": 100
 	}
 	],
     "map": [

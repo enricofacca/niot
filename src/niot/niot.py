@@ -731,44 +731,44 @@ class NiotSolver:
         self.increment_h.rename('increment_h')
 
         # # function for h^{-1} norm
-        # self.pot_dual_h1 = Function(self.fems.pot_space)
-        # self.pot_dual_h1.rename('pot_dual_h1')
-        # test = TestFunction(self.fems.tdens_space)  
-        # trial = TrialFunction(self.fems.tdens_space)
-        # self.dual_h1_sigma =  Function(self.ConstansSpace, name="discrepancy_dual_h1_sigma")
-        # self.dual_h1_sigma = self.ctrl_get('discrepancy_dual_h1_sigma')
-        # self.dual_h1_form =  self.dual_h1_sigma * inner(test, trial)*dx
-        # self.dual_h1_form += self.shift_semi_implicit * self.fems.Laplacian_form(self.fems.pot_space)
+        self.pot_dual_h1 = Function(self.fems.pot_space)
+        self.pot_dual_h1.rename('pot_dual_h1')
+        test = TestFunction(self.fems.tdens_space)  
+        trial = TrialFunction(self.fems.tdens_space)
+        self.dual_h1_sigma =  Function(self.ConstansSpace, name="discrepancy_dual_h1_sigma")
+        self.dual_h1_sigma = self.ctrl_get('discrepancy_dual_h1_sigma')
+        self.dual_h1_form =  self.dual_h1_sigma * inner(test, trial)*dx
+        self.dual_h1_form += self.shift_semi_implicit * self.fems.Laplacian_form(self.fems.pot_space)
 
-        # self.difference_dual_h1 = Function(self.fems.tdens_space)
-        # self.difference_dual_h1.rename('difference_dual_h1')
-        # self.rhs_form_dual_h1 = self.difference_dual_h1 * test * dx
-        # self.h1_dual_problem = LinearVariationalProblem(self.dual_h1_form, self.rhs_form_dual_h1, self.pot_dual_h1)
-        # solver_parameters={
-        #             'ksp_type': 'cg',
-        #             'ksp_rtol': 1e-6,
-        #             'ksp_atol': 1e-6,
-        #             'ksp_max_it': 500,
-        #             'pc_type': 'hypre',
-        #             'snes_monitor': None,
-        #             #'snes_linesearch_monitor': None,
-        #             'ksp_monitor': None,
-        #             }
+        self.difference_dual_h1 = Function(self.fems.tdens_space)
+        self.difference_dual_h1.rename('difference_dual_h1')
+        self.rhs_form_dual_h1 = self.difference_dual_h1 * test * dx
+        self.h1_dual_problem = LinearVariationalProblem(self.dual_h1_form, self.rhs_form_dual_h1, self.pot_dual_h1)
+        solver_parameters={
+                    'ksp_type': 'cg',
+                    'ksp_rtol': 1e-6,
+                    'ksp_atol': 1e-6,
+                    'ksp_max_it': 500,
+                    'pc_type': 'hypre',
+                    #'snes_monitor': None,
+                    #'snes_linesearch_monitor': None,
+                    'ksp_monitor': None,
+                    }
 
-        # if self.mesh.geometric_dimension() == 3:
-        #     hypre_ctrl_3d = {
-        #                 # tuning parameters for the multigrid
-        #                 # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
-        #                 "pc_hypre_type": "boomeramg",
-        #                 "pc_hypre_boomeramg_strong_threshold": 0.75,
-        #                 "pc_hypre_boomeramg_max_iter": 1,
-        #                 "pc_hypre_boomeramg_agg_nl": 3,
-        #                 "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
-        #             }
-        #     solver_parameters.update(hypre_ctrl_3d)
-        # self.h1_dual_solver = LinearVariationalSolver(self.h1_dual_problem,
-        #                                                 solver_parameters=solver_parameters,
-        #                                                 options_prefix='h1_dual_solver_')
+        if self.mesh.geometric_dimension() == 3:
+            hypre_ctrl_3d = {
+                        # tuning parameters for the multigrid
+                        # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
+                        "pc_hypre_type": "boomeramg",
+                        "pc_hypre_boomeramg_strong_threshold": 0.75,
+                        "pc_hypre_boomeramg_max_iter": 1,
+                        "pc_hypre_boomeramg_agg_nl": 3,
+                        "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
+                    }
+            solver_parameters.update(hypre_ctrl_3d)
+        self.h1_dual_solver = LinearVariationalSolver(self.h1_dual_problem,
+                                                        solver_parameters=solver_parameters,
+                                                        options_prefix='h1_dual_solver_')
         
 
 
@@ -1528,20 +1528,24 @@ class NiotSolver:
         '''
         Measure the discrepancy between I(tdens) and the observed data.
         '''
-        # print min and max of tdens
+        # store image
         self.image_h = self.tdens2image_map(tdens)
+
         with self.image_h.dat.vec as img_vec, self.reconstruction.dat.vec as img_rec_vec:
             img_vec.copy(img_rec_vec)
             PETSc.Sys.Print(utilities.msg_bounds(img_rec_vec,'IMG recosntruction'))
 
-        #discrepancy_norm = self.ctrl_get('discrepancy_norm')
-        #if discrepancy_norm == "l2":
-        dis = self.confidence * 0.5 * (self.image_h - self.img_observed)**2 * dx
-        #elif discrepancy_norm == "dual_h1":
-        #    self.difference_dual_h1.assign(self.image_h - self.img_observed)
-        #    self.h1_dual_solver.solve()
-        #    dis = self.fems.Laplacian_Lagrangian(pot, self.confidence)
-
+        discrepancy_norm = self.ctrl_get('discrepancy_norm')
+        if discrepancy_norm == "l2":
+            dis = self.confidence * 0.5 * (self.image_h - self.img_observed)**2 * dx
+        elif discrepancy_norm == "dual_h1":
+            # this should be stored by adjoint
+            self.difference_dual_h1.assign(self.image_h - self.img_observed)
+            # this A u = b should be
+            self.h1_dual_solver.solve()
+            dis = self.fems.Laplacian_Lagrangian(self.pot_dual_h1,  self.confidence, cell2face="arithmetic_mean")
+        else:
+            raise ValueError(f'Wrong discrepancy norm {discrepancy_norm=}')
 
         return dis
     

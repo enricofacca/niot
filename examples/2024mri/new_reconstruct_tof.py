@@ -1068,6 +1068,12 @@ def experiment(args):
         labels.append(corrupted.name())
         labels.append(sink.name())
         labels.append(kappa.name())
+
+        discrepancy_norm = combination["discrepancy_norm"]
+        labels.append(f"DISC{discrepancy_norm}")
+
+
+
         
         label = "_".join(labels)
         label_dir = os.path.join(out_directory,label)
@@ -1117,6 +1123,11 @@ def experiment(args):
         
         niot_solver.ctrl_set('max_restart', 4)
         niot_solver.ctrl_set('verbose', 0)
+
+        niot_solver.ctrl_set("discepancy_norm", combination["discrepancy_norm"])
+
+
+
 
         # time discretization
         method = "tdens_mirror_descent_explicit"
