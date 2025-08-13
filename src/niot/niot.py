@@ -739,18 +739,26 @@ class NiotSolver:
         self.dual_h1_sigma = self.ctrl_get('discrepancy_dual_h1_sigma')
         self.dual_h1_form =  self.dual_h1_sigma * inner(test, trial)*dx
         self.dual_h1_form += self.shift_semi_implicit * self.fems.Laplacian_form(self.fems.tdens_space)
+        
+
 
         self.difference_dual_h1 = Function(self.fems.tdens_space)
         self.difference_dual_h1.rename('difference_dual_h1')
         self.rhs_form_dual_h1 = self.difference_dual_h1 * test * dx
+        
+        self.h1_dual_PDE = derivative(self.fems.Laplacian_Lagrangian(self.pot_dual_h1), self.pot_dual_h1)
+        self.h1_dual_PDE *= self.dual_h1_sigma * self.pot_dual_h1 * test * dx
+        self.h1_dual_PDE -= self.difference_dual_h1 * test * dx
+
         self.h1_dual_problem = LinearVariationalProblem(self.dual_h1_form, self.rhs_form_dual_h1, self.pot_dual_h1)
+        self.h1_dual_pde_problem = NonLinearVariationalProblem(self.h1_dual_PDE, self.pot_dual_h1)        
         solver_parameters={
                     'ksp_type': 'minres',
                     'ksp_rtol': 1e-8,
                     'ksp_atol': 1e-8,
                     'ksp_max_it': 500,
                     'pc_type': 'hypre',
-                    #'snes_monitor': None,
+                    'snes_monitor': None,
                     #'snes_linesearch_monitor': None,
                     'ksp_monitor': None,
                     }
@@ -769,7 +777,10 @@ class NiotSolver:
         self.h1_dual_solver = LinearVariationalSolver(self.h1_dual_problem,
                                                         solver_parameters=solver_parameters,
                                                         options_prefix='h1_dual_solver_')
-        
+        self.h1_dual_pde_solver = NonlinearVariationalSolver(self.h1_dual_pde_problem,
+                                                             solver_parameters=solver_parameters,
+                                                             options_prefix='h1_dual_pde_solver_')
+
 
 
 
@@ -1551,7 +1562,8 @@ class NiotSolver:
             assemble(interpolate(self.image_h - self.img_observed,self.fems.tdens_space), tensor=self.difference_dual_h1)
             #self.difference_dual_h1.assign(self.image_h - self.img_observed)
             # this A u = b should be
-            self.h1_dual_solver.solve()
+            #self.h1_dual_solver.solve()
+            self.h1_dual_pde_solver.solve()
             dis = self.fems.Laplacian_Lagrangian(self.pot_dual_h1,  self.confidence, cell2face="arithmetic_mean")
         else:
             raise ValueError(f'Wrong discrepancy norm {discrepancy_norm=}')
