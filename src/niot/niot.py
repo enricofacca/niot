@@ -745,9 +745,9 @@ class NiotSolver:
         self.rhs_form_dual_h1 = self.difference_dual_h1 * test * dx
         self.h1_dual_problem = LinearVariationalProblem(self.dual_h1_form, self.rhs_form_dual_h1, self.pot_dual_h1)
         solver_parameters={
-                    'ksp_type': 'cg',
-                    'ksp_rtol': 1e-6,
-                    'ksp_atol': 1e-6,
+                    'ksp_type': 'minres',
+                    'ksp_rtol': 1e-8,
+                    'ksp_atol': 1e-8,
                     'ksp_max_it': 500,
                     'pc_type': 'hypre',
                     #'snes_monitor': None,
