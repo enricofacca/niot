@@ -241,7 +241,7 @@ def set_corrupted_network(**kwargs):
             hx = mesh.hx
             tof_np = gaussian_filter(tof_np, sigma=blur*hx)
             name += f"_blur{blur:.2e}"
-            tof4corrupted = i2d.numpy2firedrake(mesh, tof_np, name="tof_blurred")
+            tof4corrupted = i2d.numpy2firedrake(mesh, tof_np, name=name)
         else:
             tof4corrupted = tof
 
