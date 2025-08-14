@@ -746,12 +746,12 @@ class NiotSolver:
         self.difference_dual_h1.rename('difference_dual_h1')
         self.rhs_form_dual_h1 = self.difference_dual_h1 * test * dx
         
-        self.h1_dual_PDE = derivative(self.fems.Laplacian_Lagrangian(self.pot_dual_h1), self.pot_dual_h1)
-        self.h1_dual_PDE *= self.dual_h1_sigma * self.pot_dual_h1 * test * dx
-        self.h1_dual_PDE -= self.difference_dual_h1 * test * dx
+        #self.h1_dual_PDE = derivative(self.fems.Laplacian_Lagrangian(self.pot_dual_h1), self.pot_dual_h1)
+        #self.h1_dual_PDE *= self.dual_h1_sigma * self.pot_dual_h1 * test * dx
+        #self.h1_dual_PDE -= self.difference_dual_h1 * test * dx
 
         self.h1_dual_problem = LinearVariationalProblem(self.dual_h1_form, self.rhs_form_dual_h1, self.pot_dual_h1)
-        self.h1_dual_pde_problem = NonLinearVariationalProblem(self.h1_dual_PDE, self.pot_dual_h1)        
+        #self.h1_dual_pde_problem = NonLinearVariationalProblem(self.h1_dual_PDE, self.pot_dual_h1)        
         solver_parameters={
                     'ksp_type': 'minres',
                     'ksp_rtol': 1e-8,
@@ -777,9 +777,9 @@ class NiotSolver:
         self.h1_dual_solver = LinearVariationalSolver(self.h1_dual_problem,
                                                         solver_parameters=solver_parameters,
                                                         options_prefix='h1_dual_solver_')
-        self.h1_dual_pde_solver = NonlinearVariationalSolver(self.h1_dual_pde_problem,
-                                                             solver_parameters=solver_parameters,
-                                                             options_prefix='h1_dual_pde_solver_')
+        #self.h1_dual_pde_solver = NonlinearVariationalSolver(self.h1_dual_pde_problem,
+        #                                                     solver_parameters=solver_parameters,
+        #                                                     options_prefix='h1_dual_pde_solver_')
 
 
 
