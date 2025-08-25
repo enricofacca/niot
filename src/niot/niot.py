@@ -311,7 +311,11 @@ class SpaceDiscretization:
 
         if degree == 0:
             # the weight need to be "projected to the facets"
-            facet_weight = self.cell2face_map(weight, cell2face)
+            if weight is not None:
+                facet_weight = self.cell2face_map(weight, cell2face)
+            else:
+                facet_weight = 1.0
+            
             if space.mesh().ufl_cell().is_simplex():
                 # if the mesh is simplicial, we use the DG0 laplacian taken from
                 # https://www.firedrakeproject.org/demos/saddle_point_systems.py.html
@@ -736,7 +740,7 @@ class NiotSolver:
         test = TestFunction(self.fems.tdens_space)  
         trial = TrialFunction(self.fems.tdens_space)
         self.dual_h1_sigma =  Function(self.ConstansSpace, name="discrepancy_dual_h1_sigma")
-        self.dual_h1_sigma = self.ctrl_get('discrepancy_dual_h1_sigma')
+        self.dual_h1_sigma.assign(self.ctrl_get('discrepancy_dual_h1_sigma'))
         self.dual_h1_form =  self.dual_h1_sigma * inner(test, trial)*dx
         self.dual_h1_form += self.shift_semi_implicit * self.fems.Laplacian_form(self.fems.tdens_space)
         
@@ -1169,29 +1173,32 @@ class NiotSolver:
             if dw > 0:
                 
                 if use_adjoint :
-                    # The following is required to keep track of the 
-                    # adjoint computation, like when the map from tdens to image is 
-                    # defined as the solution of a PDE (for example the poruous media map).
-                    fire_adj.continue_annotation()
-                    self.print_info(
-                        msg="Adjoint computation started",
-                        priority=0, 
-                        where=['stdout','log']
-                        )
-                    self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
-                    self.adj_discrepancy_fun = assemble(self.discrepancy_form)
-                    self.print_info(
-                        msg="computed discrepancy form",
-                        priority=0, 
-                        where=['stdout','log']
-                        )
-                    self.adj_discrepancy_fun_reduced = fire_adj.ReducedFunctional(self.adj_discrepancy_fun, fire_adj.Control(self.tdens_h))
-                    self.print_info(
-                        msg="computed reduced",
-                        priority=0, 
-                        where=['stdout','log']
-                        )
-                    
+                    if self.adj_discrepancy_fun_reduced is None:
+                        # The following is required to keep track of the 
+                        # adjoint computation, like when the map from tdens to image is 
+                        # defined as the solution of a PDE (for example the poruous media map).
+                        fire_adj.continue_annotation()
+                        self.print_info(
+                            msg="Adjoint computation started",
+                            priority=0, 
+                            where=['stdout','log']
+                            )
+                        self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
+                        self.adj_discrepancy_fun = assemble(self.discrepancy_form)
+                        self.print_info(
+                            msg="computed discrepancy form",
+                            priority=0, 
+                            where=['stdout','log']
+                            )
+                        self.adj_discrepancy_fun_reduced = fire_adj.ReducedFunctional(self.adj_discrepancy_fun, fire_adj.Control(self.tdens_h))
+                        self.print_info(
+                            msg="computed reduced",
+                            priority=0, 
+                            where=['stdout','log']
+                            )
+                        fire_adj.pause_annotation()
+
+
                     # the following is required since the ouptut of the adjoint is stored as function
                     # while is a co-function (is integrated over the mesh)
                     gradient_fun = self.adj_discrepancy_fun_reduced.derivative()
@@ -1202,9 +1209,9 @@ class NiotSolver:
                         priority=0, 
                         where=['stdout','log']
                         )
-                    fire_adj.pause_annotation()
-                    tape = fire_adj.get_working_tape()
-                    tape.clear_tape()
+                    
+                    #tape = fire_adj.get_working_tape()
+                    #tape.clear_tape()
                 else:
                     self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
                     self.gradient_discrepancy_form = derivative(self.discrepancy_form, 
@@ -1561,8 +1568,8 @@ class NiotSolver:
             assemble(interpolate(self.image_h - self.img_observed,self.fems.tdens_space), tensor=self.difference_dual_h1)
             #self.difference_dual_h1.assign(self.image_h - self.img_observed)
             # this A u = b should be
-            #self.h1_dual_solver.solve()
-            self.h1_dual_pde_solver.solve()
+            self.h1_dual_solver.solve()
+            #self.h1_dual_pde_solver.solve()
             dis = self.fems.Laplacian_Lagrangian(self.pot_dual_h1,  self.confidence, cell2face="arithmetic_mean")
         else:
             raise ValueError(f'Wrong discrepancy norm {discrepancy_norm=}')
