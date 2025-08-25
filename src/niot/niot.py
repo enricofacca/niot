@@ -1173,7 +1173,7 @@ class NiotSolver:
             if dw > 0:
                 
                 if use_adjoint :
-                    if hasattr(self, "adj_discrepancy_fun_reduced"):
+                    if not hasattr(self, "adj_discrepancy_fun_reduced"):
                         # The following is required to keep track of the 
                         # adjoint computation, like when the map from tdens to image is 
                         # defined as the solution of a PDE (for example the poruous media map).
