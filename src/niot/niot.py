@@ -397,8 +397,8 @@ def set_step(increment,
         order_down = -0.8
         order_up = 0.8
         r = increment / state
-        r_min = r.min()
-        r_max = r.max()
+        _, r_min = r.min()
+        _, r_max = r.max()
 
         #r_np = r.array
         if r_min < 0:
