@@ -35,6 +35,9 @@ from firedrake.__future__ import interpolate
 import firedrake.adjoint as fire_adj
 
 
+from progress.bar import FillingSquaresBar
+fire_adj.get_working_tape().progress_bar = FillingSquaresBar
+
 
 
 from firedrake.tsfc_interface import TSFCKernel
@@ -393,17 +396,24 @@ def set_step(increment,
         order_down = -0.8
         order_up = 0.8
         r = increment / state
-        r_np = r.array
-        if np.min(r_np) < 0:
-            negative = np.where(r_np < 0)
-            hdown = (10**order_down-1) / r_np[negative]
-            down = np.min(hdown)
+        with r.dat.vec_ro as r_vec:
+            r_min = r_vec.min()
+            r_max = r_vec.max()
+
+        #r_np = r.array
+        if r_min < 0:
+            #negative = np.where(r_np < 0)
+            #hdown = (10**order_down-1) / r_np[negative]
+            #down = np.min(hdown)
+            down = (10**order_down-1) / r_min
         else:
             down = upper_bound
-        if np.max(r_np) > 0:
-            positive = np.where(r_np>0)
-            hup = (10**order_up - 1) / r_np[positive]
-            up = np.min(hup)
+        
+        if r_max > 0:
+            #positive = np.where(r_np>0)
+            #hup = (10**order_up - 1) / r_np[positive]
+            #up = np.min(hup)
+            up = (10**order_up - 1) / r_max
         else:
             up = upper_bound
         step = min(up,down)
@@ -1197,6 +1207,9 @@ class NiotSolver:
                             where=['stdout','log']
                             )
                         fire_adj.pause_annotation()
+                    else:
+                        self.adj_discrepancy_fun = self.adj_discrepancy_fun_reduced(self.tdens_h)
+                        
 
 
                     # the following is required since the ouptut of the adjoint is stored as function
