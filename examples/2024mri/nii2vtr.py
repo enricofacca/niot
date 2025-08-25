@@ -38,6 +38,7 @@ for i, nii_file in enumerate(nii_files):
     offset = epi_img.affine[:3, 3]
 
     if i == 0:
+        print(f"Data : {nx}x{ny}x{nz}")
         old_shape = epi_img_data.shape
         old_size = epi_img.header['pixdim'][1:4]
         old_offset = epi_img.affine[:3, 3]
