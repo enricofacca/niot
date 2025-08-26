@@ -200,37 +200,44 @@ if (__name__ == '__main__'):
     main_network = np.zeros_like(labels_np, dtype=np.uint8)
     main_network[labels_np == 1] = 1
     
+    restrict = False
     # restrict
-    min_indices, max_indices = indices_surronding_box(main_network)
-    main_network_np = main_network[
-        min_indices[0]:max_indices[0]+1,
-        min_indices[1]:max_indices[1]+1,
-        min_indices[2]:max_indices[2]+1
-    ]
-    dimensions = main_network_np.shape
-    lengths = [
-        hx * dimensions[0],
-        hy * dimensions[1],
-        hz * dimensions[2]
-    ]
+    if restrict:
+        min_indices, max_indices = indices_surronding_box(main_network)
+        main_network_np = main_network[
+            min_indices[0]:max_indices[0]+1,
+            min_indices[1]:max_indices[1]+1,
+            min_indices[2]:max_indices[2]+1
+        ]
+        dimensions = main_network_np.shape
+        lengths = [
+            hx * dimensions[0],
+            hy * dimensions[1],
+            hz * dimensions[2]
+        ]
 
-    
-    offsets = [hx*min_indices[0],
-               hy*min_indices[1],
-               hz*min_indices[2]]
-    PETSc.Sys.Print(f"{dimensions=} {lengths=}")
-    
-    new_affine = cp.copy(tof_nii.affine)
-    new_affine[0,0] = hx
-    new_affine[1,1] = hy
-    new_affine[2,2] = hz
+        
+        offsets = [hx*min_indices[0],
+                hy*min_indices[1],
+                hz*min_indices[2]]
+        PETSc.Sys.Print(f"{dimensions=} {lengths=}")
+        
+        new_affine = cp.copy(tof_nii.affine)
+        new_affine[0,0] = hx
+        new_affine[1,1] = hy
+        new_affine[2,2] = hz
 
-    new_affine[0,3] += offsets[0]
-    new_affine[1,3] += offsets[1]
-    new_affine[2,3] += offsets[2]
-    
-    new_header = cp.copy(tof_nii.header)
-    new_header['pixdim'][1:4] = main_network.shape
+        new_affine[0,3] += offsets[0]
+        new_affine[1,3] += offsets[1]
+        new_affine[2,3] += offsets[2]
+        
+        new_header = cp.copy(tof_nii.header)
+        new_header['pixdim'][1:4] = main_network.shape
+    else:
+        new_header = cp.copy(tof_nii.header)
+        new_affine = cp.copy(tof_nii.affine)
+
+
 
     filename = f"{args.out}/main_network_{label}.nii.gz"
     save_np_as_nifti(main_network, new_affine, filename) 
@@ -294,16 +301,17 @@ if (__name__ == '__main__'):
     filename = f"{args.out}/tubular_{label}_c{args.mu0:.2e}.nii.gz"
     save_np_as_nifti(tubular_np, new_affine, filename)
 
-    tof_np = tof_np[
-        min_indices[0]:max_indices[0]+1,
-        min_indices[1]:max_indices[1]+1,
-        min_indices[2]:max_indices[2]+1
-    ]
-    tof_np = np.ascontiguousarray(tof_np)
+    if restrict:
+        tof_np = tof_np[
+            min_indices[0]:max_indices[0]+1,
+            min_indices[1]:max_indices[1]+1,
+            min_indices[2]:max_indices[2]+1
+        ]
+        tof_np = np.ascontiguousarray(tof_np)
 
     
-    data = [tof_np, skeleton_np, thickness_np, tdens_np, tubular_np]
-    names = ["tof", "skeleton", "thickness", "tdens", "tubular"]
+    data = [tof_np, main_network_np, skeleton_np, thickness_np, tdens_np, tubular_np]
+    names = ["tof", "main_network", "skeleton", "thickness", "tdens", "tubular"]
 
     offset = tof_nii.affine[:3, 3]
     lx, ly, lz = dimensions[0]*hx, dimensions[1]*hy, dimensions[2]*hz
