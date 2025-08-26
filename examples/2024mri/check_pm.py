@@ -274,7 +274,7 @@ if (__name__ == '__main__'):
     # 
     # The scaling by hx**(dim-1) is to get a Dirac-like distribution
     #
-    tdens_np = args.mu0 * skeleton_radius_np**exponent_p / hx**(dim-1)
+    tdens_np = args.mu0 * skeleton_radius_np**exponent_p / (hx*1e-3) **(dim-1)
     filename = f"{args.out}/tdens_{label}_c{args.mu0:.2e}.nii.gz"
     save_np_as_nifti(tdens_np, new_affine, filename) 
     
