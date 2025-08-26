@@ -14,7 +14,7 @@ import argparse
 import numpy as np
 from niot import conductivity2image
 from numpy.random import rand
-
+from scipy.ndimage import zoom
 import copy as cp
 
 import gc
@@ -151,6 +151,7 @@ if (__name__ == '__main__'):
     parser.add_argument('--mu0', type=float, default=8/np.pi*3e-3, help='conductivity at which the thickness is zero')
     parser.add_argument('--dt0', type=float, default=1e-2, help='initial time step for porous media map')
     parser.add_argument('--nsteps', type=int, default=3, help='number of time steps for porous media map')
+    parser.add_argument('--nref', type=int, default=0, help='number of refinements of the mesh')
     parser.add_argument('--out', type=str, default="./check_pm", help='output directory')
     args = parser.parse_args()
 
@@ -161,13 +162,14 @@ if (__name__ == '__main__'):
     os.makedirs(args.out, exist_ok=True)
 
 
-
-
     # load tof data and get basic info
     tof_nii = nibabel.load(args.tof)
     tof_np = tof_nii.get_fdata()
     dimensions = tof_np.shape
     hx, hy, hz = tof_nii.header['pixdim'][1:4]
+    hx *= 1e-3
+    hy *= 1e-3
+    hz *= 1e-3
     lengths = np.array([float(dimensions[0]*hx), 
                         float(dimensions[1]*hy), 
                         float(dimensions[2]*hz)])
@@ -238,6 +240,22 @@ if (__name__ == '__main__'):
         new_affine = cp.copy(tof_nii.affine)
 
 
+    if args.nref > 0:
+        # refine the image
+        main_network = zoom(main_network, 2**args.nref, order=0, mode='nearest')
+        dimensions = main_network.shape
+        hx /= 2.0
+        hy /= 2.0
+        hz /= 2.0
+        
+        
+        new_affine[0,0] = hx
+        new_affine[1,1] = hy
+        new_affine[2,2] = hz
+        new_header['pixdim'][1:4] = main_network.shape
+        PETSc.Sys.Print(f"Refined {args.nref} times to {dimensions=} {lengths=}")
+
+
 
     filename = f"{args.out}/main_network_{label}.nii.gz"
     save_np_as_nifti(main_network, new_affine, filename) 
@@ -255,7 +273,7 @@ if (__name__ == '__main__'):
     # compute local thickness of the main network
     thickness_np = lt.local_thickness(main_network)
     # scale by thickness 
-    thickness_np *= hx * 1e-3
+    thickness_np *= hx
     filename = f"{args.out}/thichness_{label}.nii.gz"
     save_np_as_nifti(thickness_np, new_affine, filename) 
     
@@ -274,7 +292,7 @@ if (__name__ == '__main__'):
     # 
     # The scaling by hx**(dim-1) is to get a Dirac-like distribution
     #
-    tdens_np = args.mu0 * skeleton_radius_np**exponent_p / (hx*1e-3) **(dim-1)
+    tdens_np = args.mu0 * skeleton_radius_np**exponent_p / (hx)**(dim-1)
     filename = f"{args.out}/tdens_{label}_c{args.mu0:.2e}.nii.gz"
     save_np_as_nifti(tdens_np, new_affine, filename) 
     
@@ -315,6 +333,6 @@ if (__name__ == '__main__'):
 
     offset = tof_nii.affine[:3, 3]
     lx, ly, lz = dimensions[0]*hx, dimensions[1]*hy, dimensions[2]*hz
-    i2d.numpy2vtr(data, [lx, ly, lz], f"{args.out}/results.vtr", names=names, offset=offset)
+    i2d.numpy2vtr(data, [lx, ly, lz], f"{args.out}/nref{args.nref}_results", names=names, offset=offset)
     
 
