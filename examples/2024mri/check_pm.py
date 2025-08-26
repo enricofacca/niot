@@ -255,7 +255,7 @@ if (__name__ == '__main__'):
     # compute local thickness of the main network
     thickness_np = lt.local_thickness(main_network)
     # scale by thickness 
-    thickness_np *= hx
+    thickness_np *= hx * 1e-3
     filename = f"{args.out}/thichness_{label}.nii.gz"
     save_np_as_nifti(thickness_np, new_affine, filename) 
     
