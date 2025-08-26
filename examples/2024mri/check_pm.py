@@ -267,7 +267,7 @@ if (__name__ == '__main__'):
 
     dim = cartesian_mesh.geometric_dimension()
     exponent_p = 4.0
-    skeleton_radius_np = skeleton_np * (thickness_np/2)
+    skeleton_radius_np = skeleton_np * (thickness_np)
     # The formula is 
     #
     # mu = 8 nu / pi r^4
