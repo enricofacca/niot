@@ -204,12 +204,12 @@ if (__name__ == '__main__'):
     # restrict
     if restrict:
         min_indices, max_indices = indices_surronding_box(main_network)
-        main_network_np = main_network[
+        main_network = main_network[
             min_indices[0]:max_indices[0]+1,
             min_indices[1]:max_indices[1]+1,
             min_indices[2]:max_indices[2]+1
         ]
-        dimensions = main_network_np.shape
+        dimensions = main_network.shape
         lengths = [
             hx * dimensions[0],
             hy * dimensions[1],
@@ -310,7 +310,7 @@ if (__name__ == '__main__'):
         tof_np = np.ascontiguousarray(tof_np)
 
     
-    data = [tof_np, main_network_np, skeleton_np, thickness_np, tdens_np, tubular_np]
+    data = [tof_np, main_network, skeleton_np, thickness_np, tdens_np, tubular_np]
     names = ["tof", "main_network", "skeleton", "thickness", "tdens", "tubular"]
 
     offset = tof_nii.affine[:3, 3]
