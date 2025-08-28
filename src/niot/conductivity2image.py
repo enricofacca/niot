@@ -53,9 +53,11 @@ class IdentityMap(Conductivity2ImageMap):
     """
     def __init__(self, space, scaling=1.0) -> None:
         self.space = space
-        self.scaling = scaling
+        self.constant_space = FunctionSpace(space.mesh(), 'R', 0)
+        self.scaling = Function(self.constant_space)
+        self.scaling.assign(scaling)
         self.image_h = Function(space)
-        self.cd = {self.image_h: self.scaling}
+        #self.cd = {self.image_h: self.scaling}
     def __call__(self, conductivity, **kargs) -> Function:
         #self.image_h = assemble(interpolate(self.scaling * conductivity, self.space))
         self.image_h.assign(self.scaling * conductivity)#
@@ -242,6 +244,9 @@ class Barenblatt():
         self.alpha = self.eval_alpha(self.exponent_m, self.dim)
         self.B = self.eval_B(self.exponent_m, self.dim)
         self.K_md = self.eval_K_md(self.exponent_m, self.dim)
+        self.z_md = self.eval_z_of_md(self.exponent_m, self.dim)
+        self.w_d = self.eval_w_of_d(self.dim)
+
 
 
     def eval_alpha(self,exponent_m, dim):
@@ -273,6 +278,24 @@ class Barenblatt():
             raise ValueError('Integral not computed with sufficient accuracy')
         return (wd_d * ( B ** (-dim/2) )  * integral) ** (-beta*(exponent_m-1))
     
+    # compute the integral numerically
+    def eval_z_of_md(self, exponent_m, dim):
+        """
+        Compute the integral of 
+        \int_0^{\pi/2} \cos(\theta)**((m+1)/(m-1)) * sin(\theta)**(d-1) d\theta
+        """
+        def integrand(theta,m,d):
+            return np.cos(theta)**((m+1)/(m-1)) * np.sin(theta)**(d-1)
+            
+        integral, err_estimate = quad(integrand, 0, np.pi/2, args=(float(exponent_m),float(dim))) 
+        if err_estimate > 1e-6:
+            raise ValueError('Integral not computed with sufficient accuracy')
+        return integral
+    
+    def eval_w_of_d(self, dim):
+        # sphere volume
+        wd_d = np.pi**(dim/2)/gamma(dim/2 + 1)
+        return wd_d
     
     def radius(self, t, M):
         """
@@ -291,7 +314,12 @@ class Barenblatt():
         find sigma such that
         M = (Dirac value at t=0) ~ k * (r(\sigma))**p 
         """
-        return (k**(-1/exponent_p) * self.K_md ** (-1/2) * self.B **(1/2))**(1/self.beta)
+        #return (k**(-1/exponent_p) * self.K_md ** (-1/2) * self.B **(1/2))**(1/self.beta)
+        return ( k**(-1/exponent_p) 
+                * ( self.w_d * self.z_md) ** (self.beta * (self.exponent_m - 1)) 
+                / self.B **(self.beta)
+                ) ** (1/self.beta)
+        
 
 
 class PorousMediaMap(Conductivity2ImageMap):
