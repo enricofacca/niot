@@ -1228,8 +1228,8 @@ class NiotSolver:
                 else:
                     self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
                     self.gradient_discrepancy_form = derivative(self.discrepancy_form, 
-                                                                 self.tdens_h,
-                                                                 coefficient_derivatives=self.tdens2image_map.cd)
+                                                                 self.tdens_h),
+                                                                 #coefficient_derivatives=self.tdens2image_map.cd)
                     # Simple derivative computation
                     # It uses less memory, but it requires the functional
                     # as combination of operations manegable by automatic differiantion.
