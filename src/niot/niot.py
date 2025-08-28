@@ -747,35 +747,45 @@ class NiotSolver:
         # # function for h^{-1} norm
         self.pot_dual_h1 = Function(self.fems.tdens_space)
         self.pot_dual_h1.rename('pot_dual_h1')
-        test = TestFunction(self.fems.tdens_space)  
-        trial = TrialFunction(self.fems.tdens_space)
-        self.dual_h1_sigma =  Function(self.ConstansSpace, name="discrepancy_dual_h1_sigma")
-        self.dual_h1_sigma.assign(self.ctrl_get('discrepancy_dual_h1_sigma'))
-        self.dual_h1_form =  self.dual_h1_sigma * inner(test, trial)*dx
-        self.dual_h1_form += self.shift_semi_implicit * self.fems.Laplacian_form(self.fems.tdens_space)
-        
-
 
         self.difference_dual_h1 = Function(self.fems.tdens_space)
         self.difference_dual_h1.rename('difference_dual_h1')
         self.rhs_form_dual_h1 = self.difference_dual_h1 * test * dx
+    
         
-        #self.h1_dual_PDE = derivative(self.fems.Laplacian_Lagrangian(self.pot_dual_h1), self.pot_dual_h1)
-        #self.h1_dual_PDE *= self.dual_h1_sigma * self.pot_dual_h1 * test * dx
-        #self.h1_dual_PDE -= self.difference_dual_h1 * test * dx
-
-        self.h1_dual_problem = LinearVariationalProblem(self.dual_h1_form, self.rhs_form_dual_h1, self.pot_dual_h1)
-        #self.h1_dual_pde_problem = NonLinearVariationalProblem(self.h1_dual_PDE, self.pot_dual_h1)        
+        self.dual_h1_sigma =  Function(self.ConstansSpace, name="discrepancy_dual_h1_sigma")
+        self.dual_h1_sigma.assign(self.ctrl_get('discrepancy_dual_h1_sigma'))
+        #
+        # Define the form 
+        # int (1/2 |\nabla u|^2 + 1/2 sigma u^2) confidence - rhs u
+        #
+        
+        
+        self.dual_h1_Lagrangian = (
+            self.fems.Laplacian_Lagrangian(self.pot_dual_h1, self.confidence, cell2face="arithmetic_mean")
+            +  # 0.5 because also Laplacain Lagrangian has this factor
+            0.5 * self.dual_h1_sigma * self.pot_dual_h1**2 * test * dx
+            - self.difference_dual_h1 * self.pot_dual_h1 * dx
+        )
+        
+        # Define the problem
+        self.h1_dual_PDE = derivative(self.dual_h1_Lagrangian, self.pot_dual_h1)
+        #self.h1_dual_problem = NonLinearVariationalProblem(self.dual_h1_from, self.pot_dual_h1)
+        self.h1_dual_pde_problem = NonLinearVariationalProblem(self.h1_dual_PDE, self.pot_dual_h1)        
+        
+        
+        # Define solver
         solver_parameters={
-                    'ksp_type': 'minres',
-                    'ksp_rtol': 1e-8,
-                    'ksp_atol': 1e-8,
-                    'ksp_max_it': 500,
-                    'pc_type': 'hypre',
-                    'snes_monitor': None,
-                    #'snes_linesearch_monitor': None,
-                    'ksp_monitor': None,
-                    }
+                'snes_type': 'ksponly',
+                'ksp_type': 'minres',
+                'ksp_rtol': 1e-8,
+                'ksp_atol': 1e-8,
+                'ksp_max_it': 500,
+                'pc_type': 'hypre',
+                'snes_monitor': None,
+                #'snes_linesearch_monitor': None,
+                'ksp_monitor': None,
+                }
 
         if self.mesh.geometric_dimension() == 3:
             hypre_ctrl_3d = {
@@ -788,12 +798,12 @@ class NiotSolver:
                         "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
                     }
             solver_parameters.update(hypre_ctrl_3d)
-        self.h1_dual_solver = LinearVariationalSolver(self.h1_dual_problem,
-                                                        solver_parameters=solver_parameters,
-                                                        options_prefix='h1_dual_solver_')
-        #self.h1_dual_pde_solver = NonlinearVariationalSolver(self.h1_dual_pde_problem,
-        #                                                     solver_parameters=solver_parameters,
-        #                                                     options_prefix='h1_dual_pde_solver_')
+        #self.h1_dual_solver = LinearVariationalSolver(self.h1_dual_problem,
+        #                                                solver_parameters=solver_parameters,
+        #                                                options_prefix='h1_dual_solver_')
+        self.h1_dual_pde_solver = NonlinearVariationalSolver(self.h1_dual_pde_problem,
+                                                             solver_parameters=solver_parameters,
+                                                             options_prefix='h1_dual_pde_solver_')
 
 
 
@@ -1581,9 +1591,12 @@ class NiotSolver:
             assemble(interpolate(self.image_h - self.img_observed,self.fems.tdens_space), tensor=self.difference_dual_h1)
             #self.difference_dual_h1.assign(self.image_h - self.img_observed)
             # this A u = b should be
-            self.h1_dual_solver.solve()
-            #self.h1_dual_pde_solver.solve()
-            dis = self.fems.Laplacian_Lagrangian(self.pot_dual_h1,  self.confidence, cell2face="arithmetic_mean")
+            #self.h1_dual_solver.solve()
+            self.h1_dual_pde_solver.solve()
+            dis = self.dual_h1_Lagrangian 
+                #self.fems.Laplacian_Lagrangian(self.pot_dual_h1,  self.confidence, cell2face="arithmetic_mean") 
+                #+ 0.5 * self.confidence * self.dual_h1_sigma * self.pot_dual_h1 **2 *dx
+                #)  
         else:
             raise ValueError(f'Wrong discrepancy norm {discrepancy_norm=}')
 
