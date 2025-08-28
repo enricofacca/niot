@@ -51,7 +51,7 @@ def downsample(data, coarseness, mode="zoom"):
         
         return data
 
-def indices_restrict(data_shape, lengths, xyz_bounds):
+def indices_restrict(data_shape, lengths, xyz_bounds,offset=[0,0,0]):
     """ 
     Assuming that LX=1
     """
@@ -59,11 +59,12 @@ def indices_restrict(data_shape, lengths, xyz_bounds):
     for axis_index in range(len(data_shape)):
         n_axis = data_shape[axis_index]
         len_axis = lengths[axis_index]
+        base = offset[axis_index]
         if xyz_bounds[axis_index] is None:
             indices_bounds.append([0,n_axis])
         else:
             lower, upper = xyz_bounds[axis_index]
-            indices_bound = [max(0,int(lower/len_axis*n_axis)),min(int(upper/len_axis*n_axis),n_axis)]
+            indices_bound = [max(0,int((lower-base)/len_axis*n_axis)),min(int((upper-base)/len_axis*n_axis),n_axis)]
             indices_bounds.append( indices_bound)
     return np.array(indices_bounds)
 
@@ -88,6 +89,7 @@ def resize(args):
     lengths = np.array([float(original_dimensions[0]*hx), 
                         float(original_dimensions[1]*hy), 
                         float(original_dimensions[2]*hz)])
+    offset_data = tof_data.affine[:3, 3]
 
     
     xyz_bounds=[[args.xmin,args.xmax],
@@ -95,7 +97,9 @@ def resize(args):
                 [args.zmin,args.zmax]]
     indices_bounds = indices_restrict(tof_np.shape,
                                     lengths=lengths,
-                                    xyz_bounds=xyz_bounds)
+                                    xyz_bounds=xyz_bounds,
+                                    offset=offset_data)
+    
     offsets = [hx*indices_bounds[0][0],
                hy*indices_bounds[1][0],
                hz*indices_bounds[2][0]]
