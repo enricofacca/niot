@@ -36,7 +36,7 @@ import firedrake.adjoint as fire_adj
 
 
 from progress.bar import FillingSquaresBar
-fire_adj.get_working_tape().progress_bar = FillingSquaresBar
+#fire_adj.get_working_tape().progress_bar = FillingSquaresBar
 
 
 
@@ -484,6 +484,7 @@ class NiotSolver:
         'verbose' : 0,
         'log_verbose': 2,
         'log_file': 'niot.log',
+        'adjoint_verbose': 0,
         #'inpainting' : {
         'discrepancy_weight': 1.0,
         'discrepancy_norm': "l2",
@@ -514,7 +515,7 @@ class NiotSolver:
         },
         'optimization_type' : 'dmk',
         'dmk': {
-            'type' : 'tdens_mirror_descent',
+            'type' : 'tdens_mirror_descent_explicit',
             'tdens_mirror_descent_explicit' : {
                 'gradient_scaling' : 'dmk',
                 'deltat' : {
@@ -764,29 +765,41 @@ class NiotSolver:
         self.dual_h1_Lagrangian = (
             self.fems.Laplacian_Lagrangian(self.pot_dual_h1, self.confidence, cell2face="arithmetic_mean")
             +  # 0.5 because also Laplacain Lagrangian has this factor
-            0.5 * self.dual_h1_sigma * self.pot_dual_h1**2 * test * dx
+            0.5 * self.dual_h1_sigma * self.pot_dual_h1**2 * dx
             - self.difference_dual_h1 * self.pot_dual_h1 * dx
         )
+        self.dual_h1_form = self.fems.Laplacian_form(self.fems.tdens_space, self.confidence, cell2face="arithmetic_mean")
+        test = TestFunction(self.fems.tdens_space)
+        trial = TrialFunction(self.fems.tdens_space)
+        self.dual_h1_form += self.dual_h1_sigma * test * trial * self.confidence * dx 
+        self.dual_h1_rhs = self.difference_dual_h1 * test * dx
+        
+
+        #t = assemble(self.dual_h1_Lagrangian)
         
         # Define the problem
         self.h1_dual_PDE = derivative(self.dual_h1_Lagrangian, self.pot_dual_h1)
-        #self.h1_dual_problem = NonLinearVariationalProblem(self.dual_h1_from, self.pot_dual_h1)
-        self.h1_dual_pde_problem = NonLinearVariationalProblem(self.h1_dual_PDE, self.pot_dual_h1)        
+        self.h1_dual_problem = LinearVariationalProblem(self.dual_h1_form,self.dual_h1_rhs, self.pot_dual_h1)
+        self.h1_dual_pde_problem = NonlinearVariationalProblem(self.h1_dual_PDE, self.pot_dual_h1)        
         
         
         # Define solver
         solver_parameters={
                 'snes_type': 'ksponly',
                 'ksp_type': 'minres',
-                'ksp_rtol': 1e-8,
+                'ksp_rtol': 1e-12,
                 'ksp_atol': 1e-8,
                 'ksp_max_it': 500,
                 'pc_type': 'hypre',
-                'snes_monitor': None,
+                #'snes_monitor': None,
                 #'snes_linesearch_monitor': None,
-                'ksp_monitor': None,
+                #'ksp_monitor': None,
                 }
-
+        if self.ctrl_get('adjoint_verbose') >= 2:
+            solver_parameters.update({"snes_monitor": None})
+        if self.ctrl_get('adjoint_verbose') >= 3:
+            solver_parameters.update({"ksp_monitor": None})
+        
         if self.mesh.geometric_dimension() == 3:
             hypre_ctrl_3d = {
                         # tuning parameters for the multigrid
@@ -798,9 +811,9 @@ class NiotSolver:
                         "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
                     }
             solver_parameters.update(hypre_ctrl_3d)
-        #self.h1_dual_solver = LinearVariationalSolver(self.h1_dual_problem,
-        #                                                solver_parameters=solver_parameters,
-        #                                                options_prefix='h1_dual_solver_')
+        self.h1_dual_solver = LinearVariationalSolver(self.h1_dual_problem,
+                                                        solver_parameters=solver_parameters,
+                                                        options_prefix='h1_dual_solver_')
         self.h1_dual_pde_solver = NonlinearVariationalSolver(self.h1_dual_pde_problem,
                                                              solver_parameters=solver_parameters,
                                                              options_prefix='h1_dual_pde_solver_')
@@ -913,10 +926,6 @@ class NiotSolver:
 
 
         if tdens2image == 'identity':
-            if self.ctrl_get("discrepancy_norm") == "l2":
-                self.ctrl_set("use_adjoint", False)
-                
-            PETSc.Sys.Print(f"scaling {scaling}",comm=self.comm)
             self.tdens2image_map = IdentityMap(self.fems.tdens_space, scaling=scaling)
             self.tdens2image = lambda x: self.tdens2image_map(x)
 
@@ -1102,14 +1111,16 @@ class NiotSolver:
 
 
                
-    def print_info(self, msg, priority=0, where=['stdout'], color='black'):
+    def print_info(self, msg, priority=0, where=['stdout'], color='black', verbose=None):
         '''
         Print messagge to stdout and to log 
         file according to priority passed
         '''
         for mode in where:
             if mode=='stdout':
-                verbose = self.ctrl_get('verbose')
+                if verbose is None:
+                    verbose = self.ctrl_get('verbose')
+
                 if verbose >= priority: 
                     if color != 'black':
                         stdout_msg = utilities.color(color, msg)
@@ -1193,6 +1204,7 @@ class NiotSolver:
             if dw > 0:
                 
                 if use_adjoint :
+                    adjoint_verbose = self.ctrl_get('adjoint_verbose')
                     if not hasattr(self, "adj_discrepancy_fun_reduced"):
                         # The following is required to keep track of the 
                         # adjoint computation, like when the map from tdens to image is 
@@ -1200,84 +1212,102 @@ class NiotSolver:
                         fire_adj.continue_annotation()
                         self.print_info(
                             msg="Start annotation",
-                            priority=0, 
-                            where=['stdout','log']
+                            priority=1, 
+                            where=['stdout','log'],
+                            verbose=adjoint_verbose
                             )
                         self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
                         self.adj_discrepancy_fun = assemble(self.discrepancy_form)
+                        
                         self.print_info(
-                            msg="computed discrepancy form",
-                            priority=0, 
-                            where=['stdout','log']
+                            msg=f"computed discrepancy form {self.adj_discrepancy_fun:.2e}",
+                            priority=1, 
+                            where=['stdout','log'],
+                            verbose=adjoint_verbose
                             )
                         self.print_info(
                             msg="Compute reduced",
-                            priority=0, 
-                            where=['stdout','log']
+                            priority=1, 
+                            where=['stdout','log'],
+                            verbose=adjoint_verbose
                             )
                         self.adj_discrepancy_fun_reduced = fire_adj.ReducedFunctional(self.adj_discrepancy_fun, fire_adj.Control(self.tdens_h))
                         self.print_info(
-                            msg="computed reduced",
-                            priority=0, 
-                            where=['stdout','log']
+                            msg="DISCR",
+                            priority=1, 
+                            where=['stdout','log'],
+                            verbose=adjoint_verbose
                             )
                         self.print_info(
                             msg="End annotation. Reduced functional is defined",
-                            priority=0, 
-                            where=['stdout','log']
+                            priority=1, 
+                            where=['stdout','log'],
+                            verbose=adjoint_verbose
                             )
                         fire_adj.pause_annotation()
                     else:
                         self.adj_discrepancy_fun = self.adj_discrepancy_fun_reduced(self.tdens_h)
                         self.print_info(
                             msg="Compute reduced",
-                            priority=0, 
-                            where=['stdout','log']
+                            priority=1, 
+                            where=['stdout','log'],
+                            verbose=adjoint_verbose
                             )
                         
-
-
                     # the following is required since the ouptut of the adjoint is stored as function
                     # while is a co-function (is integrated over the mesh)
                     gradient_fun = self.adj_discrepancy_fun_reduced.derivative()
+
                     with gradient_fun.dat.vec_ro as gD, self.gradient_discrepancy.dat.vec as conf_vec:
-                        gD.copy(conf_vec)
+                        #gD.copy(conf_vec)
+                        self.fems.tdens_mass_matrix.mult(gD, conf_vec)
+                    
                     self.print_info(
                         msg="computed gradient",
-                        priority=0, 
-                        where=['stdout','log']
+                        priority=1, 
+                        where=['stdout','log'],
+                        verbose=adjoint_verbose
                         )
                     
                     
                     #tape = fire_adj.get_working_tape()
                     #tape.clear_tape()
                 else:
-                    map_type = self.ctrl_get('map_type')
+                    map_type = self.ctrl_get(["tdens2image", "type"])
                     if map_type == 'identity':
+                        # set the discrepancy term and assembly
                         self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
+                        
+                        
+                        
+                        self.adj_discrepancy_fun = assemble(self.discrepancy_form)
+                        
+                        # accordinf to the norm use we can simplfy the computaion 
+                        # of the gradient
                         discrepancy_norm = self.ctrl_get('discrepancy_norm')
                         if discrepancy_norm == 'l2':
                             self.gradient_discrepancy_form = derivative(self.discrepancy_form, 
                                                                  self.tdens_h,
                                                                  coefficient_derivatives=self.tdens2image_map.cd)
                         elif discrepancy_norm == 'dual_h1':
-                            self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
+                            
                             # discrepancy form is 
                             # 
                             # int (I(tdens)-I_obs) * dual_pot(tdens)
                             # 
                             # But the subdifferential is just dual_pot(tdens) so we can compute
                             #           
-                            self.gradient_discrepancy_form = self.discrepancy_weight * self.pot_dual_h1 * self.difference_dual_h1 * dx
+                            self.gradient_discrepancy_form = ( 2.0 # correction 
+                                                              * self.discrepancy_weight # scaling factor (confidence goes in the solver)
+                                                              * self.pot_dual_h1 
+                                                              * self.tdens2image_map.scaling # include the derivate of map
+                                                              * self.fems.tdens_test * dx) #defining the form
                         else:
                             raise ValueError(f"Only l2 and dual_h1 implemented")
                     else:
                         raise ValueError(f"Not adjoint works only for identity map")
                 
 
-                    
-                    
-                    
                     # Simple derivative computation
                     # It uses less memory, but it requires the functional
                     # as combination of operations manegable by automatic differiantion.
@@ -1296,25 +1326,20 @@ class NiotSolver:
             else:
                 self.gradient_discrepancy.assign(0.0)
 
-            with self.reconstruction.dat.vec as rec_vec, self.image_h.dat.vec as img_vec:
-                # print bounds
-                PETSc.Sys.Print(utilities.msg_bounds(img_vec,'IMG'))
-                PETSc.Sys.Print(utilities.msg_bounds(rec_vec,'REC'))
+            #with self.reconstruction.dat.vec as rec_vec, self.image_h.dat.vec as img_vec:
+            #    # print bounds
+            #    PETSc.Sys.Print(utilities.msg_bounds(img_vec,'IMG'))
+            #    PETSc.Sys.Print(utilities.msg_bounds(rec_vec,'REC'))
 
             # Penalization
             if pw > 0:
                 self.penalization_form = self.penalization_weight * self.penalization(self.pot_h,self.tdens_h)
                 # no need to use adjoint here, since the penalization is expressed as pure firedrake functions
-                if False:#use_adjoint:
-                    self.adj_penalization_fun = assemble(self.penalization_form)
-                    self.adj_penalization_fun_reduced = fire_adj.ReducedFunctional(self.adj_penalization_fun, fire_adj.Control(self.tdens_h))
-                    self.gradient_penalization = self.adj_penalization_fun_reduced.derivative()
-                else:
-                    self.gradient_penalization_form = derivative(self.penalization_form, self.tdens_h)
-                    self.gradient_penalization = assemble(self.gradient_penalization_form)
+                self.gradient_penalization_form = derivative(self.penalization_form, self.tdens_h)
+                self.gradient_penalization = assemble(self.gradient_penalization_form)
                 
                 with self.gradient_penalization.dat.vec_ro as gP:
-                    msg = utilities.msg_bounds(gP,'grad penalty       ')
+                    msg = utilities.msg_bounds(gP,f'grad penalty {pw=:2e}        ')
                     self.print_info(
                         msg=msg,
                         priority=1, 
@@ -1619,24 +1644,22 @@ class NiotSolver:
 
         with self.image_h.dat.vec as img_vec, self.reconstruction.dat.vec as img_rec_vec:
             img_vec.copy(img_rec_vec)
-            PETSc.Sys.Print(utilities.msg_bounds(img_rec_vec,'IMG recosntruction'))
+            #PETSc.Sys.Print(utilities.msg_bounds(img_rec_vec,'IMG recosntruction'))
 
         discrepancy_norm = self.ctrl_get('discrepancy_norm')
         if discrepancy_norm == "l2":
             dis = self.confidence * 0.5 * (self.image_h - self.img_observed)**2 * dx
         elif discrepancy_norm == "dual_h1":
             # this should be stored by adjoint
-            assemble(interpolate(self.image_h - self.img_observed,self.fems.tdens_space), tensor=self.difference_dual_h1)
-            #self.difference_dual_h1.assign(self.image_h - self.img_observed)
+            #assemble(interpolate(self.image_h - self.img_observed,self.fems.tdens_space), tensor=self.difference_dual_h1)
+            self.difference_dual_h1.assign(self.image_h - self.img_observed)
             # this A u = b should be
-            #self.h1_dual_solver.solve()
-            self.h1_dual_pde_solver.solve()
-            #dis = self.difference_dual_h1 * self.pot_h * dx
-            # 
-                #self.dual_h1_Lagrangian 
-                #self.fems.Laplacian_Lagrangian(self.pot_dual_h1,  self.confidence, cell2face="arithmetic_mean") 
-                #+ 0.5 * self.confidence * self.dual_h1_sigma * self.pot_dual_h1 **2 *dx
-                #) 
+            self.h1_dual_solver.solve()
+            #self.h1_dual_pde_solver.solve()
+            dis = (
+                self.fems.Laplacian_Lagrangian(self.pot_dual_h1,  self.confidence, cell2face="arithmetic_mean") 
+                + 0.5 * self.confidence * self.dual_h1_sigma * self.pot_dual_h1 **2 *dx
+                ) 
             dis = self.pot_dual_h1 * self.difference_dual_h1 * dx
         else:
             raise ValueError(f'Wrong discrepancy norm {discrepancy_norm=}')
