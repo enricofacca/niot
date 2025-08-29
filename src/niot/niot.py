@@ -1199,7 +1199,7 @@ class NiotSolver:
                         # defined as the solution of a PDE (for example the poruous media map).
                         fire_adj.continue_annotation()
                         self.print_info(
-                            msg="Adjoint computation started",
+                            msg="Start annotation",
                             priority=0, 
                             where=['stdout','log']
                             )
@@ -1210,15 +1210,30 @@ class NiotSolver:
                             priority=0, 
                             where=['stdout','log']
                             )
+                        self.print_info(
+                            msg="Compute reduced",
+                            priority=0, 
+                            where=['stdout','log']
+                            )
                         self.adj_discrepancy_fun_reduced = fire_adj.ReducedFunctional(self.adj_discrepancy_fun, fire_adj.Control(self.tdens_h))
                         self.print_info(
                             msg="computed reduced",
                             priority=0, 
                             where=['stdout','log']
                             )
+                        self.print_info(
+                            msg="End annotation. Reduced functional is defined",
+                            priority=0, 
+                            where=['stdout','log']
+                            )
                         fire_adj.pause_annotation()
                     else:
                         self.adj_discrepancy_fun = self.adj_discrepancy_fun_reduced(self.tdens_h)
+                        self.print_info(
+                            msg="Compute reduced",
+                            priority=0, 
+                            where=['stdout','log']
+                            )
                         
 
 
@@ -1233,13 +1248,36 @@ class NiotSolver:
                         where=['stdout','log']
                         )
                     
+                    
                     #tape = fire_adj.get_working_tape()
                     #tape.clear_tape()
                 else:
-                    self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
-                    self.gradient_discrepancy_form = derivative(self.discrepancy_form, 
-                                                                 self.tdens_h),
-                                                                 #coefficient_derivatives=self.tdens2image_map.cd)
+                    map_type = self.ctrl_get('map_type')
+                    if map_type == 'identity':
+                        self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
+                        discrepancy_norm = self.ctrl_get('discrepancy_norm')
+                        if discrepancy_norm == 'l2':
+                            self.gradient_discrepancy_form = derivative(self.discrepancy_form, 
+                                                                 self.tdens_h,
+                                                                 coefficient_derivatives=self.tdens2image_map.cd)
+                        elif discrepancy_norm == 'dual_h1':
+                            self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
+                            # discrepancy form is 
+                            # 
+                            # int (I(tdens)-I_obs) * dual_pot(tdens)
+                            # 
+                            # But the subdifferential is just dual_pot(tdens) so we can compute
+                            #           
+                            self.gradient_discrepancy_form = self.discrepancy_weight * self.pot_dual_h1 * self.difference_dual_h1 * dx
+                        else:
+                            raise ValueError(f"Only l2 and dual_h1 implemented")
+                    else:
+                        raise ValueError(f"Not adjoint works only for identity map")
+                
+
+                    
+                    
+                    
                     # Simple derivative computation
                     # It uses less memory, but it requires the functional
                     # as combination of operations manegable by automatic differiantion.
@@ -1593,10 +1631,13 @@ class NiotSolver:
             # this A u = b should be
             #self.h1_dual_solver.solve()
             self.h1_dual_pde_solver.solve()
-            dis = self.dual_h1_Lagrangian 
+            #dis = self.difference_dual_h1 * self.pot_h * dx
+            # 
+                #self.dual_h1_Lagrangian 
                 #self.fems.Laplacian_Lagrangian(self.pot_dual_h1,  self.confidence, cell2face="arithmetic_mean") 
                 #+ 0.5 * self.confidence * self.dual_h1_sigma * self.pot_dual_h1 **2 *dx
-                #)  
+                #) 
+            dis = self.pot_dual_h1 * self.difference_dual_h1 * dx
         else:
             raise ValueError(f'Wrong discrepancy norm {discrepancy_norm=}')
 
