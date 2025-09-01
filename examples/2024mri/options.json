@@ -3,6 +3,7 @@
     "threshold":[250],
     "wd": [1.1e-2],
     "discrepancy_norm" : ["l2"],
+    "discrepancy_dual_h1_sigma" : [1e-3], 
     "initial": [
         {
             "type" : "skeleton_thickness",
@@ -20,7 +21,7 @@
         ],
     "confidence": [
 	{
-	    "type":"main_plus_eps",
+	    "type": "main_plus_eps",
 	    "eps": 1e0,
         "main_confidence": 100
 	}
