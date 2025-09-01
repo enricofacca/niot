@@ -1073,9 +1073,18 @@ def experiment(args):
             discrepancy_norm = combination["discrepancy_norm"]
         except: 
             discrepancy_norm = "l2"
-            
-        labels.append(f"DISC{discrepancy_norm}")
 
+        if discrepancy_norm == "dual_h1":
+            try: 
+                discrepancy_dual_h1_sigma = combination["sigma"]
+            except:
+                discrepancy_dual_h1_sigma = 1.0
+            
+
+
+        labels.append(f"DISC{discrepancy_norm}")
+        if discrepancy_norm == "dual_h1":
+            labels.append(f"sigma{discrepancy_dual_h1_sigma:.1e}")
 
         
         label = "_".join(labels)
@@ -1107,8 +1116,10 @@ def experiment(args):
         wd = combination["wd"]
         niot_solver.ctrl_set('discrepancy_weight', wd)
         niot_solver.ctrl_set('regularization_weight', 0.0)
+        
         tdens2image = combination["map"]
         niot_solver.ctrl_set(['tdens2image'], tdens2image)
+
         if tdens2image['type'] == 'pm':
             # we need to use the adjoint to compute the gradient of the discrepancy
             niot_solver.ctrl_set(['use_adjoint'], True)
@@ -1116,10 +1127,8 @@ def experiment(args):
         
         niot_solver.ctrl_set("discrepancy_norm", discrepancy_norm)
 
-        if discrepancy_norm != "l2":
-            # we need to use the adjoint to compute the gradient of the discrepancy
-            niot_solver.ctrl_set(['use_adjoint'], True)
-
+        if discrepancy_norm == "dual_h1":
+            niot_solver.ctrl_set("discrepancy_dual_h1_sigma", discrepancy_dual_h1_sigma)
 
 
         # optimization
