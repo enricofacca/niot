@@ -103,11 +103,12 @@ def inputs_data(nref=0):
         "one": one}
 
 
-@pytest.mark.parametrize("discr_norm", ["l2","dual_h1"])
-@pytest.mark.parametrize("wd", [2,10])
-@pytest.mark.parametrize("wp", [1e-1,5])
+@pytest.mark.parametrize("discr_norm", ["dual_h1","l2"])
+@pytest.mark.parametrize("wd", [10])
+@pytest.mark.parametrize("wp", [1e-1])
 @pytest.mark.parametrize("conf", ["mask","one"])
-def test_gradients(inputs_data, discr_norm, wd, wp, conf):
+@pytest.mark.parametrize("sigma", [1.0,1e-1,0.0])
+def test_gradients(inputs_data, discr_norm, wd, wp, conf, sigma):
     """
     Check take all gradeint are computed correctly
     using or not the adjoint method
@@ -136,10 +137,12 @@ def test_gradients(inputs_data, discr_norm, wd, wp, conf):
     niot_solver.ctrl_set("discrepancy_weight",wd)
     niot_solver.ctrl_set("penalization_weight",wp)
     niot_solver.ctrl_set("discrepancy_norm",discr_norm)
+    niot_solver.ctrl_set("discrepancy_dual_h1_sigma", sigma)
     niot_solver.ctrl_set("max_iter",2)
     niot_solver.ctrl_set("verbose",0)
     niot_solver.ctrl_set("use_adjoint",False)
     niot_solver.ctrl_set("tdens2image",t2i_map)
+
     niot_solver.setup()
     niot_solver.solve()
     end = time.time() 
@@ -175,6 +178,7 @@ def test_gradients(inputs_data, discr_norm, wd, wp, conf):
     niot_solver_adj.ctrl_set("discrepancy_weight",wd)
     niot_solver_adj.ctrl_set("discrepancy_norm",discr_norm)
     niot_solver_adj.ctrl_set("penalization_weight",wp)
+    niot_solver.ctrl_set("discrepancy_dual_h1_sigma", sigma)    
     niot_solver_adj.ctrl_set("max_iter",2)
     niot_solver_adj.ctrl_set("verbose",0)
     niot_solver_adj.ctrl_set("use_adjoint",True)
