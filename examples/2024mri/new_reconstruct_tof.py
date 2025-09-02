@@ -1267,6 +1267,8 @@ def experiment(args):
             cpu = time.time() - tic
             PETSc.Sys.Print(f"color {color_rank} - Done {interval[1]/total_iterations*100:.1f}% of {total_iterations}- avg cpu {cpu/buffer_saving:.1f} s - {label}",comm=comm)
 
+
+        niot_solver = None
         gc.collect()
         
         
