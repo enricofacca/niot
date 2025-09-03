@@ -1076,7 +1076,7 @@ def experiment(args):
 
         if discrepancy_norm == "dual_h1":
             try: 
-                discrepancy_dual_h1_sigma = combination["sigma"]
+                discrepancy_dual_h1_sigma = combination["discrepancy_dual_h1_sigma"]
             except:
                 discrepancy_dual_h1_sigma = 1.0
             
