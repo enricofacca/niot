@@ -593,7 +593,55 @@ def experiment(args):
             confidence.rename(f"confmain_{main_confidence:.2e}_eps{eps:.2e}")
             
             return confidence
-        
+        elif option_type == "main_tof_eps":
+            # get main network
+            try:
+                main_network = kwargs['main_network']
+            except:
+                raise ValueError("main_network not provided")
+            
+            try:
+                tof = kwargs['tof']
+            except:
+                raise ValueError("main_network not provided")
+            
+            # get brain mask
+            try:
+                brain_mask = kwargs['brain_mask']
+            except:
+                raise ValueError("brain_mask not provided")
+            
+            # get brain mask
+            try:
+                eps = option['eps']
+            except:
+                raise ValueError("eps_confidence provided")
+            
+            try:
+                main_confidence = option['main_confidence']
+            except:
+                main_confidence = 100
+
+            
+            confidence = assemble(
+                interpolate( # inside, we trust the network plus a small value
+                            conditional(brain_mask>1e-10, 1, 0)
+                            * (
+                                main_confidence  * conditional(main_network > 0, 1, 0) 
+                                + tof 
+                                + eps 
+                                )
+                                # outside, strong cce, where we set no network
+                            + main_confidence * conditional(brain_mask<=1e-10, 1, 0), 
+                            main_network.function_space()
+                            )
+                        )
+            confidence.rename(f"CONFmain_{main_confidence:.2e}_tof_eps{eps:.2e}")
+            
+            return confidence
+
+
+
         else:
             raise ValueError(f"Unknown confidence option {option}")
 
