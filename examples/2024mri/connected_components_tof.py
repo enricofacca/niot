@@ -73,6 +73,9 @@ def save_main_and_external_network_as_nifti(dir_nii, threshold, blur=0.0):
     # load tof data and get basic info
     tof_data = nibabel.load(f"{dir_nii}TOF.nii.gz")
     tof_np = tof_data.get_fdata()
+    # get pixel size
+    hx, hy, hz = tof_data.header['pixdim'][1:4]
+    
 
     # set common label
     label = f"t{threshold:.2e}"
@@ -80,11 +83,11 @@ def save_main_and_external_network_as_nifti(dir_nii, threshold, blur=0.0):
         label += f"_blur{blur:.2e}"
     print(f"Label: {label}")
 
+
+
     # blur 
     if blur > 0:
         from scipy.ndimage import gaussian_filter
-        # get pixel size
-        hx, hy, hz = tof_data.header['pixdim'][1:4]
         tof_np = gaussian_filter(tof_np, sigma=blur*hx)
 
         nibabel.save(nibabel.Nifti1Image(tof_np, tof_data.affine), 
