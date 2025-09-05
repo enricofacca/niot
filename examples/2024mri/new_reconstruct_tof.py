@@ -1265,7 +1265,7 @@ def experiment(args):
         def solve_and_save(niot_solver, label_dir, n_buffer):
             
             # select if we just want the latest solution 
-            update_solution = False
+            update_solution = True
             if update_solution:
                 file_label = "final"
             else:
