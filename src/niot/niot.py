@@ -488,7 +488,7 @@ class NiotSolver:
         #'inpainting' : {
         'discrepancy_weight': 1.0,
         'discrepancy_norm': "l2",
-        "discrepancy_dual_h1_sigma" : 1.0,
+        'discrepancy_dual_h1_sigma' : 1.0,
         'regularization_weight': 0.0,
         'penalization_weight': 1.0,
         # tdens to image mapping
@@ -756,18 +756,20 @@ class NiotSolver:
         
         self.dual_h1_sigma =  Function(self.ConstansSpace, name="discrepancy_dual_h1_sigma")
         self.dual_h1_sigma.assign(self.ctrl_get('discrepancy_dual_h1_sigma'))
+        PETSc.Sys.Print("sigma", self.ctrl_get('discrepancy_dual_h1_sigma'))
+        
         #
         # Define the form 
         # int (1/2 |\nabla u|^2 + 1/2 sigma u^2) confidence - rhs u
         #
         
         
-        self.dual_h1_Lagrangian = (
-            self.fems.Laplacian_Lagrangian(self.pot_dual_h1, self.confidence, cell2face="arithmetic_mean")
-            +  # 0.5 because also Laplacain Lagrangian has this factor
-            0.5 * self.dual_h1_sigma * self.pot_dual_h1**2 * dx
-            - self.difference_dual_h1 * self.pot_dual_h1 * dx
-        )
+        # self.dual_h1_Lagrangian = (
+        #     self.fems.Laplacian_Lagrangian(self.pot_dual_h1, self.confidence, cell2face="arithmetic_mean")
+        #     +  # 0.5 because also Laplacain Lagrangian has this factor
+        #     0.5 * self.dual_h1_sigma * self.pot_dual_h1**2 * dx
+        #     - self.difference_dual_h1 * self.pot_dual_h1 * dx
+        # )
         self.dual_h1_form = self.dual_h1_sigma * self.fems.Laplacian_form(self.fems.tdens_space, self.confidence, cell2face="arithmetic_mean")
         test = TestFunction(self.fems.tdens_space)
         trial = TrialFunction(self.fems.tdens_space)
