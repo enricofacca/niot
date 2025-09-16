@@ -71,7 +71,7 @@ def build_masked_mesh(support_mask, lengths, threshold=1e-10, sigma_blur=1.2):
 
     # create 2D mesh from the projection
     PETSc.Sys.Print("Creating 2D mesh from the projection")
-    topol, coordinates, edges = i2d.topol_coords_edges_from_mask(mask_xy, 
+    topol, coordinates, edges, _ = i2d.topol_coords_edges_from_mask(mask_xy, 
                                                                 Lx=lengths[0], 
                                                                 Ly=lengths[1], 
                                                                 invert_rows_columns=True,
@@ -122,9 +122,11 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
     # define the mesh based on the brain mask
     PETSc.Sys.Print(f"Mesh")
     if masked_mesh:
+        PETSc.Sys.Print(f"Building masked mesh ")
         cartesian_mesh, brain_mask = build_masked_mesh(brain_mask_np, lengths, threshold=1e-10, sigma_blur=1.2)
         
     else:
+        PETSc.Sys.Print(f"Building full mesh ")
         cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths,comm=comm)        
         brain_mask = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name="brain_mask")
     PETSc.Sys.Print(f"done")
