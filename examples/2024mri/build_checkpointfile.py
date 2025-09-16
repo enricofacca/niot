@@ -1,5 +1,5 @@
 import nibabel 
-from firedrake import CheckpointFile, COMM_WORLD, PETSc,dx, conditional, assemble
+from firedrake import CheckpointFile, COMM_WORLD, PETSc,dx, conditional, assemble, ExtrudedMesh
 from niot import image2dat as i2d
 import argparse
 import numpy as np
