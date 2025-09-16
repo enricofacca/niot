@@ -22,6 +22,8 @@ from mpi4py.MPI import SUM
 from pyevtk.hl import gridToVTK, imageToVTK
 import time
 
+import pymetis
+
 ###############################
 # CONVENTIONS
 # x: horizontal axis
@@ -916,4 +918,111 @@ def topol_coords_edges_from_mask(mask, Lx=1.0, Ly=1.0,
    #   xy_coord[:,1] = Ly - xy_coord[:,1]
 
 
-   return new_nodes_in_cells, xy_coord,  new_edges
+   return new_nodes_in_cells, xy_coord,  new_edges, inverse_cells
+
+
+def mask_base_height(nonzeros):
+   """
+   Calculates a 2D mask, base, and height map from a 3D binary array.
+
+   The mask is a 2D array where each value is 1 if there is at least one non-zero
+   element in the corresponding z-direction, and 0 otherwise.
+
+   The base is a 2D array where each value is the count of non-zero elements in the
+
+   The height map contains the index of the first non-zero element along the
+   z-axis (axis 2) for each (x, y) coordinate.
+
+   Args:
+      nonzeros (np.ndarray): A 3D numpy array with binary (0 or 1) values.
+
+   Returns:
+      np.ndarray: A 2D numpy array where each value is the index of the first
+                  non-zero element in the corresponding z-direction. If a
+                  z-column contains all zeros, the value is set to -1.
+   """
+
+   height = np.sum(nonzeros, axis=2)
+   mask = np.zeros_like(base)
+   mask[height > 0] = 1
+
+
+   # np.argmax returns the index of the first occurrence of the maximum value.
+   # Since the array is binary, the first '1' is the maximum value.
+   base = np.argmax(nonzeros, axis=2)
+
+   # A potential issue with np.argmax is that if a slice along the z-axis
+   # contains all zeros, it will return 0, which is an incorrect height.
+   # We need to identify these cases and mark them.
+   # Where the mask is True, set the height to -1 to indicate no non-zero
+   # element was found.
+   base[height == 0] = -1
+
+   return mask, base, height
+
+
+def mesh_from_3d_mask(mask3d, lengths):
+   # 
+   nx, ny, nz = mask3d.shape
+   mask, base, height = mask_base_height_from_array(mask3d)
+
+   # 1. Create topology and coordinates from the 2D mask
+   topol, xy_coords, new_edges, inverse_cells = topol_coords_edges_from_mask(mask, lengths[0], lengths[1])
+   
+
+   # 2. Convert height into a 1d-array compatible with cell numbering
+   ncells = mask.sum()
+   height2 = np.zeros(ncells)
+   icell, jcell = np.where(height > 0)
+   nonzero_indices = inverse_cells[index_from_ij(icell, jcell, ny)]
+   height2[nonzero_indices] = height[icell, jcell]
+
+
+   # 3. Create the adjacency list for the graph
+   G = nx.Graph(new_edges.tolist())
+   Adj_list = []
+   for s, nbrs in G.adjacency():
+      Adj_list.append([int(t) for t in nbrs.keys()])
+
+   n_parts = COMM_WORLD.size
+   # 4. Run the partitioning algorithm
+   cuts, partition_for_node = pymetis.part_graph(
+      n_parts,
+      adjacency=Adj_list,
+      vweights=list(height2)
+   )
+
+   # 5. Process the output, mapping indices back to node tuples
+   partitions = [[] for _ in range(n_parts)]
+   for i, part_num in enumerate(partition_for_node):
+      partitions[part_num].append(i)
+
+   size_partions = [len(part) for part in partitions]
+   print("partitions sizes", size_partions)
+   # flattend partions list
+   flat_partion = np.array([x for part in partitions for x in part], dtype=int)
+
+
+   # 1. Create the 2D mesh distrubuted according to height-based partition
+   distribution_parameters={"partition": (size_partions, flat_partion)}
+   selected_mesh2d = mesh_from_topology(topol, xy_coords, reorder=False, distribution_parameters=distribution_parameters)
+   
+
+
+   variable_layers = height2[flat_partion]
+
+   # extrude with variable layers
+   selected_mesh3d = ExtrudedMesh(selected_mesh2d, variable_layers, lengths[2]/mask3d.shape[2])
+   selected_mesh3d.nx = mask3d.shape[0]
+   selected_mesh3d.ny = mask3d.shape[1]
+   selected_mesh3d.nz = mask3d.shape[2]
+   selected_mesh3d.xmin = 0.0
+   selected_mesh3d.ymin = 0.0
+   selected_mesh3d.zmin = 0.0
+   selected_mesh3d.xmax = lengths[0]
+   selected_mesh3d.ymax = lengths[1]
+   selected_mesh3d.zmax = lengths[2]
+
+   return selected_mesh3d
+
+   
