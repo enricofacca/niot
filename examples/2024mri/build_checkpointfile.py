@@ -58,13 +58,12 @@ def build_masked_mesh(support_mask, dimensions, threshold=1e-10, sigma_blur=1.2)
 
 
     # compute proportion of non-zero voxels
-    print("Proportion of non-zero voxels:", np.count_nonzero(support) / support.size)
+    PETSc.Sys.Print("Proportion of non-zero voxels:", np.count_nonzero(support) / support.size)
 
     # project on xy plane
     support_xy = np.max(support, axis=2)
-    PETSc.Sys.Print(f"data_xy shape: {support_xy.shape}")
     # compute proportion of non-zero voxels in the projection
-    print("Proportion of non-zero voxels in the projection:", np.count_nonzero(support_xy) / support_xy.size)
+    PETSc.Sys.Print("Proportion of non-zero voxels in the projection:", np.count_nonzero(support_xy) / support_xy.size)
 
     mask_xy = np.zeros_like(support_xy, dtype=np.uint8)
     mask_xy[support_xy > 0] = 1
@@ -79,9 +78,7 @@ def build_masked_mesh(support_mask, dimensions, threshold=1e-10, sigma_blur=1.2)
                                                                 flip_up_down=True)
     PETSc.Sys.Print("Creating 2D mesh ")
     mesh2d = i2d.mesh_from_topology(topol, coordinates, reorder=False)
-    PETSc.Sys.Print("Saving 2D mesh ")
-    VTKFile("base_mesh.pvd").write(mesh2d)
-
+    
     PETSc.Sys.Print("Creating 3D mesh ")
     mesh3d = ExtrudedMesh(mesh2d, nz, dimensions[2]/nz)
     mesh3d.nx = nx
