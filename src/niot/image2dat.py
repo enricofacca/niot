@@ -335,7 +335,7 @@ def compatible(mesh, value):
       raise ValueError('Only 2D and 3D images are supported')
    return check
       
-def numpy2firedrake(mesh, value, name=None, lengths=None):
+def numpy2firedrake(mesh, value, name=None, lengths=None, invert_rows_columns=convention_2d_invert_rows_columns):
    '''
    Convert np array (2d o 3d) into a function compatible with the mesh solver.
    Args:
@@ -355,6 +355,8 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
       
    nxyz = get_box_division(mesh)
 
+   PETSc.Sys.Print(f'Converting numpy array to firedrake function {value.shape=} {nxyz=} {lengths=}')
+
    if mesh.geometric_dimension() == 3:    
       hx = lengths[0]/nxyz[0]
       hy = lengths[1]/nxyz[1]
@@ -371,7 +373,7 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
       #   
       # NOTE that we are reading the transpose of the value
       #
-      if convention_2d_invert_rows_columns: 
+      if invert_rows_columns: 
          hx = lengths[0]/nxyz[0]
          hy = lengths[1]/nxyz[1]
          def my_data(xyz): 
@@ -383,11 +385,12 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
       else:
          hx = lengths[0]/nxyz[0]
          hy = lengths[1]/nxyz[1]
+         PETSc.Sys.Print(f'Converting numpy array to firedrake function {hx=} {hy=}')
          def my_data(xyz): 
             x = xyz[:,0]
             y = xyz[:,1]
-            i = np.fix(x/hx).astype(int)
-            j = np.fix(y/hy).astype(int)
+            i = np.fix((lengths[1]-y)/hx).astype(int)
+            j = np.fix(x/hy).astype(int)
             return value[i,j]
          
    else:
@@ -417,7 +420,7 @@ def simplex2cartesian(function, cartesian_mesh):
    return cartesian_function
 
 
-def firedrake2numpy(function, shape_np=None):
+def firedrake2numpy(function, shape_np=None, invert_rows_columns=convention_2d_invert_rows_columns, fill=0.0):
    """
    Convert DG0firedrake function to numpy array (2d or 3d).
    It works only for meshes genereted with RectangleMesh or BoxMesh.
@@ -458,15 +461,15 @@ def firedrake2numpy(function, shape_np=None):
    # Get current coordinates
    indices = get_local_to_grid_indices_map(mesh)
    
-   
+   np_data = np.zeros(shape)
+   np_data[:] = fill
    if mesh.geometric_dimension() == 3:
-      np_data = np.zeros(shape)
       # TODO: check if this is this the most efficient way to do this
       np_data[tuple(np.transpose(indices)[:])] = function.dat.data_ro[:]
+   
    elif mesh.geometric_dimension() == 2:
-      np_data = np.zeros(shape)
       np_data[tuple(np.transpose(indices)[:])] = function.dat.data_ro[:]
-      if convention_2d_invert_rows_columns:
+      if invert_rows_columns:
          np_data = np.transpose(np_data)
       
 
@@ -757,3 +760,160 @@ def TensorBoxMesh(
       comm=comm,
    )
    return m
+
+
+def mesh_from_topology(
+        cells, 
+        coords,
+        reorder=None,
+        distribution_parameters=None,
+        comm=COMM_WORLD,
+        name=mesh.DEFAULT_MESH_NAME,
+        distribution_name=None,
+        permutation_name=None,
+    ):
+    """
+    Procedure taken from firedrake.mesh_utils.
+    Passed topology and coordinates. Return a mesh. Only in 3D.
+      Args:
+         cells: list of node in each cells
+         coords: list of coordinates
+         reorder: (optional), should the mesh be reordered?
+         distribution_parameters: options controlling mesh
+               distribution, see :func:`.Mesh` for details.
+         comm: Optional communicator to build the mesh on.
+         name: (optional) name of the mesh
+         distribution_name: (optional) name of the distribution
+         permutation_name: (optional) name of the permutation
+
+    """    
+
+    dim = coords.shape[1]
+
+    plex = mesh.plex_from_cell_list(
+        dim, cells, coords, comm, mesh._generate_default_mesh_topology_name(name)
+    )
+
+    m = mesh.Mesh(
+        plex,
+        reorder=False,
+        distribution_parameters=distribution_parameters,
+        name=name,
+        distribution_name=distribution_name,
+        permutation_name=permutation_name,
+        comm=comm,
+    )
+    return m
+
+
+def ij_from_index(index, ny):
+   "Map a linear index to a 2D index (i,j) assuming row-major order with ny rows"
+   return np.array([index % ny, index // ny])
+
+def index_from_ij(i,j,ny):
+   "Map a 2D index (i,j) to a linear index assuming row-major order with ny rows"
+   return i * ny + j
+
+
+def topol_coords_edges_from_mask(mask, Lx=1.0, Ly=1.0, 
+                                 invert_rows_columns=convention_2d_invert_rows_columns,
+                                 flip_up_down=convention_2d_flipud,
+                                 ):
+   """
+   Given and input array of shape (nx, ny) with 0/1 values, return the topology and coordinates a mesh 
+   describing the 1 values.
+   It returns also the conenectivity of the active cells.
+   """
+
+   
+   print("invert",invert_rows_columns, mask.shape)   
+   if invert_rows_columns:
+      input_array = mask.T
+      nx, ny = input_array.shape
+      hx, hy = Lx / ny, Ly / nx
+   else:
+      input_array = mask
+      # rows are y, columncolss are x
+      nx, ny  = input_array.shape
+      hx, hy = Lx / nx, Ly / ny
+      
+
+   
+   print(f'Creating mesh from mask {ny}x{ny} {Lx=} {Ly=} {hx=} {hy=}')
+   active_cells = np.where(input_array>0)
+
+   i_cells, j_cells = active_cells   
+   ncell = i_cells.size
+
+   # 
+   # Define the connectivity list of active cells with the new cell numbering 
+   #
+
+   noffset = ny
+
+   #
+   # Brute force approach
+   #
+   edges = []
+   for k in range(ncell):
+      i, j = i_cells[k], j_cells[k]
+      
+      if i < nx-1 : 
+         # cell below
+         if input_array[i+1,j]>0:
+               edge = [ index_from_ij(i,j,noffset), index_from_ij(i+1,j,noffset)]
+               edges.append(edge)
+      if j < ny-1:
+         # cell right
+         if input_array[i,j+1] > 0:
+               edge = [ index_from_ij(i,j,noffset), index_from_ij(i,j+1,noffset)]
+               edges.append(edge)
+   edges = np.array(edges)
+
+   # Define the new numbering and the inverse of the active cells
+   active_cells = np.unique(edges.flatten())
+   inverse_cells = np.zeros(nx*ny,dtype=int)
+   inverse_cells[:] = -1
+   inverse_cells[active_cells] = np.arange(ncell)
+   new_edges = inverse_cells[edges]
+         
+
+   #
+   # topology
+   #
+   nodes_in_cells = [
+      i_cells * (ny + 1) + j_cells,
+      i_cells * (ny + 1) + j_cells + 1,
+      (i_cells + 1) * (ny + 1) + j_cells + 1,
+      (i_cells + 1) * (ny + 1) + j_cells,
+      ]
+   # nodes_in_cells = [
+   #    i_cells * (ny + 1) + j_cells,
+   #    (i_cells + 1) * (ny + 1) + j_cells,
+   #    (i_cells + 1) * (ny + 1) + j_cells + 1,
+   #    i_cells * (ny + 1) + j_cells + 1,
+   # ]
+
+   nodes_in_cells = np.asarray(nodes_in_cells).swapaxes(0,-1).reshape(-1, 4)
+   nodes = np.unique(nodes_in_cells.flatten())
+
+   # Define the new numbering and the inverse of the active nodes
+   inverse = np.zeros((nx+1)*(ny+1),dtype=int)
+   inverse[:] = -1
+   inverse[nodes] = np.arange(nodes.size)
+   # Define the new connectivity
+   new_nodes_in_cells = inverse[nodes_in_cells]
+
+
+   # Define the coordinates of the nodes (note the ny+1)
+   ij_coord = ij_from_index(nodes, ny+1)
+   if invert_rows_columns:
+      xy_coord = np.array([hx * ij_coord[0,:], hy* ij_coord[1,:]]).T
+   else: 
+      xy_coord = np.array([hy * ij_coord[0,:], Lx-hx* ij_coord[1,:]]).T
+
+   #if flip_up_down:
+   #   xy_coord[:,1] = Ly - xy_coord[:,1]
+
+
+   return new_nodes_in_cells, xy_coord,  new_edges
