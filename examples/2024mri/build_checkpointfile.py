@@ -38,7 +38,7 @@ def nii2firedrake(path, cartesian_mesh, name, comm=COMM_WORLD):
     clean_npy_file(file_npy)
     return data
 
-def build_masked_mesh(support_mask, dimensions, threshold=1e-10, sigma_blur=1.2):
+def build_masked_mesh(support_mask, lengths, threshold=1e-10, sigma_blur=1.2):
     nx, ny, nz = support_mask.shape
     print("Image shape:", support_mask.shape)
 
@@ -72,24 +72,24 @@ def build_masked_mesh(support_mask, dimensions, threshold=1e-10, sigma_blur=1.2)
     # create 2D mesh from the projection
     PETSc.Sys.Print("Creating 2D mesh from the projection")
     topol, coordinates, edges = i2d.topol_coords_edges_from_mask(mask_xy, 
-                                                                Lx=dimensions[0], 
-                                                                Ly=dimensions[1], 
+                                                                Lx=lengths[0], 
+                                                                Ly=lengths[1], 
                                                                 invert_rows_columns=True,
                                                                 flip_up_down=True)
     PETSc.Sys.Print("Creating 2D mesh ")
     mesh2d = i2d.mesh_from_topology(topol, coordinates, reorder=False)
     
     PETSc.Sys.Print("Creating 3D mesh ")
-    mesh3d = ExtrudedMesh(mesh2d, nz, dimensions[2]/nz)
+    mesh3d = ExtrudedMesh(mesh2d, nz, lengths[2]/nz)
     mesh3d.nx = nx
     mesh3d.ny = ny
     mesh3d.nz = nz
     mesh3d.xmin = 0.0
     mesh3d.ymin = 0.0
     mesh3d.zmin = 0.0
-    mesh3d.xmax = dimensions[0]
-    mesh3d.ymax = dimensions[1]
-    mesh3d.zmax = dimensions[2]
+    mesh3d.xmax = lengths[0]
+    mesh3d.ymax = lengths[1]
+    mesh3d.zmax = lengths[2]
     PETSc.Sys.Print("fire from numpy ")
 
     brain_mask = i2d.numpy2firedrake(mesh3d, support, "brain_mask", dimensions)
@@ -122,7 +122,7 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
     # define the mesh based on the brain mask
     PETSc.Sys.Print(f"Mesh")
     if masked_mesh:
-        cartesian_mesh, brain_mask = build_masked_mesh(brain_mask_np, dimensions, threshold=1e-10, sigma_blur=1.2)
+        cartesian_mesh, brain_mask = build_masked_mesh(brain_mask_np, lengths, threshold=1e-10, sigma_blur=1.2)
         
     else:
         cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths,comm=comm)        
