@@ -37,7 +37,7 @@ def nii2firedrake(path, cartesian_mesh, name, comm=COMM_WORLD):
     clean_npy_file(file_npy)
     return data
 
-def masked_mesh(support_mask, dimensions, threshold=1e-10, sigma_blur=1.2):
+def build_masked_mesh(support_mask, dimensions, threshold=1e-10, sigma_blur=1.2):
     nx, ny, nz = support_mask.shape
     print("Image shape:", support_mask.shape)
 
@@ -124,7 +124,7 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
     # define the mesh based on the brain mask
     PETSc.Sys.Print(f"Mesh")
     if masked_mesh:
-        cartesian_mesh, brain_mask = masked_mesh(brain_mask_np, dimensions, threshold=1e-10, sigma_blur=1.2)
+        cartesian_mesh, brain_mask = build_masked_mesh(brain_mask_np, dimensions, threshold=1e-10, sigma_blur=1.2)
         
     else:
         cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths,comm=comm)        
