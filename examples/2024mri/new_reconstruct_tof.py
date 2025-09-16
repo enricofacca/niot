@@ -427,11 +427,11 @@ def experiment(args):
                             )
             if use_ensemble:
                 if my_ensemble.ensemble_comm.rank == 0:
-                    data = setup_h5(args.mri, threshold, blur, comm=comm)
+                    data = setup_h5(args.mri, threshold, blur=blur, masked_mesh=True, comm=comm)
                     write_h5(args.mri, threshold, blur, comm, args.n_ensemble, data=data)
                 my_ensemble.ensemble_comm.barrier()
             else:
-                data = setup_h5(args.mri, threshold, blur, comm=comm)
+                data = setup_h5(args.mri, threshold, blur=blur, masked_mesh=True, comm=comm)
                 write_h5(args.mri, threshold, blur, comm, args.n_ensemble, data=data)
             PETSc.Sys.Print(f"Checkpoint created h5_file={h5_file}")
         
@@ -469,7 +469,7 @@ def experiment(args):
             my_ensemble.ensemble_comm.barrier()
 
     else:
-        data = setup_h5(args.mri, threshold, blur, comm=comm)
+        data = setup_h5(args.mri, threshold, blur=blur, masked_mesh=True, comm=comm)
         cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets, skeleton, thickness = data
         
         mesh = cartesian_mesh
