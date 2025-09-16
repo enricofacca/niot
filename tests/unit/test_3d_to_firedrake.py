@@ -164,12 +164,12 @@ if __name__ == '__main__':
     test_3d_mesh(mesh_types[2], example, lengths)
 
     # create
-    mesh = i2d.build_mesh_from_numpy(example, mesh_type='simplicial',lengths=lengths)  
+    mesh = i2d.build_mesh_from_numpy(example.shape, mesh_type='simplicial',lengths=lengths)  
     check_3d_numpy_simplicial_mesh(mesh, example)
     check_coordinates(mesh, lengths)
 
     # create cartesian mesh
-    cartesian_mesh = i2d.build_mesh_from_numpy(example, mesh_type='cartesian',lengths=lengths, extrude=False)
+    cartesian_mesh = i2d.build_mesh_from_numpy(example.shape, mesh_type='cartesian',lengths=lengths, extrude=False)
     print(f"{cartesian_mesh.ufl_cell().is_simplex()=}")
 
     check_3d_numpy_cartesian_mesh(cartesian_mesh, example)
