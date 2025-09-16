@@ -6,6 +6,7 @@ import numpy as np
 import gc
 from connected_components_tof import connected_components, main_network_equal_one, find_external_network
 import os
+from scipy.ndimage import gaussian_filter
 
 def save_as_npy(file_nii, file_npy, comm=COMM_WORLD):
     PETSc.Sys.Print(f" {file_nii} to {file_npy}", os.path.exists(file_npy))
