@@ -37,9 +37,70 @@ def nii2firedrake(path, cartesian_mesh, name, comm=COMM_WORLD):
     clean_npy_file(file_npy)
     return data
 
+def masked_mesh(support_mask, dimensions, threshold=1e-10, sigma_blur=1.2):
+    nx, ny, nz = support_mask.shape
+    print("Image shape:", support_mask.shape)
+
+    mask = np.copy(support_mask)
+    mask = gaussian_filter(mask, sigma=sigma_blur)
+    mask[mask < threshold] = 0.0
+    mask[mask >= threshold] = 1.0
+    # convert to binary image
+    mask = mask.astype(np.int8)
+
+    # select largst connected component
+    labels_np, nlabels = connected_components(mask, 0.1)
+    labels_np = main_network_equal_one(labels_np, nlabels, mask)
+    support = np.zeros_like(labels_np, dtype=np.uint8)
+    support[labels_np == 1] = 1
 
 
-def setup_h5(mri_directory, threshold, blur = 0.0, comm=COMM_WORLD):
+
+    # compute proportion of non-zero voxels
+    print("Proportion of non-zero voxels:", np.count_nonzero(support) / support.size)
+
+    # project on xy plane
+    support_xy = np.max(support, axis=2)
+    PETSc.Sys.Print(f"data_xy shape: {support_xy.shape}")
+    # compute proportion of non-zero voxels in the projection
+    print("Proportion of non-zero voxels in the projection:", np.count_nonzero(support_xy) / support_xy.size)
+
+    mask_xy = np.zeros_like(support_xy, dtype=np.uint8)
+    mask_xy[support_xy > 0] = 1
+
+
+    # create 2D mesh from the projection
+    PETSc.Sys.Print("Creating 2D mesh from the projection")
+    topol, coordinates, edges = i2d.topol_coords_edges_from_mask(mask_xy, 
+                                                                Lx=dimensions[0], 
+                                                                Ly=dimensions[1], 
+                                                                invert_rows_columns=True,
+                                                                flip_up_down=True)
+    PETSc.Sys.Print("Creating 2D mesh ")
+    mesh2d = i2d.mesh_from_topology(topol, coordinates, reorder=False)
+    PETSc.Sys.Print("Saving 2D mesh ")
+    VTKFile("base_mesh.pvd").write(mesh2d)
+
+    PETSc.Sys.Print("Creating 3D mesh ")
+    mesh3d = ExtrudedMesh(mesh2d, nz, dimensions[2]/nz)
+    mesh3d.nx = nx
+    mesh3d.ny = ny
+    mesh3d.nz = nz
+    mesh3d.xmin = 0.0
+    mesh3d.ymin = 0.0
+    mesh3d.zmin = 0.0
+    mesh3d.xmax = dimensions[0]
+    mesh3d.ymax = dimensions[1]
+    mesh3d.zmax = dimensions[2]
+    PETSc.Sys.Print("fire from numpy ")
+
+    brain_mask = i2d.numpy2firedrake(mesh3d, support, "brain_mask", dimensions)
+
+    return mesh3d, brain_mask   
+
+
+
+def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_WORLD):
     n_proc = comm.size
 
     # load tof data and get basic info
@@ -52,17 +113,35 @@ def setup_h5(mri_directory, threshold, blur = 0.0, comm=COMM_WORLD):
     lengths = np.array([float(dimensions[0]*hx), 
                         float(dimensions[1]*hy), 
                         float(dimensions[2]*hz)])
+    
 
-    # define the mesh
-    PETSc.Sys.Print(f"Mesh", end="")
-    cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths,comm=comm)
-    #cartesian_mesh = i2d.build_mesh_from_numpy(
-    #    dimensions, 
-    #    mesh_type='cartesian',
-    #    lengths=lengths,
-    #    comm=comm,
-    #    extrude=False)
+    # get brain mask
+    brain_nii_file = f"{dir_nii}/brain_mask.nii.gz"
+    brain_npy_file = f"{dir_nii}/brain_mask.npy"
+    save_as_npy(brain_nii_file, brain_npy_file, comm=comm)
+    brain_mask_np = np.load(brain_npy_file,mmap_mode='r')
+    
+    # define the mesh based on the brain mask
+    PETSc.Sys.Print(f"Mesh")
+    if masked_mesh:
+        cartesian_mesh, brain_mask = masked_mesh(brain_mask_np, dimensions, threshold=1e-10, sigma_blur=1.2)
+        
+    else:
+        cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths,comm=comm)        
+        brain_mask = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name="brain_mask")
     PETSc.Sys.Print(f"done")
+    
+    
+    brain_volume = assemble(conditional(brain_mask>1e-10,1,0)*dx) / np.prod(lengths)
+    PETSc.Sys.Print(f"Brain volume: {brain_volume*100:.2f}%")
+    brain_mask_np = None
+    PETSc.Sys.Print(f"Brain mask done")
+    clean_npy_file(brain_npy_file)
+    gc.collect()
+
+
+
+    
 
 
     # load tof data
