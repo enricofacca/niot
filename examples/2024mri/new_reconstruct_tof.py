@@ -332,6 +332,7 @@ def experiment(args):
     try:    
         masked_mesh = options["mask_mesh"][0] > 0
     except:
+        PETSc.Sys.Print(f"Error reading. Using full grid")
         masked_mesh = False
         options["mask_mesh"] = [masked_mesh]
     
