@@ -92,7 +92,7 @@ def build_masked_mesh(support_mask, lengths, threshold=1e-10, sigma_blur=1.2):
     mesh3d.zmax = lengths[2]
     PETSc.Sys.Print("fire from numpy ")
 
-    brain_mask = i2d.numpy2firedrake(mesh3d, support, "brain_mask", dimensions)
+    brain_mask = i2d.numpy2firedrake(mesh3d, support, "brain_mask", lengths)
 
     return mesh3d, brain_mask   
 
