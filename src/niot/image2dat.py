@@ -24,8 +24,6 @@ from mpi4py.MPI import SUM,MAX
 from pyevtk.hl import gridToVTK, imageToVTK
 import time
 
-import pymetis
-import networkx
 
 ###############################
 # CONVENTIONS
@@ -133,7 +131,7 @@ def build_mesh_from_numpy(np_shape,
       else: 
          nx, ny, nz = np_shape
       
-      print(invert_rows_columns, f'Creating mesh {nx}x{ny}x{nz} {lengths=}')
+      #print(invert_rows_columns, f'Creating mesh {nx}x{ny}x{nz} {lengths=}')
 
       if mesh_type == 'cartesian':
          if extrude:
@@ -261,7 +259,7 @@ def mesh_from_topology(
 
     m = mesh.Mesh(
         plex,
-        reorder=reorder,
+        reorder=False,
         distribution_parameters=distribution_parameters,
         name=name,
         distribution_name=distribution_name,
@@ -379,13 +377,12 @@ def numpy2firedrake(mesh, value, name=None):
    DG0 = fd.FunctionSpace(mesh,'DG',0)
    img_function = fd.Function(DG0)
    
-   PETSc.Sys.Print(f'Converting numpy array to firedrake function {value.shape=} {nxyz=} {lengths=}')
-
+   
    if mesh.geometric_dimension() == 3:    
       hx = lengths[0]/mesh.nx
       hy = lengths[1]/mesh.ny
       hz = lengths[2]/mesh.nz
-      print(hx,hy,hz)
+      #print(hx,hy,hz)
       #print(lengths)
       def my_data(xyz): 
          x = xyz[:,0]
@@ -401,7 +398,7 @@ def numpy2firedrake(mesh, value, name=None):
       flip_up_down = mesh.flip_up_down
    
 
-      print(mesh.invert_rows_columns, mesh.flip_up_down)
+      #print(mesh.invert_rows_columns, mesh.flip_up_down)
       #   
       # NOTE that we are reading the transpose of the value
       #
@@ -421,14 +418,11 @@ def numpy2firedrake(mesh, value, name=None):
          Ly = lengths[1]
          hx = lengths[0]/nxyz[0]
          hy = lengths[1]/nxyz[1]
-         PETSc.Sys.Print(f'Converting numpy array to firedrake function {Lx=} {Ly=}')
-         PETSc.Sys.Print(f'Converting numpy array to firedrake function {nx=} {ny=}')
-         PETSc.Sys.Print(f'Converting numpy array to firedrake function {hx=} {hy=}')
          def my_data(xyz): 
             x = xyz[:,0]
             y = xyz[:,1]
-            if flip_up_down:
-               y = Ly - y
+            #if flip_up_down:
+            #   y = Ly - y
             i = np.fix(y/hx).astype(int)
             j = np.fix(x/hy).astype(int)
             return value[i,j]
@@ -839,14 +833,18 @@ def coord_from_ij(irow,jcol,hx,hy,
 
    if invert_rows_columns:
       return np.array([hx * jcol, hy * irow]).T
+      #return np.array([hx * irow, hy * jcol]).T
    else:
       return np.array([hy * irow, hx * jcol]).T
    
 def ij_from_coord(x,y,hx,hy,
                   invert_rows_columns=convention_2d_invert_rows_columns):
    "Map a coordinate (x,y) to a 2D index (i,j) assuming row-major order with ny rows"
+   #print(hx,hy)
    if invert_rows_columns:
       return np.array([x/hx, y/hy]).astype(int).T
+      #return np.array([y/hx, x/hy]).astype(int).T
+      
    else:
       return np.array([x/hy, y/hx]).astype(int).T
    
@@ -855,7 +853,6 @@ def ij_from_coord(x,y,hx,hy,
 
 def topol_coords_edges_from_mask(mask, Lx=1.0, Ly=1.0, 
                                  invert_rows_columns=convention_2d_invert_rows_columns,
-                                 flip_up_down=False#convention_2d_flipud,
                                  ):
    """
    Given and input array of shape (nx, ny) with 0/1 values, return the topology and coordinates a mesh 
@@ -864,7 +861,7 @@ def topol_coords_edges_from_mask(mask, Lx=1.0, Ly=1.0,
    """
 
    
-   print("invert",invert_rows_columns, mask.shape)   
+   #print("invert",invert_rows_columns, mask.shape)   
    if invert_rows_columns:
       input_array = mask.T
       nx, ny = input_array.shape
@@ -877,11 +874,10 @@ def topol_coords_edges_from_mask(mask, Lx=1.0, Ly=1.0,
       
 
    
-   print(f"Creating mesh from mask")
-   print(f"(nx,ny) = ({nx},{ny}) {Lx=} {Ly=} {hx=} {hy=}")
+   #print(f"Creating mesh from mask")
+   #print(f"(nx,ny) = ({nx},{ny}) {Lx=} {Ly=} {hx=} {hy=}")
    active_cells = np.where(input_array>0)
-
-   i_cells, j_cells = active_cells   
+   i_cells, j_cells = active_cells
    ncell = i_cells.size
 
    # 
@@ -916,26 +912,47 @@ def topol_coords_edges_from_mask(mask, Lx=1.0, Ly=1.0,
    inverse_cells[active_cells] = np.arange(ncell)
    new_edges = inverse_cells[edges]
          
+   #
+   # topology 
+   # nx = 2
+   # ny = 3
+   # alternatively the transpose
+   # 3 --- 7 -- 11
+   # | [2] | [5] |
+   # 2 --- 6 -- 10
+   # | [1] | [4] |
+   # 1 --- 5 --- 9
+   # | [0] | [3] |
+   # 0 --- 4 --- 8
 
-   #
-   # topology
-   #
+
    nodes_in_cells = [
-      i_cells * (ny + 1) + j_cells,
-      i_cells * (ny + 1) + j_cells + 1,
-      (i_cells + 1) * (ny + 1) + j_cells + 1,
-      (i_cells + 1) * (ny + 1) + j_cells,
+      
+      i_cells * (ny + 1) + j_cells, # SE
+      (i_cells + 1) * (ny + 1) + j_cells, # SW
+      (i_cells + 1) * (ny + 1) + j_cells + 1, # NW  
+      i_cells * (ny + 1) + j_cells + 1,  #NE      
       ]
+   
+
    nodes_in_cells = np.asarray(nodes_in_cells).swapaxes(0,-1).reshape(-1, 4)
+   
    nodes = np.unique(nodes_in_cells.flatten())
-   print(nodes)
    
    # Define the new numbering and the inverse of the active nodes
    inverse = np.zeros((nx+1)*(ny+1),dtype=int)
    inverse[:] = -1
    inverse[nodes] = np.arange(nodes.size)
-   # Define the new connectivity
    new_nodes_in_cells = inverse[nodes_in_cells]
+   
+   if len(new_nodes_in_cells) != ncell:
+      raise ValueError('Error in the cell connectivity')
+   
+   if min(new_nodes_in_cells.flatten()) !=  0:
+      raise ValueError('Error in the cell connectivity')
+   
+   if max(new_nodes_in_cells.flatten()) != nodes.size-1:
+      raise ValueError('Error in the cell connectivity')
 
 
    # Define the coordinates of the nodes (note the ny+1)
@@ -944,19 +961,17 @@ def topol_coords_edges_from_mask(mask, Lx=1.0, Ly=1.0,
                             hx, hy, 
                             invert_rows_columns=invert_rows_columns)
    
-   xcoords = np.linspace(0, Lx, nx + 1, dtype=np.double)
-   ycoords = np.linspace(0, Ly, ny + 1, dtype=np.double)
-   coords = np.asarray(np.meshgrid(xcoords, ycoords)).swapaxes(0, 2).reshape(-1, 2)
-   
-   #print("coords")
-   #print(coords)
-   #print("xy_coord")
-   #print(xy_coord)
-   
-   #print(xy_coord)
-   if flip_up_down:
-      xy_coord[:,1] = Ly - xy_coord[:,1]
-
+   debug = False
+   if debug:   
+      for i in range(ncell):
+         local_nodes = new_nodes_in_cells[i,:]
+         print(f"cell {i:4d} : {new_nodes_in_cells[i,0]:4d} {new_nodes_in_cells[i,1]:4d} {new_nodes_in_cells[i,2]:4d} {new_nodes_in_cells[i,3]:4d}")
+         print(f"{xy_coord[local_nodes[0],0]:8.4f} {xy_coord[local_nodes[0],1]:8.4f}"
+               + f" {xy_coord[local_nodes[1],0]:8.4f} {xy_coord[local_nodes[1],1]:8.4f}"
+               + f" {xy_coord[local_nodes[2],0]:8.4f} {xy_coord[local_nodes[2],1]:8.4f}"
+               + f" {xy_coord[local_nodes[3],0]:8.4f} {xy_coord[local_nodes[3],1]:8.4f}"
+               )
+            
 
    return new_nodes_in_cells, xy_coord,  new_edges, active_cells, inverse_cells
 
@@ -1039,16 +1054,12 @@ def mask_base_height(nonzeros):
 
 def mesh_from_2d_mask(mask2d, lengths, 
                       invert_rows_columns=True, 
-                      flip_up_down=False,
                       height=None,
                       comm=COMM_WORLD):
+   """
+   Create a 2d mesh from a 2D mask.
+   """
    
-   
-   # 
-   if invert_rows_columns:
-      ny, nx = mask2d.shape
-   else:
-      nx, ny = mask2d.shape
    
    
    Lx, Ly = lengths
@@ -1056,25 +1067,12 @@ def mesh_from_2d_mask(mask2d, lengths,
    # 1. Create topology and coordinates from the 2D mask
    topol, xy_coords, new_edges, active_cells, inverse_cells = topol_coords_edges_from_mask(mask2d, 
                                                                                            Lx, Ly,
-                                                                                           invert_rows_columns=invert_rows_columns,
-                                                                                           flip_up_down=flip_up_down)
-   print(topol)
-   print(xy_coords)
+                                                                                           invert_rows_columns=invert_rows_columns)
    
    
-   ncells = len(topol)
-   check_numbering = False
-   if check_numbering:
-      numbering = np.zeros_like(mask2d)
-      for k, index in enumerate(inverse_cells):
-         ij = ij_from_index(k, ny)
-         numbering[ij[0],ij[1]] = index
-      print("numbering")
-      print(numbering)
-
    # 2. Set the distribution parameters
+   # If height is given, we use it to balance the partitions
    distribution_parameters = None
-   # If height is given, use it to balance the partitions
    if not(height is None) and comm.size > 1:
       icell, jcell = np.where(height > 0)
       ncells = len(icell)
@@ -1086,12 +1084,30 @@ def mesh_from_2d_mask(mask2d, lengths,
          new_edges, height2, ncells, comm)
       
    
-   # 1. Create the 2D mesh distrubuted according to height-based partition
-   selected_mesh2d = mesh_from_topology(topol, 
-                                        xy_coords, 
-                                        reorder=None, 
-                                        distribution_parameters=distribution_parameters,
-                                        comm=comm)
+   
+   name = mesh.DEFAULT_MESH_NAME
+   dim = xy_coords.shape[1]
+   plex = mesh.plex_from_cell_list(
+         dim, topol, xy_coords, comm, mesh._generate_default_mesh_topology_name(name)
+      )
+   
+
+   selected_mesh2d = mesh.Mesh(
+      plex,
+      reorder=False,
+      distribution_parameters=distribution_parameters,
+      name=name,
+      distribution_name=None,
+      permutation_name=None,
+      comm=comm,
+   )
+
+   # 
+   if invert_rows_columns:
+      ny, nx = mask2d.shape
+   else:
+      nx, ny = mask2d.shape
+   
    
    selected_mesh2d.nx = nx
    selected_mesh2d.ny = ny
@@ -1101,8 +1117,8 @@ def mesh_from_2d_mask(mask2d, lengths,
    selected_mesh2d.ymax = Ly
 
    selected_mesh2d.invert_rows_columns = invert_rows_columns
-   selected_mesh2d.flip_up_down = flip_up_down
-   selected_mesh2d.ncells = ncells
+   selected_mesh2d.flip_up_down = False
+   selected_mesh2d.ncells = len(new_edges)
    selected_mesh2d.new_edges = new_edges
    selected_mesh2d.active_cells = active_cells
    selected_mesh2d.inverse_cells = inverse_cells
@@ -1111,6 +1127,10 @@ def mesh_from_2d_mask(mask2d, lengths,
 
 
 def set_distribution_parameters(edges, height2, ncells, comm):
+   """
+   Set distribution parameters to get a balanced 
+   mpi distribution with variable layers
+   """
    if comm.size <= 1:
       return None
    
@@ -1139,6 +1159,8 @@ def set_distribution_parameters(edges, height2, ncells, comm):
    
    Adj_list = convert_to_adjacency_list(edges,ncells)
 
+
+   import pymetis
    # 4. Run the partitioning algorithm
    _, partition_for_node = pymetis.part_graph(
       comm.size,
@@ -1156,253 +1178,90 @@ def set_distribution_parameters(edges, height2, ncells, comm):
    weight_partitions = [int(sum(height2[part])) for part in partitions]
    print("Partitions sizes:", size_partitions)
    print("Partitions weights:", weight_partitions)
-   flat_partions = [x for part in partitions for x in part]
+   flat_partitions = [x for part in partitions for x in part]
    
 
    if comm.rank == 0:
-      partitions = (size_partitions, flat_partions)#, list(range(ncells)))
+     partitions = (size_partitions, flat_partitions)
    else:
-      partitions = (None, None)  
+     partitions = (None, None)  
    
    # set the distribution parameters
    distribution_parameters = {
       "partition": partitions,
-      #"overlap_type": (DistributedMeshOverlapType.VERTEX, 1)
-      "overlap_type": (DistributedMeshOverlapType.NONE, 0)
+      "overlap_type": (DistributedMeshOverlapType.VERTEX, 1)
+      #"overlap_type": (DistributedMeshOverlapType.NONE, 0)
       }
+   
    return distribution_parameters
 
-      # if comm.size > 1:
-      #    # Varaible layers need to be consistent with the distribution
-      #    # of the 2D mesh. We use pymetis to partition the selected 2D mesh
-      #    # weighted by the height, so that the global partition is balanced
+# pair into a list base2 and height2
+def get_local_to_grid_indices_map(mesh, invert_rows_columns):
+   """
+   build a map list of indices from the local
+   index cell to the correspondence ij(k) index in the numpy array
+   """
+   # Get centroid coordinates
+   DQ0 = fd.FunctionSpace(mesh, 'DQ', 0)
+   W = fd.VectorFunctionSpace(DQ0.ufl_domain(), DQ0.ufl_element())
+   centroid_coordinates = fd.assemble(interpolate(DQ0.ufl_domain().coordinates, W))
+   
+   
+   # Get the lengths of the box
+   lengths = get_lengths(mesh)
+   shape = get_box_division(mesh)
+   hx = lengths[0]/shape[0]
+   hy = lengths[1]/shape[1]
+   
 
-      #    # 3. Create the adjacency list for the graph
-      #    def convert_to_adjacency_list(edges, num_vertices):
-      #       # Initialize an empty list of size "num_vertices"
-      #       # To store the adjacency list of each vertex
-      #       adjacency_list = [[] for _ in range(num_vertices)]
-            
-      #       # Iterate through the edges
-      #       for edge in edges:
-      #          # Get the source and destination nodes
-      #          source = edge[0]
-      #          destination = edge[1]
-               
-      #          # Add the destination node to the source node's list
-      #          adjacency_list[source].append(destination)
-               
-      #          # Add the source node to the destination node's list
-      #          # (since the graph is bidirectional)
-      #          adjacency_list[destination].append(source)
-            
-      #       # Return the adjacency list
-      #       return adjacency_list
-      
-         
-      #    Adj_list = convert_to_adjacency_list(selected_mesh2d.new_edges, nvertices=ncells)
-
-      #    # 4. Run the partitioning algorithm
-      #    _, partition_for_node = pymetis.part_graph(
-      #       comm.size,
-      #       adjacency=Adj_list,
-      #       vweights=list(height2),
-      #       options = pymetis.Options(contig=True)
-      #    )
-
-      #    # 5. Process the output, mapping indices back to node tuples
-      #    partitions = [[] for _ in range(n_parts)]
-      #    for i, part_num in enumerate(partition_for_node):
-      #       partitions[part_num].append(i)
-
-      #    size_partitions = [len(part) for part in partitions]
-      #    weight_partitions = [int(sum(height2[part])) for part in partitions]
-      #    #print("Partitions sizes:", size_partitions)
-      #    print("Partitions weights:", weight_partitions)
-      #    flat_partions = [x for part in partitions for x in part]
-         
-
-      #    if comm.rank == 0:
-      #       partitions = (size_partitions, flat_partions)#, list(range(ncells)))
-      #    else:
-      #       partitions = (None, None)  
-         
-      #    # set the distribution parameters
-      #    distribution_parameters = {
-      #       "partition": partitions,
-      #       "overlap_type": (DistributedMeshOverlapType.NONE, 0)}
-      # else:
-      #    # no partitioning
-      #    distribution_parameters = None
+   coord = centroid_coordinates.dat.data_ro_with_halos
+   indices = ij_from_coord(coord[:,0], coord[:,1], # there is a flip 
+                           hx, 
+                           hy, 
+                           invert_rows_columns=invert_rows_columns)
+   return indices
 
 
-
-def mesh_from_3d_mask(mask3d, lengths, variable_layer=False, 
+def mesh_from_3d_mask(mask3d, lengths, 
+                      variable_layer=False, 
                       invert_rows_columns=True,
                       comm=COMM_WORLD):
    
-   if invert_rows_columns:
-      ny, nx, nz = mask3d.shape
-   else:
-      nx, ny, nz = mask3d.shape 
-   Lx, Ly, Lz = lengths
-   
-
    mask, base, height = mask_base_height(mask3d)
-   #print("mask")
-   #print(mask)
-   #print("base")
-   #print(base)
-   #print("height")
-   #print(height)
-
-   #print(np.sum(mask>0),np.sum(base>0), np.sum(height>0))
-
-   # if a varaible layer is requested, 
-   # we need to partition the 2D mesh
-   # according to the height map
-   # Otherwise we just extrude standard distribution
-
-   invert_rows_columns = True
    if variable_layer:
+      if comm.size > 1:
+         raise ValueError('Variable layers is bugged in parallel. See https://github.com/firedrakeproject/firedrake/issues/4571')
+
+
+      print("Variable layer mesh")
       # 3. Create the 2D mesh distrubuted according to height-based partition
       selected_mesh2d = mesh_from_2d_mask(
                      mask, lengths[0:2], 
                      invert_rows_columns = invert_rows_columns, 
-                     flip_up_down = False,
                      height=height,
                      comm=COMM_WORLD,
                      )
       
-      check_numbering = False
-      if check_numbering:
-         numbering = np.zeros_like(mask)
-         for k, index in enumerate(selected_mesh2d.inverse_cells):
-            ij = ij_from_index(k, ny)
-            numbering[ij[0],ij[1]] = index
-         print("numbering")
-         print(numbering)
-      
-
-
-
-      # 1. Create the 2D mesh distrubuted according to height-based partition
-      #distribution_parameters={"partition": (size_partions, flat_partion)}
-      #distribution_parameters = None
-      # selected_mesh2d = mesh_from_topology(topol, xy_coords, reorder=False, distribution_parameters=distribution_parameters)
-      # selected_mesh2d.nx = nx
-      # selected_mesh2d.ny = ny
-      # selected_mesh2d.xmin = 0.0
-      # selected_mesh2d.ymin = 0.0
-      # selected_mesh2d.xmax = Lx
-      # selected_mesh2d.ymax = Ly
-
-      VTKFile("inside_selected_mesh2d.pvd").write(selected_mesh2d)
-      base_fire = numpy2firedrake(selected_mesh2d, base, name="base")
-      height_fire = numpy2firedrake(selected_mesh2d, height, name="height")
-      mask_fire = numpy2firedrake(selected_mesh2d, mask, name="mask")
-      partions = fd.Function(mask_fire.function_space(), name="partitions")
-      with partions.dat.vec as d:
-         d += comm.rank
-
-      VTKFile("base_height.pvd").write(base_fire, height_fire,mask_fire,partions)
-      
-
-      # The main problem is to set the varaible layers given by
-      # [ [base, height]] for each cell
-      # since it must match the indexing of the distributed 2D mesh
-
-      # With no overlap, I was able to make it work, but I guess there is
-      # a more elegant way to do it.
-
-
-      # pair into a list base2 and height2
-      def get_local_to_grid_indices_map(mesh):
-         """
-         build a map list of indices from the local
-         index cell to the correspondence ij(k) index in the numpy array
-         """
-         # Get the centroid coordinates
-         #print(dir(mesh))
-         #print(mesh.make_cell_node_list())
-
-         # print(dir(mesh.cell_set))
-         # print(dir(mesh.topology_dm))
-         # plex = mesh.topology_dm
-         # cStart, cEnd = plex.getHeightStratum(0) 
-         # print(f"Cells {cStart} to {cEnd-1}")
-         # print(plex.getCone(cStart))
-         # print(mesh.cell_set.size)
-         #
-         # print(mesh.cell_set.partition_size)
-         # print(mesh.cell_set.sizes)
-         # print(mesh.cell_set[mesh.cell_set.indices[0]])
-         # print(dir(mesh.cell_set.owned_part))
-         # print(mesh.cell_set.owned_part.size)
-         # print(mesh.cell_set.owned_part.offset)
-         # print(mesh.cell_set.halo)
-
-         # Derive a cell numbering from the Plex renumbering
-         # tdim = dmcommon.get_topological_dimension(plex)
-         # from firedrake.utils import as_cstr, IntType, RealType
-         # entity_dofs = np.zeros(tdim+1, dtype=IntType)
-         # entity_dofs[-1] = 1
-         # cell_numbering, _ = mesh.create_section(entity_dofs)
-         # #print(dir(cell_numbering))
-         #print("offset",cell_numbering.getOffset(2))
-         #print(cell_numbering.view)
-
-
-
-         DQ0 = fd.FunctionSpace(mesh, 'DQ', 0)
-         
-         
-         W = fd.VectorFunctionSpace(DQ0.ufl_domain(), DQ0.ufl_element())
-         centroid_coordinates = fd.assemble(interpolate(DQ0.ufl_domain().coordinates, W))
-         #print(dir(DQ0.ufl_domain()))
-         #with DQ0.ufl_domain().coordinates.dat.vec_ro as d:
-         #   print(d.array)
-         #   print(d.array.shape)
-
-         
-         
-         # Get the lengths of the box
-         lengths = get_lengths(mesh)
-         shape = get_box_division(mesh)
-         #with centroid_coordinates.dat.vec_ro as d:
-            #print("centroid_coordinates")
-            #print(d.array)
-         #print("shape", shape)
-         
-
-         hx = lengths[0]/shape[0]
-         hy = lengths[1]/shape[1]
-         #print("hx, hy", hx, hy)
-
-
-         #indices = (centroid_coordinates.dat.data*factor).astype(int)
-         coord = centroid_coordinates.dat.data_ro_with_halos
-         print("coord", coord.shape)
-         print(coord)
-         indices = ij_from_coord(coord[:,0], coord[:,1], # there is a flip 
-                                 hx, 
-                                 hy, 
-                                 invert_rows_columns=invert_rows_columns)
-         print(indices)
-
-         return indices
-   
       # Varaible layers need to be consistent with the distribution
       # of the 2D mesh
-      indices = get_local_to_grid_indices_map(selected_mesh2d)
-      #print("indices", indices.shape)
-      #print(indices)
-      variable_layers = np.vstack(
-         (base[indices[:,1],indices[:,0]],
-          height[indices[:,1],indices[:,0]])
-          ).T.tolist()
-      #print("variable_layers", variable_layers)
+      indices = get_local_to_grid_indices_map(selected_mesh2d, invert_rows_columns)
+      base_flat  = base[indices[:,1],indices[:,0]]
+      height_flat = height[indices[:,1],indices[:,0]]
+      
+      if base_flat.any()<0:
+         print(base_flat)
+         raise ValueError('Error  base')
+      
+      if height_flat.any()<0:
+         raise ValueError('Error height ')
 
+
+      variable_layers = np.vstack(
+         (base_flat,
+          height_flat)
+          ).T.tolist()
+      
+      
       # create the 3D extruded mesh
       selected_mesh3d = ExtrudedMesh(selected_mesh2d, 
                                     layers=variable_layers, 
@@ -1411,30 +1270,19 @@ def mesh_from_3d_mask(mask3d, lengths, variable_layer=False,
    else:
       selected_mesh2d = mesh_from_2d_mask(
                      mask, lengths[0:2], 
-                     invert_rows_columns=True, 
-                     flip_up_down=False,
+                     invert_rows_columns=invert_rows_columns,
                      comm=COMM_WORLD,
                      )
       
-      print(dir(selected_mesh2d))
-      print(selected_mesh2d.comm.rank, selected_mesh2d.cell_set.total_size, selected_mesh2d.cell_set.size)
-
-      VTKFile("inside_selected_mesh2d.pvd").write(selected_mesh2d)
-
       selected_mesh3d = ExtrudedMesh(selected_mesh2d, 
-                                    layers=nz, 
+                                    layers=mask3d.shape[2], 
                                     layer_height=lengths[2]/mask3d.shape[2])
 
-   ncells = selected_mesh2d.ncells
-   print(f"{ncells} active cells from {nx*ny} total cells")
-
-  
-
-
    
-   selected_mesh3d.nx = nx
-   selected_mesh3d.ny = ny
-   selected_mesh3d.nz = nz
+   
+   selected_mesh3d.nx = selected_mesh2d.nx
+   selected_mesh3d.ny = selected_mesh2d.ny
+   selected_mesh3d.nz = mask3d.shape[2]
    selected_mesh3d.xmin = 0.0
    selected_mesh3d.ymin = 0.0
    selected_mesh3d.zmin = 0.0
