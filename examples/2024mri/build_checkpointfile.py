@@ -71,7 +71,7 @@ def build_masked_mesh(support_mask, lengths, threshold=1e-10, sigma_blur=1.2):
 
     # create 2D mesh from the projection
     PETSc.Sys.Print("Creating 2D mesh from the projection")
-    topol, coordinates, edges, _ = i2d.topol_coords_edges_from_mask(mask_xy, 
+    topol, coordinates, _ , _, _ = i2d.topol_coords_edges_from_mask(mask_xy, 
                                                                 Lx=lengths[0], 
                                                                 Ly=lengths[1], 
                                                                 invert_rows_columns=True,
