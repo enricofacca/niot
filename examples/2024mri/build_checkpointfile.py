@@ -68,29 +68,30 @@ def build_masked_mesh(support_mask, lengths, threshold=1e-10, sigma_blur=1.2):
     mask_xy = np.zeros_like(support_xy, dtype=np.uint8)
     mask_xy[support_xy > 0] = 1
 
+    mesh3d = i2d.mesh_from_3d_mask(support, lengths, variable_layer=False)
 
-    # create 2D mesh from the projection
-    PETSc.Sys.Print("Creating 2D mesh from the projection")
-    topol, coordinates, _ , _, _ = i2d.topol_coords_edges_from_mask(mask_xy, 
-                                                                Lx=lengths[0], 
-                                                                Ly=lengths[1], 
-                                                                invert_rows_columns=True,
-                                                                flip_up_down=True)
-    PETSc.Sys.Print("Creating 2D mesh ")
-    mesh2d = i2d.mesh_from_topology(topol, coordinates, reorder=False)
+
+    # # create 2D mesh from the projection
+    # PETSc.Sys.Print("Creating 2D mesh from the projection")
+    # topol, coordinates, _ , _, _ = i2d.topol_coords_edges_from_mask(mask_xy, 
+    #                                                             Lx=lengths[0], 
+    #                                                             Ly=lengths[1], 
+    #                                                             invert_rows_columns=True)
+    # PETSc.Sys.Print("Creating 2D mesh ")
+    # mesh2d = i2d.mesh_from_topology(topol, coordinates, reorder=False)
     
-    PETSc.Sys.Print("Creating 3D mesh ")
-    mesh3d = ExtrudedMesh(mesh2d, nz, lengths[2]/nz)
-    mesh3d.nx = nx
-    mesh3d.ny = ny
-    mesh3d.nz = nz
-    mesh3d.xmin = 0.0
-    mesh3d.ymin = 0.0
-    mesh3d.zmin = 0.0
-    mesh3d.xmax = lengths[0]
-    mesh3d.ymax = lengths[1]
-    mesh3d.zmax = lengths[2]
-    PETSc.Sys.Print("fire from numpy ")
+    # PETSc.Sys.Print("Creating 3D mesh ")
+    # mesh3d = ExtrudedMesh(mesh2d, nz, lengths[2]/nz)
+    # mesh3d.nx = nx
+    # mesh3d.ny = ny
+    # mesh3d.nz = nz
+    # mesh3d.xmin = 0.0
+    # mesh3d.ymin = 0.0
+    # mesh3d.zmin = 0.0
+    # mesh3d.xmax = lengths[0]
+    # mesh3d.ymax = lengths[1]
+    # mesh3d.zmax = lengths[2]
+    # PETSc.Sys.Print("fire from numpy ")
 
     brain_mask = i2d.numpy2firedrake(mesh3d, support, "brain_mask", lengths)
 
