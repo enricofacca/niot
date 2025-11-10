@@ -139,7 +139,7 @@ import firedrake.function as function
 import firedrake.solving_utils as solving_utils
 from firedrake import dmhooks
 from petsctools import OptionsManager
-import firedrake.petsc import PETSc
+from firedrake.petsc import PETSc
 from firedrake.utils import cached_property
 from firedrake.ufl_expr import action
 import firedrake.variational_solver as vs
