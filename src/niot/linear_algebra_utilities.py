@@ -134,8 +134,8 @@ without stopping in case of error and that can be used as preconditioner.
 
 from firedrake.exceptions import ConvergenceError
 import firedrake.function as function
-import firedrake.vector as vector
-import firedrake.matrix as matrix
+#import firedrake.vector as vector
+#import firedrake.matrix as matrix
 import firedrake.solving_utils as solving_utils
 from firedrake import dmhooks
 from firedrake.petsc import PETSc, OptionsManager
