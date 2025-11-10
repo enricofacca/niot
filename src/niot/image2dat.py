@@ -103,7 +103,6 @@ def build_mesh_from_numpy(np_shape,
       if mesh_type == 'simplicial':
          quadrilateral = False
 
-      PETSc.Sys.Print(invert_rows_columns,f'Creating mesh {nx}x{ny} {lengths=}')
       mesh = fd.RectangleMesh(
             nx=nx,
             ny=ny,
@@ -131,6 +130,7 @@ def build_mesh_from_numpy(np_shape,
       else: 
          nx, ny, nz = np_shape
       
+      
       #print(invert_rows_columns, f'Creating mesh {nx}x{ny}x{nz} {lengths=}')
 
       if mesh_type == 'cartesian':
@@ -145,6 +145,7 @@ def build_mesh_from_numpy(np_shape,
             mesh.ymax = lengths[1]
             mesh.zmin = 0
             mesh.zmax = lengths[2]
+            mesh.invert_rows_columns = invert_rows_columns
             return mesh
          else:
             mesh = fd.BoxMesh(
@@ -167,6 +168,7 @@ def build_mesh_from_numpy(np_shape,
             mesh.ymax = lengths[1] 
             mesh.zmin = 0
             mesh.zmax = lengths[2]
+            mesh.invert_rows_columns = invert_rows_columns
             return mesh
       
       if (mesh_type == 'simplicial'):        
@@ -191,6 +193,7 @@ def build_mesh_from_numpy(np_shape,
             mesh.ymax = lengths[1] 
             mesh.zmin = 0
             mesh.zmax = lengths[2]
+            mesh.invert_rows_columns = invert_rows_columns
             return mesh
 
          else:
@@ -221,6 +224,7 @@ def build_mesh_from_numpy(np_shape,
             mesh.ymax = lengths[1] 
             mesh.zmin = 0
             mesh.zmax = lengths[2]
+            mesh.invert_rows_columns = invert_rows_columns
 
             return mesh
 
@@ -382,17 +386,26 @@ def numpy2firedrake(mesh, value, name=None):
       hx = lengths[0]/mesh.nx
       hy = lengths[1]/mesh.ny
       hz = lengths[2]/mesh.nz
-      #print(hx,hy,hz)
-      #print(lengths)
-      def my_data(xyz): 
-         x = xyz[:,0]
-         y = xyz[:,1]
-         z = xyz[:,2]
-         i = np.fix(x/hx).astype(int)
-         j = np.fix(y/hy).astype(int)
-         k = np.fix(z/hz).astype(int)
-         #print(i)
-         return value[j,i,k]
+      if mesh.invert_rows_columns:
+         def my_data(xyz): 
+            x = xyz[:,0]
+            y = xyz[:,1]
+            z = xyz[:,2]
+            i = np.fix(x/hx).astype(int)
+            j = np.fix(y/hy).astype(int)
+            k = np.fix(z/hz).astype(int)
+            #print(i)
+            return value[j,i,k]
+      else:
+         def my_data(xyz): 
+            x = xyz[:,0]
+            y = xyz[:,1]
+            z = xyz[:,2]
+            i = np.fix(x/hx).astype(int)
+            j = np.fix(y/hy).astype(int)
+            k = np.fix(z/hz).astype(int)
+            return value[i,j,k]
+         
    elif mesh.geometric_dimension() == 2:
       invert_rows_columns = mesh.invert_rows_columns
       flip_up_down = mesh.flip_up_down
@@ -454,7 +467,7 @@ def simplex2cartesian(function, cartesian_mesh):
    return cartesian_function
 
 
-def firedrake2numpy(function, shape_np=None, invert_rows_columns=convention_2d_invert_rows_columns, fill=0.0):
+def firedrake2numpy(function, shape_np=None, fill=0.0):
    """
    Convert DG0firedrake function to numpy array (2d or 3d).
    It works only for meshes genereted with RectangleMesh or BoxMesh.
@@ -488,19 +501,13 @@ def firedrake2numpy(function, shape_np=None, invert_rows_columns=convention_2d_i
       # Get the lengths of the box
       lengths = get_lengths(mesh)
       shape = get_box_division(mesh)
-      #print('lengths', lengths)
-      #print('shape', shape)
-      #print(1./(np.array(shape)/np.array(lengths)))
-
-      #print(centroid_coordinates.dat.data)
-      
-     
       indices = (centroid_coordinates.dat.data/lengths*shape).astype(int)
-      #print(indices)
       return indices
    
    # Get current coordinates
    indices = get_local_to_grid_indices_map(mesh)
+   
+   
    
    if mesh.invert_rows_columns:
       out_shape = [shape[1], shape[0]]
@@ -509,10 +516,6 @@ def firedrake2numpy(function, shape_np=None, invert_rows_columns=convention_2d_i
 
    if mesh.geometric_dimension() == 3:
       out_shape.append(shape[2])
-   
-   #print(indices)
-
-
    np_data = np.zeros(shape)
    np_data[:] = fill
    if mesh.geometric_dimension() == 3:
@@ -522,9 +525,11 @@ def firedrake2numpy(function, shape_np=None, invert_rows_columns=convention_2d_i
          np_data = np.transpose(np_data, (1,0,2))
 
    elif mesh.geometric_dimension() == 2:
-      np_data[tuple(np.transpose(indices)[:])] = function.dat.data_ro[:]
-      if invert_rows_columns:
+      if mesh.invert_rows_columns:
+         np_data[tuple(np.transpose(indices)[:])] = function.dat.data_ro[:]
          np_data = np.transpose(np_data)
+      else:
+         np_data[indices[:,0],indices[:,1]] = function.dat.data_ro[:]
       
 
 
@@ -835,7 +840,7 @@ def coord_from_ij(irow,jcol,hx,hy,
       return np.array([hx * jcol, hy * irow]).T
       #return np.array([hx * irow, hy * jcol]).T
    else:
-      return np.array([hy * irow, hx * jcol]).T
+      return np.array([hx * jcol, hy * irow]).T
    
 def ij_from_coord(x,y,hx,hy,
                   invert_rows_columns=convention_2d_invert_rows_columns):
@@ -871,7 +876,6 @@ def topol_coords_edges_from_mask(mask, Lx=1.0, Ly=1.0,
       nx, ny  = input_array.shape
    
    hx, hy = Lx / nx, Ly / ny
-      
 
    
    #print(f"Creating mesh from mask")
@@ -1060,8 +1064,6 @@ def mesh_from_2d_mask(mask2d, lengths,
    Create a 2d mesh from a 2D mask.
    """
    
-   
-   
    Lx, Ly = lengths
 
    # 1. Create topology and coordinates from the 2D mask
@@ -1107,7 +1109,7 @@ def mesh_from_2d_mask(mask2d, lengths,
       ny, nx = mask2d.shape
    else:
       nx, ny = mask2d.shape
-   
+
    
    selected_mesh2d.nx = nx
    selected_mesh2d.ny = ny
@@ -1224,7 +1226,7 @@ def get_local_to_grid_indices_map(mesh, invert_rows_columns):
 
 def mesh_from_3d_mask(mask3d, lengths, 
                       variable_layer=False, 
-                      invert_rows_columns=True,
+                      invert_rows_columns=False,
                       comm=COMM_WORLD):
    
    if variable_layer:
@@ -1233,7 +1235,6 @@ def mesh_from_3d_mask(mask3d, lengths,
          raise ValueError('Variable layers is bugged in parallel. See https://github.com/firedrakeproject/firedrake/issues/4571')
 
 
-      print("Variable layer mesh")
       # 3. Create the 2D mesh distrubuted according to height-based partition
       selected_mesh2d = mesh_from_2d_mask(
                      mask, lengths[0:2], 
@@ -1249,7 +1250,6 @@ def mesh_from_3d_mask(mask3d, lengths,
       height_flat = height[indices[:,1],indices[:,0]]
       
       if base_flat.any()<0:
-         print(base_flat)
          raise ValueError('Error  base')
       
       if height_flat.any()<0:
@@ -1295,6 +1295,9 @@ def mesh_from_3d_mask(mask3d, lengths,
 
    selected_mesh3d.invert_rows_columns = invert_rows_columns
    
+   
+
+
    return selected_mesh3d
 
    
