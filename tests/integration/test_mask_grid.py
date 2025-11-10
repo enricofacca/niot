@@ -179,7 +179,7 @@ example_easy[0,0,0] = 6.0
 
 @pytest.mark.parametrize("example", [example_easy])
 def test_example(example, invert_rows_columns=True, variable_layer=False):    
-    lengths = [0.4,50.0,0.1]
+    lengths = [0.4,1.2,0.1]
     
     binary = np.zeros_like(example, dtype=int)
     binary[example>0] = 1
@@ -208,26 +208,29 @@ def test_example(example, invert_rows_columns=True, variable_layer=False):
 
     full_mesh3d = i2d.build_mesh_from_numpy(binary.shape,
                                         lengths=lengths,
+                                        invert_rows_columns=invert_rows_columns,     
                                         comm=COMM_WORLD)
-    selected_mesh3d = i2d.mesh_from_3d_mask(binary,
-                                   lengths=lengths,
-                                   variable_layer=variable_layer,
-                                  comm=COMM_WORLD)
-    binary = np.zeros_like(example, dtype=int)
-    binary[example>0] = 1
     
-
-    
-    # create firedrake function
-    selected_example_fd = i2d.numpy2firedrake(selected_mesh3d, example, "selected_example")
     full_example_fd = i2d.numpy2firedrake(full_mesh3d, example, "example")
-    
-    selected_example_np = i2d.firedrake2numpy(selected_example_fd)
+    VTKFile("full_example.pvd").write(full_example_fd)
     full_example_np = i2d.firedrake2numpy(full_example_fd)
-    
-    assert(np.allclose(selected_example_np, example, rtol=1e-10))
     assert(np.allclose(full_example_np, example, rtol=1e-10))
     PETSc.Sys.Print("3d PASSED")
+
+
+    selected_mesh3d = i2d.mesh_from_3d_mask(binary,
+                                   lengths=lengths,
+                                   invert_rows_columns=invert_rows_columns,
+                                   variable_layer=variable_layer,
+                                  comm=COMM_WORLD)
+    selected_example_fd = i2d.numpy2firedrake(selected_mesh3d, example, "selected_example")
+    VTKFile("selected_example.pvd").write(selected_example_fd)
+    selected_example_np = i2d.firedrake2numpy(selected_example_fd)
+    assert(np.allclose(selected_example_np, example, rtol=1e-10))
+    PETSc.Sys.Print("3d SELECTED PASSED")
+    
+    assert(np.allclose(full_example_np, selected_example_np, rtol=1e-10))
+    PETSc.Sys.Print("3d SELECTED VS FULL PASSED")
 
 
 
