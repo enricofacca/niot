@@ -14,7 +14,7 @@ import scipy.sparse.linalg as splinalg
 from scipy.linalg import norm 
 import time as cputiming
 import os
-
+import petsctools
 
 import petsc4py
 import time 
@@ -150,7 +150,7 @@ class SpaceDiscretization:
     '''
     
     # include relevant citations
-    Citations().register('FCP2021')
+    petsctools.cite('FCP2021')
     def __init__(self, mesh, 
                  pot_space='CR', 
                  pot_deg=1, 
@@ -580,7 +580,7 @@ class NiotSolver:
         return utilities.nested_get(self.global_ctrl,key)   
 
     # register citations using Citations class in firedrake
-    Citations().register('FCP2021')
+    petsctools.cite('FCP2021')
     #@profile
     def __init__(self, btp, observed, 
                  confidence=1.0, 
@@ -1341,7 +1341,7 @@ class NiotSolver:
                 self.gradient_penalization = assemble(self.gradient_penalization_form)
                 
                 with self.gradient_penalization.dat.vec_ro as gP:
-                    msg = utilities.msg_bounds(gP,f'grad penalty {pw=:2e}        ')
+                    msg = utilities.msg_bounds(gP,f'grad penalty')
                     self.print_info(
                         msg=msg,
                         priority=1, 
