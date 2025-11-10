@@ -3,7 +3,7 @@ from contextlib import ExitStack
 from firedrake import dmhooks
 from petsc4py import PETSc
 from firedrake import FunctionSpace
-from firedrake import Citations
+import petsctools
 from firedrake import Function, TestFunction, TrialFunction
 from firedrake import assemble
 from firedrake import dx
@@ -249,7 +249,7 @@ def include_citations(filename):
         entries.append([keyword,content])
 
     for cit in entries:
-        Citations().add(cit[0],cit[1]+'\n')
+        petsctools.add_citation(cit[0],cit[1]+'\n')
 
 
 def y_branch(coordinates, masses, alpha):
