@@ -1158,6 +1158,7 @@ def experiment(args):
         
 
         # setup solver
+        cartesian_mesh.comm.Barrier()
         niot_solver = NiotSolver(btp, 
                              corrupted,  
                              confidence=confidence, 
@@ -1323,6 +1324,7 @@ def experiment(args):
 
 
         niot_solver = None
+
         gc.collect()
         
         
