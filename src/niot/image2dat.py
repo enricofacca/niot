@@ -7,7 +7,7 @@ import firedrake as fd
 import matplotlib.pyplot as plt
 from firedrake import mesh
 import firedrake.cython.dmcommon as dmcommon
-
+import gc
 
 from firedrake.petsc import PETSc
 from firedrake import COMM_WORLD, COMM_SELF, assemble, dx, DistributedMeshOverlapType  
@@ -518,7 +518,7 @@ def firedrake2numpy(function, shape_np=None, invert_rows_columns=convention_2d_i
    if mesh.geometric_dimension() == 3:
       # TODO: check if this is this the most efficient way to do this
       np_data[indices[:,0], indices[:,1], indices[:,2]] = function.dat.data_ro[:]
-      if invert_rows_columns:
+      if mesh.invert_rows_columns:
          np_data = np.transpose(np_data, (1,0,2))
 
    elif mesh.geometric_dimension() == 2:
@@ -1227,8 +1227,8 @@ def mesh_from_3d_mask(mask3d, lengths,
                       invert_rows_columns=True,
                       comm=COMM_WORLD):
    
-   mask, base, height = mask_base_height(mask3d)
    if variable_layer:
+      mask, base, height = mask_base_height(mask3d)
       if comm.size > 1:
          raise ValueError('Variable layers is bugged in parallel. See https://github.com/firedrakeproject/firedrake/issues/4571')
 
@@ -1268,12 +1268,15 @@ def mesh_from_3d_mask(mask3d, lengths,
                                     layer_height=lengths[2]/mask3d.shape[2])
    
    else:
+      mask2d = np.max(mask3d, axis=2)
       selected_mesh2d = mesh_from_2d_mask(
-                     mask, lengths[0:2], 
+                     mask2d, lengths[0:2], 
                      invert_rows_columns=invert_rows_columns,
                      comm=COMM_WORLD,
                      )
-      
+      mask2d = None
+      gc.collect()
+
       selected_mesh3d = ExtrudedMesh(selected_mesh2d, 
                                     layers=mask3d.shape[2], 
                                     layer_height=lengths[2]/mask3d.shape[2])
