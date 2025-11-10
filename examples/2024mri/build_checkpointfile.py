@@ -52,23 +52,24 @@ def build_masked_mesh(support_mask, lengths, threshold=1e-10, sigma_blur=1.2):
     # select largst connected component
     labels_np, nlabels = connected_components(mask, 0.1)
     labels_np = main_network_equal_one(labels_np, nlabels, mask)
+    # free memory
+    mask = None
+    gc.collect
+    
+
+
     support = np.zeros_like(labels_np, dtype=np.uint8)
     support[labels_np == 1] = 1
+    labels_np = None
+    gc.collect()
 
 
 
     # compute proportion of non-zero voxels
     PETSc.Sys.Print("Proportion of non-zero voxels:", np.count_nonzero(support) / support.size)
-
-    # project on xy plane
-    support_xy = np.max(support, axis=2)
-    # compute proportion of non-zero voxels in the projection
-    PETSc.Sys.Print("Proportion of non-zero voxels in the projection:", np.count_nonzero(support_xy) / support_xy.size)
-
-    mask_xy = np.zeros_like(support_xy, dtype=np.uint8)
-    mask_xy[support_xy > 0] = 1
-
     mesh3d = i2d.mesh_from_3d_mask(support, lengths, variable_layer=False)
+    support = None
+    gc.collect()
 
 
     # # create 2D mesh from the projection
