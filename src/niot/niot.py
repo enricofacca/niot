@@ -1460,8 +1460,8 @@ class NiotSolver:
         Intialize solution
         """
         sol = Function(self.fems.pot_tdens_space,name=['pot','tdens'])
-        sol.sub(0).vector()[:] = 0.0
-        sol.sub(1).vector()[:] = 1.0
+        sol.sub(0).assign(0.0)
+        sol.sub(1).assign(1.0)
 
         sol.sub(0).rename('pot')
         sol.sub(1).rename('tdens')
