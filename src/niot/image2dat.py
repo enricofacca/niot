@@ -1300,6 +1300,7 @@ def mesh_from_3d_mask(mask3d, lengths,
    
    else:
       mask2d = np.max(mask3d, axis=2)
+      PETSc.Sys.Print("Non-zero cells in 2D mask:", np.sum(mask2d)/np.prod(mask2d.shape)*100.0, "%")
       selected_mesh2d = mesh_from_2d_mask(
                      mask2d, lengths[0:2], 
                      invert_rows_columns=invert_rows_columns,
@@ -1320,6 +1321,7 @@ def mesh_from_3d_mask(mask3d, lengths,
    selected_mesh3d.hx = lengths[0]/selected_mesh3d.nx
    selected_mesh3d.hy = lengths[1]/selected_mesh3d.ny
    selected_mesh3d.hz = lengths[2]/selected_mesh3d.nz
+
    selected_mesh3d.xmin = 0.0
    selected_mesh3d.ymin = 0.0
    selected_mesh3d.zmin = 0.0
