@@ -949,6 +949,10 @@ class NiotSolver:
                 cond_zero = self.ctrl_get(['tdens2image', 'pm','cond_zero'])
                 exponent_p = self.ctrl_get(['tdens2image', 'pm','exponent_p'])
                 scaling = self.ctrl_get(['tdens2image', 'pm','scaling'])
+                try:
+                    correction = self.ctrl_get(['tdens2image', 'pm','correction'])
+                except:
+                    correction = 1.0
                 dim = self.mesh.geometric_dimension() 
 
                 dim = self.mesh.geometric_dimension()
@@ -961,7 +965,7 @@ class NiotSolver:
                 # find the time to get 
                 # M = M_0 * (r(\sigma))**p 
                 # sigma = (cond_zero**(-1/exponent_p) * K_md ** (-1/2) * B **(1/2))**(1/beta)
-                sigma = Bar.sigma(cond_zero,exponent_p)
+                sigma = Bar.sigma(cond_zero,exponent_p) * correction
             
                 label_pm = f'pm_{exponent_p:.1f}_{cond_zero:.2e}_{scaling:.2e}'
 
