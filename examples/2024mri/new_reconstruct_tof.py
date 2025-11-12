@@ -1235,8 +1235,10 @@ def experiment(args):
         except:
             pass
         
-        
-        save_inputs = combination.get("save_input", "n")[0] == "y"
+
+        save_inputs = combination.get("save_inputs", "n")[0] == "y"
+        print(combination.get("save_inputs", "n")[0])
+        PETSc.Sys.Print(f"save inputs: {save_inputs} - {label}")
         if save_inputs:
             filename = f"{label_dir}/corrupted.nii.gz"
             save_as_nifti(corrupted, affine, filename)
