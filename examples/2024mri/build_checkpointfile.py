@@ -78,30 +78,6 @@ def build_masked_mesh(support_mask, lengths, threshold=1e-10, sigma_blur=1.2):
     # compute proportion of non-zero voxels
     PETSc.Sys.Print("Proportion of non-zero voxels:", np.count_nonzero(support) / support.size)
     mesh3d = i2d.mesh_from_3d_mask(support, lengths, variable_layer=False, invert_rows_columns=False)
-    
-
-    # # create 2D mesh from the projection
-    # PETSc.Sys.Print("Creating 2D mesh from the projection")
-    # topol, coordinates, _ , _, _ = i2d.topol_coords_edges_from_mask(mask_xy, 
-    #                                                             Lx=lengths[0], 
-    #                                                             Ly=lengths[1], 
-    #                                                             invert_rows_columns=True)
-    # PETSc.Sys.Print("Creating 2D mesh ")
-    # mesh2d = i2d.mesh_from_topology(topol, coordinates, reorder=False)
-    
-    # PETSc.Sys.Print("Creating 3D mesh ")
-    # mesh3d = ExtrudedMesh(mesh2d, nz, lengths[2]/nz)
-    # mesh3d.nx = nx
-    # mesh3d.ny = ny
-    # mesh3d.nz = nz
-    # mesh3d.xmin = 0.0
-    # mesh3d.ymin = 0.0
-    # mesh3d.zmin = 0.0
-    # mesh3d.xmax = lengths[0]
-    # mesh3d.ymax = lengths[1]
-    # mesh3d.zmax = lengths[2]
-    # PETSc.Sys.Print("fire from numpy ")
-
     brain_mask = i2d.numpy2firedrake(mesh3d, support, "brain_mask")
 
     support = None
@@ -128,22 +104,18 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
     
 
     # get brain mask
-    brain_nii_file = f"{dir_nii}/brain_mask.nii.gz"
+    brain_nii_file = f"{dir_nii}/brain_mask_smooth.nii.gz"
     brain_mask_np = get_data_from_nii(brain_nii_file, save_npy, comm=comm)
     
     # define the mesh based on the brain mask
     PETSc.Sys.Print(f"Mesh")
     if masked_mesh:
         PETSc.Sys.Print(f"Building masked mesh ")
-        cartesian_mesh, brain_mask = build_masked_mesh(brain_mask_np, lengths, threshold=1e-10, sigma_blur=1.2)
-        
+        cartesian_mesh = i2d.mesh_from_3d_mask(brain_mask_np, lengths, variable_layer=False, invert_rows_columns=False)
     else:
         PETSc.Sys.Print(f"Building full mesh ")
-        cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths,comm=comm)        
-        brain_mask = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name="brain_mask")
-    PETSc.Sys.Print(f"done")
-    
-    
+        cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths,comm=comm)
+    brain_mask = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name="brain_mask")
     brain_volume = assemble(conditional(brain_mask>1e-10,1,0)*dx) / np.prod(lengths)
     PETSc.Sys.Print(f"Brain volume: {brain_volume*100:.2f}%")
     brain_mask_np = None
@@ -179,17 +151,6 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
     gc.collect()
     PETSc.Sys.Print(f" - done")
     
-
-
-    # get brain mask
-    brain_nii_file = f"{dir_nii}/brain_mask.nii.gz"
-    brain_mask_np = get_data_from_nii(brain_nii_file, save_npy, comm=comm)
-    brain_mask = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name="brain_mask")
-    brain_volume = assemble(conditional(brain_mask>1e-10,1,0)*dx) / np.prod(lengths)
-    PETSc.Sys.Print(f"Brain volume: {brain_volume*100:.2f}%")
-    brain_mask_np = None
-    gc.collect()
-    PETSc.Sys.Print(f"Brain mask done")
     
 
     # load tof data
