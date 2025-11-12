@@ -56,13 +56,17 @@ def cartesian_grid_3d(shape_xyz,
    mesh.ny = ny
    mesh.nz = nz
 
-   
    mesh.xmin = 0
    mesh.xmax = lengths[0]
    mesh.ymin = 0
    mesh.ymax = lengths[1] 
    mesh.zmin = 0
    mesh.zmax = lengths[2]
+
+   mesh.hx = lengths[0]/nx
+   mesh.hy = lengths[1]/ny
+   mesh.hz = lengths[2]/nz
+
 
    mesh.invert_rows_columns = False
    mesh.flip_up_down = False
@@ -121,6 +125,10 @@ def build_mesh_from_numpy(np_shape,
       mesh.ymax = lengths[1]
       mesh.invert_rows_columns = invert_rows_columns
       mesh.flip_up_down = flip_up_down
+
+      mesh.hx = lengths[0]/nx
+      mesh.hy = lengths[1]/ny
+   
       return mesh
       #print(f'{comm.size=} {comm.rank=} {mesh.comm.size=} {mesh.comm.rank=}' )
             
@@ -146,6 +154,12 @@ def build_mesh_from_numpy(np_shape,
             mesh.zmin = 0
             mesh.zmax = lengths[2]
             mesh.invert_rows_columns = invert_rows_columns
+   
+            mesh.hx = lengths[0]/nx
+            mesh.hy = lengths[1]/ny
+            mesh.hz = lengths[2]/nz
+   
+   
             return mesh
          else:
             mesh = fd.BoxMesh(
@@ -169,6 +183,11 @@ def build_mesh_from_numpy(np_shape,
             mesh.zmin = 0
             mesh.zmax = lengths[2]
             mesh.invert_rows_columns = invert_rows_columns
+
+            mesh.hx = lengths[0]/nx
+            mesh.hy = lengths[1]/ny
+            mesh.hz = lengths[2]/nz
+
             return mesh
       
       if (mesh_type == 'simplicial'):        
@@ -194,6 +213,12 @@ def build_mesh_from_numpy(np_shape,
             mesh.zmin = 0
             mesh.zmax = lengths[2]
             mesh.invert_rows_columns = invert_rows_columns
+
+            mesh.hx = lengths[0]/nx
+            mesh.hy = lengths[1]/ny
+            mesh.hz = lengths[2]/nz
+
+
             return mesh
 
          else:
@@ -225,6 +250,10 @@ def build_mesh_from_numpy(np_shape,
             mesh.zmin = 0
             mesh.zmax = lengths[2]
             mesh.invert_rows_columns = invert_rows_columns
+
+            mesh.hx = lengths[0]/nx
+            mesh.hy = lengths[1]/ny
+            mesh.hz = lengths[2]/nz
 
             return mesh
 
@@ -1117,7 +1146,9 @@ def mesh_from_2d_mask(mask2d, lengths,
    selected_mesh2d.ymin = 0.0
    selected_mesh2d.xmax = Lx
    selected_mesh2d.ymax = Ly
-
+   selected_mesh2d.hx = Lx/nx
+   selected_mesh2d.hy = Ly/ny
+   
    selected_mesh2d.invert_rows_columns = invert_rows_columns
    selected_mesh2d.flip_up_down = False
    selected_mesh2d.ncells = len(new_edges)
@@ -1286,6 +1317,9 @@ def mesh_from_3d_mask(mask3d, lengths,
    selected_mesh3d.nx = selected_mesh2d.nx
    selected_mesh3d.ny = selected_mesh2d.ny
    selected_mesh3d.nz = mask3d.shape[2]
+   selected_mesh3d.hx = lengths[0]/selected_mesh3d.nx
+   selected_mesh3d.hy = lengths[1]/selected_mesh3d.ny
+   selected_mesh3d.hz = lengths[2]/selected_mesh3d.nz
    selected_mesh3d.xmin = 0.0
    selected_mesh3d.ymin = 0.0
    selected_mesh3d.zmin = 0.0
