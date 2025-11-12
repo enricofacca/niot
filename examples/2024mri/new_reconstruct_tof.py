@@ -508,6 +508,11 @@ def experiment(args):
         "thickness": thickness,
     }
 
+    # save tof and t1 for visualization
+    save_as_nifti(tof, affine, f"{out_directory}/tof.nii.gz")
+    save_as_nifti(t1, affine, f"{out_directory}/t1.nii.gz")
+    exit()
+
 
     # confidence data
     def set_confidence(**kwargs):

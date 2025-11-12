@@ -77,7 +77,7 @@ def build_masked_mesh(support_mask, lengths, threshold=1e-10, sigma_blur=1.2):
 
     # compute proportion of non-zero voxels
     PETSc.Sys.Print("Proportion of non-zero voxels:", np.count_nonzero(support) / support.size)
-    mesh3d = i2d.mesh_from_3d_mask(support, lengths, variable_layer=False, invert_rows_columns=True)
+    mesh3d = i2d.mesh_from_3d_mask(support, lengths, variable_layer=False, invert_rows_columns=False)
     
 
     # # create 2D mesh from the projection
