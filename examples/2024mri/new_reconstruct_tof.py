@@ -1236,8 +1236,8 @@ def experiment(args):
             pass
         
 
-        save_inputs = combination.get("save_inputs", "n")[0] == "y"
-        print(combination.get("save_inputs", "n")[0])
+        save_inputs = combination.get("save_inputs", 0) == 1
+        print(combination["save_inputs"])
         PETSc.Sys.Print(f"save inputs: {save_inputs} - {label}")
         if save_inputs:
             filename = f"{label_dir}/corrupted.nii.gz"
