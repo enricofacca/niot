@@ -1235,7 +1235,8 @@ def experiment(args):
         except:
             pass
         
-        save_inputs = False
+        
+        save_inputs = combination.get("save_input", "n")[0] == "y"
         if save_inputs:
             filename = f"{label_dir}/corrupted.nii.gz"
             save_as_nifti(corrupted, affine, filename)
