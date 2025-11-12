@@ -160,7 +160,6 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
     file_nii = f"{dir_nii}/TOF.nii.gz"
     tof_np = get_data_from_nii(file_nii, save_npy, comm=comm)
     PETSc.Sys.Print(f"TOF ",end="")
-    tof_np = np.load(file_npy,mmap_mode='r')
     tof = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
     tof_np = None
     PETSc.Sys.Print(f" - done")
