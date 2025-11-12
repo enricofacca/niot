@@ -19,6 +19,16 @@ def save_as_npy(file_nii, file_npy, comm=COMM_WORLD):
             PETSc.Sys.Print(f"- Done")
     comm.barrier()
 
+def get_data_from_nii(file_nii, save_npy=False, comm=COMM_WORLD):
+    if save_npy:
+        file_npy = file_nii.replace('.nii.gz', '.npy')
+        save_as_npy(file_nii, file_npy, comm=comm)
+        data_np = np.load(file_npy,mmap_mode='r')
+    else:
+        data = nibabel.load(file_nii)
+        data_np = data.get_fdata()    
+    return data_np
+
 def clean_npy_file(file_npy):
     try:
         os.remove(file_npy)
@@ -102,7 +112,7 @@ def build_masked_mesh(support_mask, lengths, threshold=1e-10, sigma_blur=1.2):
 
 
 
-def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_WORLD):
+def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_WORLD, save_npy=False):
     n_proc = comm.size
 
     # load tof data and get basic info
@@ -119,9 +129,7 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
 
     # get brain mask
     brain_nii_file = f"{dir_nii}/brain_mask.nii.gz"
-    brain_npy_file = f"{dir_nii}/brain_mask.npy"
-    save_as_npy(brain_nii_file, brain_npy_file, comm=comm)
-    brain_mask_np = np.load(brain_npy_file,mmap_mode='r')
+    brain_mask_np = get_data_from_nii(brain_nii_file, save_npy, comm=comm)
     
     # define the mesh based on the brain mask
     PETSc.Sys.Print(f"Mesh")
@@ -132,7 +140,7 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
     else:
         PETSc.Sys.Print(f"Building full mesh ")
         cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths,comm=comm)        
-        brain_mask = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name="brain_mask")
+        #brain_mask = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name="brain_mask")
     PETSc.Sys.Print(f"done")
     
     
@@ -140,7 +148,6 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
     PETSc.Sys.Print(f"Brain volume: {brain_volume*100:.2f}%")
     brain_mask_np = None
     PETSc.Sys.Print(f"Brain mask done")
-    clean_npy_file(brain_npy_file)
     gc.collect()
 
 
@@ -151,13 +158,11 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
     # load tof data
     # tof_np = tof_data.get_fdata()
     file_nii = f"{dir_nii}/TOF.nii.gz"
-    file_npy = f"{dir_nii}/TOF.npy"   
-    save_as_npy(file_nii, file_npy, comm=comm)
+    tof_np = get_data_from_nii(file_nii, save_npy, comm=comm)
     PETSc.Sys.Print(f"TOF ",end="")
     tof_np = np.load(file_npy,mmap_mode='r')
     tof = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
     tof_np = None
-    clean_npy_file(file_npy)
     PETSc.Sys.Print(f" - done")
     
     
@@ -165,56 +170,46 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
     # tof_np = tof_data.get_fdata()
     
     file_nii = f"{dir_nii}/inlets.nii.gz"
-    file_npy = f"{dir_nii}/inlets.npy"   
-    save_as_npy(file_nii, file_npy, comm=comm)
+    inlets_2d_np = get_data_from_nii(file_nii, save_npy, comm=comm)
     PETSc.Sys.Print(f"Inlets",end="")
-    inlets_2d_np = np.load(file_npy,mmap_mode='r')
     inlets_3d_np = np.zeros(dimensions)
     inlets_3d_np[:,:,0] = inlets_2d_np[:,:,0]
     inlets = i2d.numpy2firedrake(cartesian_mesh, inlets_3d_np, name="inlets")
     inlets_2d_np = None
     inlets_3d_np = None
-    PETSc.Sys.Print(f" - done")
-    clean_npy_file(file_npy)
     gc.collect()
+    PETSc.Sys.Print(f" - done")
+    
 
 
     # get brain mask
     brain_nii_file = f"{dir_nii}/brain_mask.nii.gz"
-    brain_npy_file = f"{dir_nii}/brain_mask.npy"
-    save_as_npy(brain_nii_file, brain_npy_file, comm=comm)
-    brain_mask_np = np.load(brain_npy_file,mmap_mode='r')
+    brain_mask_np = get_data_from_nii(brain_nii_file, save_npy, comm=comm)
     brain_mask = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name="brain_mask")
     brain_volume = assemble(conditional(brain_mask>1e-10,1,0)*dx) / np.prod(lengths)
     PETSc.Sys.Print(f"Brain volume: {brain_volume*100:.2f}%")
     brain_mask_np = None
-    PETSc.Sys.Print(f"Brain mask done")
-    clean_npy_file(brain_npy_file)
     gc.collect()
-
+    PETSc.Sys.Print(f"Brain mask done")
+    
 
     # load tof data
     # tof_np = tof_data.get_fdata()
     file_nii = f"{dir_nii}/aseg.nii.gz"
-    file_npy = f"{dir_nii}/aseg.npy"   
-    save_as_npy(file_nii, file_npy, comm=comm)
     PETSc.Sys.Print(f"aseg ",end="")
-    aseg_np = np.load(file_npy,mmap_mode='r')
+    aseg_np = get_data_from_nii(file_nii, save_npy, comm=comm)
     aseg = i2d.numpy2firedrake(cartesian_mesh, aseg_np, name='aseg')
     aseg_np = None
-    clean_npy_file(file_npy)
+    gc.collect()
     PETSc.Sys.Print(f" - done")
     
 
     # load main network
     file_nii = f"{dir_nii}/T1.nii.gz"
-    file_npy = f"{dir_nii}/T1.npy"   
-    save_as_npy(file_nii, file_npy, comm=comm)
-    t1_np = np.load(file_npy,mmap_mode='r')
+    t1_np = get_data_from_nii(file_nii, save_npy, comm=comm)
     t1 = i2d.numpy2firedrake(cartesian_mesh, t1_np, name="t1")
     t1_np = None
     PETSc.Sys.Print(f"T1 done")
-    clean_npy_file(file_npy)
     gc.collect()
     
     # 
@@ -229,9 +224,7 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
     else: 
         label = f"t{threshold:.2e}"
     file_nii = f"{dir_nii}/main_network_{label}.nii.gz"
-    file_npy = f"{dir_nii}/main_network_{label}.npy"   
-    save_as_npy(file_nii, file_npy, comm=comm)
-    main_network_np = np.load(file_npy,mmap_mode='r')
+    main_network_np = get_data_from_nii(file_nii, save_npy, comm=comm)
     main_network = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name="main_network")
     PETSc.Sys.Print(f"Main network done")
     main_network_np = None
@@ -239,9 +232,7 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
 
     # read skeleton mask of main network
     file_nii = f"{dir_nii}/skeleton_{label}.nii.gz"
-    file_npy = f"{dir_nii}/skeleton_{label}.npy"   
-    save_as_npy(file_nii, file_npy, comm=comm)
-    skeleton_np = np.load(file_npy,mmap_mode='r')
+    skeleton_np = get_data_from_nii(file_nii, save_npy, comm=comm)
     skeleton = i2d.numpy2firedrake(cartesian_mesh, skeleton_np, name="skeleton")
     PETSc.Sys.Print(f"Skeleton done")
     skeleton_np = None
@@ -249,9 +240,7 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
 
     # read local thickness of main network
     file_nii = f"{dir_nii}/thickness_{label}.nii.gz"
-    file_npy = f"{dir_nii}/thickness_{label}.npy"   
-    save_as_npy(file_nii, file_npy, comm=comm)
-    thickness_np = np.load(file_npy,mmap_mode='r')
+    thickness_np = get_data_from_nii(file_nii, save_npy, comm=comm)
     thickness = i2d.numpy2firedrake(cartesian_mesh, thickness_np, name="thickness")
     PETSc.Sys.Print(f"Local thickness done")
     thickness_np = None
@@ -261,9 +250,7 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
 
     # external network
     file_nii = f"{dir_nii}/external_network_{label}.nii.gz"
-    file_npy = f"{dir_nii}/external_network_{label}.npy"   
-    save_as_npy(file_nii, file_npy, comm=comm)
-    external_network_np = np.load(file_npy,mmap_mode='r')
+    external_network_np = get_data_from_nii(file_nii, save_npy, comm=comm)
     external_network = i2d.numpy2firedrake(cartesian_mesh, external_network_np, name="external_network")
     PETSc.Sys.Print(f"External network done")
     external_network_np = None
