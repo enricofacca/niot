@@ -508,6 +508,7 @@ def experiment(args):
         "thickness": thickness,
     }
 
+
     
     # confidence data
     def set_confidence(**kwargs):
@@ -1175,10 +1176,11 @@ def experiment(args):
         tdens2image = combination["map"]
         niot_solver.ctrl_set(['tdens2image'], tdens2image)
 
+        use_adjoint = combination.get("use_adjoint", 0) == 1
+        niot_solver.ctrl_set(['use_adjoint'], use_adjoint)
         if tdens2image['type'] == 'pm':
             # we need to use the adjoint to compute the gradient of the discrepancy
             niot_solver.ctrl_set(['use_adjoint'], True)
-
         
         niot_solver.ctrl_set("discrepancy_norm", discrepancy_norm)
 
@@ -1212,7 +1214,7 @@ def experiment(args):
         deltat_control = {
         'type': 'adaptive2',
         'lower_bound': 1e-13,
-        'upper_bound': 5e-2,
+        'upper_bound': 2e-2,
         'expansion': 1.1,
         'contraction': 0.5,
         }
@@ -1237,8 +1239,6 @@ def experiment(args):
         
 
         save_inputs = combination.get("save_inputs", 0) == 1
-        print(combination["save_inputs"])
-        PETSc.Sys.Print(f"save inputs: {save_inputs} - {label}")
         if save_inputs:
             filename = f"{label_dir}/corrupted.nii.gz"
             save_as_nifti(corrupted, affine, filename)
@@ -1258,6 +1258,9 @@ def experiment(args):
             if combination["kappa"] != "one":
                 filename = f"{label_dir}/kappa.nii.gz"
                 save_as_nifti(kappa, affine, filename)
+            
+            filaname = f"{label_dir}/main_network.nii.gz"
+            save_as_nifti(main_network, affine, filaname)
         
         
         #

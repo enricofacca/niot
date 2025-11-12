@@ -389,6 +389,8 @@ class PorousMediaMap(Conductivity2ImageMap):
         
         d_inter = d_face_interior(space.mesh())
 
+        self.first_time = True
+
         
         
         if degree > 0:
@@ -543,7 +545,10 @@ class PorousMediaMap(Conductivity2ImageMap):
                 if i == 0:
                     # this is this use the conductivity as initial guess
                     # it needs to be stored in the adjoint computation
-                    self.image_h.assign(conductivity)
+                    if self.first_time:
+                        self.image_h.assign(conductivity)
+                        self.first_time = False
+                    
                 else:
                     # the the u^{k}=u^{k-1}
                     self.tdens4transform.assign(self.image_h)
