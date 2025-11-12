@@ -140,7 +140,7 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
     else:
         PETSc.Sys.Print(f"Building full mesh ")
         cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths,comm=comm)        
-        #brain_mask = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name="brain_mask")
+        brain_mask = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name="brain_mask")
     PETSc.Sys.Print(f"done")
     
     
