@@ -1235,7 +1235,7 @@ def experiment(args):
         except:
             pass
         
-        save_inputs = True
+        save_inputs = False
         if save_inputs:
             filename = f"{label_dir}/corrupted.nii.gz"
             save_as_nifti(corrupted, affine, filename)
@@ -1293,8 +1293,10 @@ def experiment(args):
             filename=f"{label_dir}/pot_{file_label}.nii.gz"
             save_as_nifti(pot, affine, filename)
         
-            filename = f"{label_dir}/image_reconstruction_{file_label}.nii.gz"
-            save_as_nifti(niot_solver.reconstruction, affine, filename)
+            tdens2image = combination["map"]
+            if tdens2image['type'] == 'pm':
+                filename = f"{label_dir}/image_reconstruction_{file_label}.nii.gz"
+                save_as_nifti(niot_solver.reconstruction, affine, filename)
                 
 
             save_intermediate = False
