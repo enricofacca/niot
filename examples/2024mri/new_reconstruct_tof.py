@@ -480,18 +480,18 @@ def experiment(args):
         
         mesh = cartesian_mesh
 
-    mesh.nx = original_dimensions[0]
-    mesh.ny = original_dimensions[1]
-    mesh.nz = original_dimensions[2]
-    mesh.xmin = 0.0
-    mesh.xmax = lengths[0]
-    mesh.ymin = 0.0
-    mesh.ymax = lengths[1]
-    mesh.zmin = 0.0
-    mesh.zmax = lengths[2]
-    mesh.hx = hx
-    mesh.hy = hy
-    mesh.hz = hz
+    # mesh.nx = original_dimensions[0]
+    # mesh.ny = original_dimensions[1]
+    # mesh.nz = original_dimensions[2]
+    # mesh.xmin = 0.0
+    # mesh.xmax = lengths[0]
+    # mesh.ymin = 0.0
+    # mesh.ymax = lengths[1]
+    # mesh.zmin = 0.0
+    # mesh.zmax = lengths[2]
+    # mesh.hx = hx
+    # mesh.hy = hy
+    # mesh.hz = hz
 
 
     
@@ -511,8 +511,8 @@ def experiment(args):
     # save tof and t1 for visualization
     save_as_nifti(tof, affine, f"{out_directory}/tof.nii.gz")
     save_as_nifti(t1, affine, f"{out_directory}/t1.nii.gz")
-    exit()
-
+    save_as_nifti(brain_mask, affine, f"{out_directory}/brain_mask.nii.gz")
+    
 
     # confidence data
     def set_confidence(**kwargs):
@@ -1078,6 +1078,7 @@ def experiment(args):
         source.assign(0.0)
 
         kappa = set_kappa(**combination, **input_data)
+        save_as_nifti(kappa, affine, f"{out_directory}/kappa.nii.gz")
 
 
         inlet_pressure = Function(inlets.function_space())
@@ -1089,17 +1090,20 @@ def experiment(args):
                                       Dirichlet = None,
                                       weak_Dirichlet = weak_Dirichlet,
                                       kappa=kappa)
+        save_as_nifti(sink, affine, f"{out_directory}/sink.nii.gz")
 
         #
         # set confidence
         #
         confidence = set_confidence(**combination, **input_data)
-        
+        save_as_nifti(confidence, affine, f"{out_directory}/confidence.nii.gz")
+
+
         #
         # set initial guess
         # 
         initial = set_initial_guess(combination["initial"], map=combination["map"], corrupted=corrupted, **input_data)
-
+        save_as_nifti(initial, affine, f"{out_directory}/initial.nii.gz")
         
         # 
         # set labels defining the experiment
