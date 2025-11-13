@@ -618,12 +618,20 @@ def experiment(args):
             except:
                 raise ValueError("brain_mask not provided")
             
-            # get brain mask
+            # get eps lift
             try:
                 eps = option['eps']
             except:
-                raise ValueError("eps_confidence provided")
+                raise ValueError("eps not provided")
             
+
+            # get eps lift
+            try:
+                scale_tof = option['scale_tof']
+            except:
+                scale_tof = 1.0
+            
+
             try:
                 main_confidence = option['main_confidence']
             except:
@@ -635,7 +643,7 @@ def experiment(args):
                             conditional(brain_mask>1e-10, 1, 0)
                             * (
                                 main_confidence  * conditional(main_network > 0, 1, 0) 
-                                + tof 
+                                + scale_tof * tof 
                                 + eps 
                                 )
                                 # outside, strong cce, where we set no network
