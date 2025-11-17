@@ -504,13 +504,15 @@ class PorousMediaMap(Conductivity2ImageMap):
             dt0 = self.sigma
 
         
-        if self.use_stored_images_as_initial_guess and self.stored_images:
+        if self.use_stored_images_as_initial_guess:
             total_time = 0.0
-            self.steps_done = 0            
+            self.steps_done = 0
+            PETSc.Sys.Print(f"Using stored images as initial guess {self.stored_images=}")
             for i in range(self.nsteps):
-                
                 # used stored solution as initial guess
-                self.image_h.assign(self.intermediate_images[i], annotate=False)
+                if self.stored_images:
+                    PETSc.Sys.Print(f"Assign initial guess from stored image {i=}")
+                    self.image_h.assign(self.intermediate_images[i], annotate=False)
                 
                 if i > 0:                    
                     # the the u^{k}=u^{k-1}
@@ -533,6 +535,7 @@ class PorousMediaMap(Conductivity2ImageMap):
 
                 # store images
                 if self.store_images:
+                    PETSc.Sys.Print(f"Storing image {i=}")
                     self.intermediate_images[i].assign(self.image_h, annotate=False)
                 
                 self.steps_done += 1
@@ -568,10 +571,6 @@ class PorousMediaMap(Conductivity2ImageMap):
                         PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
                                     + utilities.msg_bounds(img_vec,'IMG'))
 
-                # store images
-                if self.store_images:
-                    self.intermediate_images[i].assign(self.image_h, annotate=False)
-                
                 self.steps_done += 1
         
         # set the flag equal to true
