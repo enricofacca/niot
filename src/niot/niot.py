@@ -1009,10 +1009,15 @@ class NiotSolver:
                 name=label_pm)
             self.tdens2image = lambda x: self.tdens2image_map(x)
 
-            self.tdens2image_map.store_images = False#True
+            try:
+                reuse_images = self.ctrl_get(['tdens2image', 'pm','store_images']) == 1
+                self.tdens2image_map.use_stored_images_as_initial_guess = reuse_images
+                self.tdens2image_map.store_images = reuse_images
+            except:
+                self.tdens2image_map.store_images = False
             """ Store the images at each time step"""
 
-            self.tdens2image_map.use_stored_images_as_initial_guess = False#True
+            
             """ Boolean for activation of using store intermediate images as initial guess"""
         
 
