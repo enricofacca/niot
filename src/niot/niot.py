@@ -756,7 +756,7 @@ class NiotSolver:
         
         self.dual_h1_sigma =  Function(self.ConstansSpace, name="discrepancy_dual_h1_sigma")
         self.dual_h1_sigma.assign(self.ctrl_get('discrepancy_dual_h1_sigma'))
-        PETSc.Sys.Print("sigma", self.ctrl_get('discrepancy_dual_h1_sigma'))
+        PETSc.Sys.Print("sigma = scaling of l^2 term", self.ctrl_get('discrepancy_dual_h1_sigma'))
         
         #
         # Define the form 
