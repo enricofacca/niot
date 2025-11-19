@@ -36,12 +36,14 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0 ):
     # blur tof 
     if blur > 0:
         print(f" - applying gaussian blur {blur:.2e}",end="")
-        tof_np = gaussian_filter(tof_np, sigma=blur)
+        tof_np = gaussian_filter(tof_np, sigma=blur*hx)
         print(f" - done",end="")
 
     # separe connected components
     labels_np, nlabels = connected_components(tof_np, threshold)
-    
+    labels_np = main_network_equal_one(labels_np, nlabels, tof_np)
+
+
     # save as nifti 
     main_network = np.zeros_like(labels_np, dtype=np.uint8)
     main_network[labels_np == 1] = 1
@@ -66,20 +68,27 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0 ):
     # blur tof 
     if blur_tof > 0:
         print(f" - applying gaussian blur {blur_tof:.2e}",end="")
-        tof_smooth_np = gaussian_filter(tof_np, sigma=blur_tof)
+        tof_smooth_np = gaussian_filter(tof_np, sigma=blur_tof*hx)
         print(f" - done",end="")
 
     
 
     mask = brain_mask_np.copy()
-    label_main = 1
-    mask[main_network > 0 ] = label_main 
-    label_tof = 2
-    mask[tof_smooth_np > threshold ] = label_tof
-    label_t1 = 3
+    label_t1 = 4
     mask[t1_np > 500 ] = label_t1
-    mask[brain_mask_np == 0 ] = 0
+    
+    
+    label_tof = 3
+    t = 0.175 * tof_smooth_np.max()
+    mask[tof_smooth_np > t ] = label_tof
+    
+    
+    label_main = 2
+    mask[main_network > 0 ] = label_main 
+
+    mask[brain_mask_np < 1 ] = 0
     mask = mask.astype(np.uint8)
+
 
     voxel_size = (hx, hy, hz)
 
@@ -96,6 +105,12 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0 ):
     )
     mesh.write("brain.vtu")
     
+    outfilename = f"mask_mesh.nii.gz"
+    print(f"Saving main network {outfilename}")
+    nibabel.save(nibabel.Nifti1Image(mask, tof_data.affine), 
+                 outfilename)
+
+
         
 
 if __name__ == '__main__':
