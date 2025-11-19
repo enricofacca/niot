@@ -5,8 +5,8 @@ from connected_components_tof import connected_components, main_network_equal_on
 import os
 from scipy.ndimage import gaussian_filter
 import pygalmesh
-
-
+from firedrake import *
+from niot import image2dat as i2d
 
 def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0 ):
     save_npy = False
@@ -92,19 +92,36 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0 ):
 
     voxel_size = (hx, hy, hz)
 
-    mesh = pygalmesh.generate_from_array(
-        mask,
-        voxel_size, 
-        max_facet_distance=0.2,
-        max_cell_circumradius={
-            "default": 2.0, 
-            label_main: 0.5,
-            label_tof: 0.5,
-            label_t1: 2.0
-            },
-    )
-    mesh.write("brain.vtu")
+    # mesh = pygalmesh.generate_from_array(
+    #     mask,
+    #     voxel_size, 
+    #     max_facet_distance=0.2,
+    #     max_cell_circumradius={
+    #         "default": 2.0, 
+    #         label_main: 0.5,
+    #         label_tof: 0.5,
+    #         label_t1: 2.0
+    #         },
+    # )
+    # mesh.write("brain.vtu")
     
+    mesh = Mesh("brain.vtu")
+
+
+    cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
+    tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
+    t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
+
+    DG0 = FunctionSpace(mesh, "DG", 0)
+    tof_mesh = Function(DG0, name="tof_mesh")
+    t1_mesh = Function(DG0, name="t1_mesh")
+    tof_mesh.interpolate(tof_cartesian)
+    t1_mesh.interpolate(t1_cartesian)
+
+    # save as pvd
+    VTKFile("tof_mesh.pvd").write(tof_mesh)
+
+
     outfilename = f"mask_mesh.nii.gz"
     print(f"Saving main network {outfilename}")
     nibabel.save(nibabel.Nifti1Image(mask, tof_data.affine), 
