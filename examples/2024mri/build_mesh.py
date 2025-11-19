@@ -105,7 +105,7 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0 ):
     # )
     # mesh.write("brain.vtu")
     
-    mesh = Mesh("brain.vtu")
+    mesh = Mesh("brain.msh")
 
 
     cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
