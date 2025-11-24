@@ -118,8 +118,7 @@ def MyRelabeledMesh(mesh, indicator_functions, subdomain_ids, boundary_only=Fals
                     cell_point = cells[0]
                     offset = section.getOffset(cell_point)
                     if f.dat.data_ro_with_halos[offset] > 0.5:
-                        face_coords = plex1.vecGetClosure(coord_sec, coords, facet_point)
-                        print(facet_point, face_coords)
+                        #face_coords = plex1.vecGetClosure(coord_sec, coords, facet_point)
                         print(f"Setting label for facet_point {facet_point} to {subid}")
                         plex1.setLabelValue(dmcommon.FACE_SETS_LABEL, facet_point, subid)
             plex1.removeLabel("boundary_faces")

@@ -120,10 +120,13 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0 ):
     tof_mesh.interpolate(tof_cartesian)
     t1_mesh.interpolate(t1_cartesian)
     main_network_mesh.interpolate(main_network_cartesian)
-    
+    marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
+    main_network_indicator = Function(marker_space, name="main_network_indicator")
+    main_network_indicator.interpolate(main_network_mesh)
+
 
     
-    relabeled_mesh = MyRelabeledMesh(mesh, [t1_mesh], 
+    relabeled_mesh = MyRelabeledMesh(mesh, [main_network_indicator], 
                                      [99],
                                      boundary_only=True)
     
