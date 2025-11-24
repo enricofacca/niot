@@ -4,9 +4,11 @@ import numpy as np
 from connected_components_tof import connected_components, main_network_equal_one, find_external_network
 import os
 from scipy.ndimage import gaussian_filter
-import pygalmesh
+#import pygalmesh
 from firedrake import *
 from niot import image2dat as i2d
+from mwe import MyRelabeledMesh
+
 
 def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0 ):
     save_npy = False
@@ -106,20 +108,46 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0 ):
     # mesh.write("brain.vtu")
     
     mesh = Mesh("brain.msh")
-
-
     cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
     tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
     t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
+    main_network_cartesian = i2d.numpy2firedrake(cartesian_mesh, main_network, name='main_network')
 
     DG0 = FunctionSpace(mesh, "DG", 0)
     tof_mesh = Function(DG0, name="tof_mesh")
     t1_mesh = Function(DG0, name="t1_mesh")
+    main_network_mesh = Function(DG0, name="main_network_mesh")
     tof_mesh.interpolate(tof_cartesian)
     t1_mesh.interpolate(t1_cartesian)
+    main_network_mesh.interpolate(main_network_cartesian)
+    
+
+    
+    relabeled_mesh = MyRelabeledMesh(mesh, [t1_mesh], 
+                                     [99],
+                                     boundary_only=True)
+    
+    
+    V = FunctionSpace(relabeled_mesh, "CG", 1)
+    test = TestFunction(V)
+    trial = TrialFunction(V)
+    a = inner(grad(trial), grad(test)) * dx
+    L = test * dx
+
+    solution = Function(V,name="solution")
+    problem = LinearVariationalProblem(a, L, solution, bcs=[DirichletBC(V, 0.0, 99)])
+    solver = LinearVariationalSolver(problem,
+                            solver_parameters={
+                                "ksp_type": "cg",
+                                "ksp_rtol": 1e-6,
+                                "pc_type": "hypre"})
+    solver.solve()
+
 
     # save as pvd
     VTKFile("tof_mesh.pvd").write(tof_mesh)
+
+    VTKFile("direchlet.pvd").write(solution)
 
 
     outfilename = f"mask_mesh.nii.gz"
