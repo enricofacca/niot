@@ -100,6 +100,7 @@ def skeletonthickness_to_tubular(cond, cond_zero, exponent_p, dt0, nsteps=3, ver
     
     scaling = 1.0 
     dim = mesh.geometric_dimension()-1
+    
     Bar = conductivity2image.Barenblatt(exponent_m,dim)
     B = Bar.B
     alpha = Bar.alpha
@@ -148,11 +149,12 @@ if (__name__ == '__main__'):
     parser.add_argument('--tof', type=str, default='TOF.nii.gz', help='path to the TOF image')
     parser.add_argument('--t', type=float, default=200, help='threshold for TOF')
     parser.add_argument('--blur', type=float, default=1.5, help='blur for TOF')
-    parser.add_argument('--mu0', type=float, default=8/np.pi*3e-3, help='conductivity at which the thickness is zero')
+    parser.add_argument('--nu', type=float, default=3e-3, help='blood viscosity')
     parser.add_argument('--dt0', type=float, default=1e-2, help='initial time step for porous media map')
     parser.add_argument('--nsteps', type=int, default=3, help='number of time steps for porous media map')
     parser.add_argument('--nref', type=int, default=0, help='number of refinements of the mesh')
     parser.add_argument('--out', type=str, default="./check_pm", help='output directory')
+    parser.add_argument('--vtr', type=str, default="tubular", help='output file')
     args = parser.parse_args()
 
     exponent_p = 4.0
@@ -180,6 +182,8 @@ if (__name__ == '__main__'):
     threshold = args.t
     blur = args.blur
 
+    mu0 = np.pi/ (8*args.nu)
+
     label = f"t{threshold:.2e}"
     if blur > 0:
         label += f"_blur{blur:.2e}"
@@ -193,7 +197,9 @@ if (__name__ == '__main__'):
 
 
     # separe connected components
-    labels_np, nlabels = connected_components(tof_np, threshold)
+    binary_np_data = np.zeros_like(tof_np, dtype=np.uint8)
+    binary_np_data[tof_np > threshold] = 1
+    labels_np, nlabels = connected_components(binary_np_data)
     PETSc.Sys.Print(f"Found {nlabels=} with tof>={threshold:.2e}")
     labels_np = main_network_equal_one(labels_np, nlabels, tof_np)
 
@@ -242,7 +248,7 @@ if (__name__ == '__main__'):
 
     if args.nref > 0:
         # refine the image
-        main_network = zoom(main_network, 2**args.nref, order=0, mode='nearest')
+        main_network = zoom(main_network, [2**args.nref, 2**args.nref, 2**args.nref], order=0, mode='nearest')
         dimensions = main_network.shape
         hx /= 2.0
         hy /= 2.0
@@ -257,10 +263,9 @@ if (__name__ == '__main__'):
 
 
 
-    filename = f"{args.out}/main_network_{label}.nii.gz"
+    filename = f"main_network.nii.gz"
     save_np_as_nifti(main_network, new_affine, filename) 
 
-    
     
 
     # get the skeleton of main network
@@ -292,8 +297,8 @@ if (__name__ == '__main__'):
     # 
     # The scaling by hx**(dim-1) is to get a Dirac-like distribution
     #
-    tdens_np = args.mu0 * skeleton_radius_np**exponent_p / (hx)**(dim-1)
-    filename = f"{args.out}/tdens_{label}_c{args.mu0:.2e}.nii.gz"
+    tdens_np = mu0 * skeleton_radius_np**exponent_p / (hx)**(dim-1)
+    filename = f"{args.out}/tdens_{label}_c{args.nu:.2e}.nii.gz"
     save_np_as_nifti(tdens_np, new_affine, filename) 
     
 
@@ -308,7 +313,7 @@ if (__name__ == '__main__'):
     tubular = skeletonthickness_to_tubular(
             tdens,         
             exponent_p=exponent_p,
-            cond_zero=args.mu0,
+            cond_zero=mu0,
             dt0=args.dt0,
             nsteps=args.nsteps,
             verbose=True)
@@ -316,7 +321,7 @@ if (__name__ == '__main__'):
         PETSc.Sys.Print(utilities.msg_bounds(tubular_vec, 'IMG'))
     
     tubular_np = i2d.firedrake2numpy(tubular)
-    filename = f"{args.out}/tubular_{label}_c{args.mu0:.2e}.nii.gz"
+    filename = f"{args.out}/tubular_{label}_c{args.nu:.2e}.nii.gz"
     save_np_as_nifti(tubular_np, new_affine, filename)
 
     if restrict:
@@ -328,11 +333,10 @@ if (__name__ == '__main__'):
         tof_np = np.ascontiguousarray(tof_np)
 
     
-    data = [tof_np, main_network, skeleton_np, thickness_np, tdens_np, tubular_np]
-    names = ["tof", "main_network", "skeleton", "thickness", "tdens", "tubular"]
+    data = [main_network, skeleton_np, thickness_np, tdens_np, tubular_np]
+    names = ["main_network", "skeleton", "thickness", "tdens", "tubular"]
 
-    offset = tof_nii.affine[:3, 3]
+    offset = tof_nii.affine[:3, 3]/2**args.nref
     lx, ly, lz = dimensions[0]*hx, dimensions[1]*hy, dimensions[2]*hz
-    i2d.numpy2vtr(data, [lx, ly, lz], f"{args.out}/nref{args.nref}_results", names=names, offset=offset)
+    i2d.numpy2vtr(data, [lx, ly, lz], f"{args.vtr}", names=names, offset=offset)
     
-
