@@ -91,8 +91,6 @@ def MyRelabeledMesh(mesh, indicator_functions, subdomain_ids, boundary_only=Fals
         plex1.clearLabelStratum(dmlabel_name, subid)
         dmlabel = plex1.getLabel(dmlabel_name)
 
-        print(f.dat.data_ro_with_halos.size)
-
         plex1.markBoundaryFaces("boundary_faces")
         coords = plex1.getCoordinates()
         coord_sec = plex1.getCoordinateSection()
