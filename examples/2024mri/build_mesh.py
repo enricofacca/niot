@@ -4,13 +4,13 @@ import numpy as np
 from connected_components_tof import connected_components, main_network_equal_one, find_external_network
 import os
 from scipy.ndimage import gaussian_filter
-#import pygalmesh
+import pygalmesh
 from firedrake import *
 from niot import image2dat as i2d
 from mwe import MyRelabeledMesh
+import meshio
 
-
-def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0 ):
+def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0, build=True):
     save_npy = False
     # load tof data and get basic info
     dir_nii = mri_directory
@@ -86,49 +86,59 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0 ):
     
     
     label_main = 2
-    mask[main_network > 0 ] = label_main 
-
+    # remove everything outside domain
     mask[brain_mask_np < 1 ] = 0
+    # restore main_network
+    mask[main_network > 0 ] = label_main 
     mask = mask.astype(np.uint8)
 
 
     voxel_size = (hx, hy, hz)
 
-    # mesh = pygalmesh.generate_from_array(
-    #     mask,
-    #     voxel_size, 
-    #     max_facet_distance=0.2,
-    #     max_cell_circumradius={
-    #         "default": 2.0, 
-    #         label_main: 0.5,
-    #         label_tof: 0.5,
-    #         label_t1: 2.0
-    #         },
-    # )
-    # mesh.write("brain.vtu")
+    if build:
+        mesh = pygalmesh.generate_from_array(
+            mask,
+            voxel_size, 
+            max_facet_distance=0.2,
+            max_cell_circumradius={
+                "default": 2.0, 
+                label_main: 0.5,
+                label_tof: 0.5,
+                label_t1: 2.0
+            },
+        )
+        mesh.write("brain_main.vtu")
     
-    mesh = Mesh("brain.msh")
+        writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)
+        writer("brain_main.msh", mesh)
+
+    
+    mesh = Mesh("brain_main.msh")
     cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
     tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
     t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
     main_network_cartesian = i2d.numpy2firedrake(cartesian_mesh, main_network, name='main_network')
-
+    zmin = cartesian_mesh.zmin
+    print(f"{zmin=}")
+    
     DG0 = FunctionSpace(mesh, "DG", 0)
     tof_mesh = Function(DG0, name="tof_mesh")
     t1_mesh = Function(DG0, name="t1_mesh")
     main_network_mesh = Function(DG0, name="main_network_mesh")
+    
     tof_mesh.interpolate(tof_cartesian)
     t1_mesh.interpolate(t1_cartesian)
     main_network_mesh.interpolate(main_network_cartesian)
     marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
     main_network_indicator = Function(marker_space, name="main_network_indicator")
-    main_network_indicator.interpolate(main_network_mesh)
-
+    x,y,z = mesh.coordinates
+    main_network_indicator.interpolate(main_network_mesh * conditional(z-zmin < hx,1,0)) 
 
     
     relabeled_mesh = MyRelabeledMesh(mesh, [main_network_indicator], 
                                      [99],
                                      boundary_only=True)
+    VTKFile("labeled_mesh.pvd").write(relabeled_mesh)
     
     
     V = FunctionSpace(relabeled_mesh, "CG", 1)
@@ -149,8 +159,28 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0 ):
 
     # save as pvd
     VTKFile("tof_mesh.pvd").write(tof_mesh)
+    DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
+    tof_rmesh = Function(DG0, name="tof_mesh")
+    t1_rmesh = Function(DG0, name="t1_mesh")
+    main_network_rmesh = Function(DG0, name="main_network_mesh")
 
-    VTKFile("direchlet.pvd").write(solution)
+
+
+    VTKFile("direchlet.pvd").write(solution,tof_rmesh, t1_rmesh, main_network_rmesh)
+
+    n_proc = COMM_WORLD.size
+    h5_filename = f"inputs_nproc{n_proc}.h5"
+    PETSc.Sys.Print(f"Saving to {h5_filename}", end="")
+    print("name",relabeled_mesh.name)
+    with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
+        afile.save_mesh(relabeled_mesh,"relabeled_mesh")
+        PETSc.Sys.Print(f" mesh ", end="")
+        afile.save_function(tof_rmesh)
+        PETSc.Sys.Print(f" tof ", end="")
+        afile.save_function(t1_rmesh)
+        PETSc.Sys.Print(f" t1 ", end="")
+        afile.save_function(main_network_rmesh)
+        PETSc.Sys.Print(f" main_network ", end="")
 
 
     outfilename = f"mask_mesh.nii.gz"
@@ -170,8 +200,9 @@ if __name__ == '__main__':
                         help="Blur for connected components. If 0, no blur is applied.")
     parser.add_argument('--blur_tof', type=float, default=0.0, 
                         help="Blur for connected components. If 0, no blur is applied.")
+    parser.add_argument('--read', action='store_true')
     args = parser.parse_args()
 
-    setup(args.mri, args.threshold, args.blur_main, args.blur_tof)
+    setup(args.mri, args.threshold, args.blur_main, args.blur_tof, not args.read)
     
     
