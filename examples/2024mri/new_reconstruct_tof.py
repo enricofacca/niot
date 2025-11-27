@@ -423,25 +423,25 @@ def experiment(args):
     else: 
         label = f"t{threshold:.2e}"
 
-    if args.reuse_h5:
-        h5_file = f"{args.mri}/inputs_{label}_nproc{args.n_ensemble}.h5"
-        if os.path.exists(h5_file):
-            PETSc.Sys.Print(f"Found checkpoint file {h5_file}")
-        else:   
-            PETSc.Sys.Print(f"Checkpoint not found. Creating it but we may run out of memory.\n"
-                            f"Consider running mpiexec -n {args.n_ensemble} python build_checkpointfile.py "
-                            )
-            if use_ensemble:
-                if my_ensemble.ensemble_comm.rank == 0:
-                    data = setup_h5(args.mri, threshold, blur=blur, masked_mesh=masked_mesh, comm=comm)
-                    write_h5(args.mri, threshold, blur, comm, args.n_ensemble, data=data)
-                my_ensemble.ensemble_comm.barrier()
-            else:
-                data = setup_h5(args.mri, threshold, blur=blur, masked_mesh=masked_mesh, comm=comm)
-                write_h5(args.mri, threshold, blur, comm, args.n_ensemble, data=data)
-            PETSc.Sys.Print(f"Checkpoint created h5_file={h5_file}")
+    if not args.checkpoint_file is None:
+        #h5_file = f"{args.mri}/inputs_{label}_nproc{args.n_ensemble}.h5"
+        h5_file = args.checkpoint_file
+        # if os.path.exists(h5_file):
+        #     PETSc.Sys.Print(f"Found checkpoint file {h5_file}")
+        # else:   
+        #     PETSc.Sys.Print(f"Checkpoint not found. Creating it but we may run out of memory.\n"
+        #                     f"Consider running mpiexec -n {args.n_ensemble} python build_checkpointfile.py "
+        #                     )
+        #     if use_ensemble:
+        #         if my_ensemble.ensemble_comm.rank == 0:
+        #             data = setup_h5(args.mri, threshold, blur=blur, masked_mesh=masked_mesh, comm=comm)
+        #             write_h5(args.mri, threshold, blur, comm, args.n_ensemble, data=data)
+        #         my_ensemble.ensemble_comm.barrier()
+        #     else:
+        #         data = setup_h5(args.mri, threshold, blur=blur, masked_mesh=masked_mesh, comm=comm)
+        #         write_h5(args.mri, threshold, blur, comm, args.n_ensemble, data=data)
+        #     PETSc.Sys.Print(f"Checkpoint created h5_file={h5_file}")
         
-
 
         #
         # load data
@@ -451,14 +451,22 @@ def experiment(args):
             PETSc.Sys.Print(f"mesh",end=" ")
             tof = afile.load_function(mesh, "tof")
             PETSc.Sys.Print(f"tof",end=" ")
-            aseg = afile.load_function(mesh, "aseg")
-            PETSc.Sys.Print(f"aseg",end=" ")
+            try:
+                aseg = afile.load_function(mesh, "aseg")
+                PETSc.Sys.Print(f"aseg",end=" ")
+            except:
+                PETSc.Sys.Print(f"No aseg found",end=" ")
+                aseg = None
             brain_mask = afile.load_function(mesh, "brain_mask")
             PETSc.Sys.Print(f"brain mask",end=" ")
             t1 = afile.load_function(mesh, "t1")
             PETSc.Sys.Print(f"t1",end=" ")
-            inlets = afile.load_function(mesh, "inlets")
-            PETSc.Sys.Print(f"inlets",end=" ")
+            try:
+                inlets = afile.load_function(mesh, "inlets")
+                PETSc.Sys.Print(f"inlets",end=" ")
+            except:
+                PETSc.Sys.Print(f"No inlets found",end=" ")
+                inlets = None
             main_network = afile.load_function(mesh, "main_network")
             PETSc.Sys.Print(f"main network",end="")
             external_network = afile.load_function(mesh, "external_network")
@@ -1067,6 +1075,13 @@ def experiment(args):
 
     
     for i, combination in enumerate(todo):
+        try:
+            spaces = combination["spaces"]
+            if spaces != "DG0DG0":
+                labels.append(f"spaces{spaces}")
+        except:
+            spaces = "DG0DG0"
+        
         #
         # set corrupted network
         #
@@ -1083,14 +1098,19 @@ def experiment(args):
 
         kappa = set_kappa(**combination, **input_data)
         
-
-        inlet_pressure = Function(inlets.function_space())
-        inlet_pressure.assign(0.0)
-        weak_Dirichlet = [(inlet_pressure, ds_b, inlets)]
-        #strong_Dirichlet = [(source, ds_b, inlets)]
+        if spaces == "DG0DG0":
+            inlet_pressure = Function(inlets.function_space())
+            inlet_pressure.assign(0.0)
+            weak_Dirichlet = [(inlet_pressure, ds_b, inlets)]
+            strong_Dirichlet = None
+        elif spaces == "CG1DG0" or spaces == "CR1DG0":
+            weak_Dirichlet = None
+            strong_Dirichlet = [(0.0, 99)]
+        
+        
         btp = ot.BranchedTransportProblem(source, sink, 
                                       gamma=0.5, 
-                                      Dirichlet = None,
+                                      Dirichlet = strong_Dirichlet,
                                       weak_Dirichlet = weak_Dirichlet,
                                       kappa=kappa)
         
@@ -1142,6 +1162,7 @@ def experiment(args):
                 discrepancy_dual_h1_sigma = combination["discrepancy_dual_h1_sigma"]
             except:
                 discrepancy_dual_h1_sigma = 1.0
+
             
 
 
@@ -1171,7 +1192,7 @@ def experiment(args):
         niot_solver = NiotSolver(btp, 
                              corrupted,  
                              confidence=confidence, 
-                             spaces = "DG0DG0",
+                             spaces = spaces,
                              cell2face = 'harmonic_mean',
                              setup = False,
                              ensemble_comm=None
