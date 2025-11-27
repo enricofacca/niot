@@ -157,7 +157,7 @@ def corrupt_and_reconstruct(np_source,
 
     # Create mesh
     h = 1.0 / np_corrupted.shape[1]
-    mesh = i2d.build_mesh_from_numpy(np_corrupted, mesh_type=mesh_type, lengths=[1.0,np_corrupted.shape[0]*h], comm=comm)
+    mesh = i2d.build_mesh_from_numpy(np_corrupted.shape, mesh_type=mesh_type, lengths=[1.0,np_corrupted.shape[0]*h], comm=comm)
     
     # Convert numpy arrays to firedrake functions    
     source = i2d.numpy2firedrake(mesh, np_source, name="source")
@@ -240,6 +240,8 @@ def corrupt_and_reconstruct(np_source,
                              cell2face = 'harmonic_mean',
                              setup=False)
     
+    #if tdens2image["type"] == 'pm':
+    niot_solver.ctrl_set("use_adjoint", True)
     
     # Set initial guess
     if abs(corrupted_as_initial_guess) < 1e-16:
@@ -301,8 +303,9 @@ def corrupt_and_reconstruct(np_source,
     # solve one PDE with one iteration to get the initial guess
     max_iter = niot_solver.ctrl_get('max_iter')
     niot_solver.ctrl_set('max_iter', 0)
+    niot_solver.setup()
     ierr = niot_solver.solve()
-
+    
     filename = os.path.join(directory, f'{label}_discrepancy.pvd')
     if (not os.path.exists(filename) or overwrite):
         try:
@@ -318,7 +321,7 @@ def corrupt_and_reconstruct(np_source,
     pot0.rename('pot_0','pot_0')
     tdens0.rename('tdens_0','tdens_0')
     niot_solver.ctrl_set('max_iter', max_iter)
-
+    niot_solver.ctrl_set('restart', True)
     
     start = time.process_time()
     ierr = niot_solver.solve()
