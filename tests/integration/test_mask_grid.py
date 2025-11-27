@@ -187,6 +187,7 @@ def test_example(example, invert_rows_columns=True, variable_layer=False):
     mask2d, base2d, height2d = i2d.mask_base_height(binary)
     full_mesh2d = i2d.build_mesh_from_numpy(mask2d.shape, 
                                              lengths=lengths,
+                                                invert_rows_columns=invert_rows_columns,
                                              comm=COMM_WORLD)
     full_height_fire = i2d.numpy2firedrake(full_mesh2d, height2d, "height")
     
@@ -208,7 +209,7 @@ def test_example(example, invert_rows_columns=True, variable_layer=False):
 
     full_mesh3d = i2d.build_mesh_from_numpy(binary.shape,
                                         lengths=lengths,
-                                        invert_rows_columns=invert_rows_columns,     
+                                        invert_rows_columns=True,#invert_rows_columns,     
                                         comm=COMM_WORLD)
     
     full_example_fd = i2d.numpy2firedrake(full_mesh3d, example, "example")
