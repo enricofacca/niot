@@ -6,13 +6,13 @@ from niot import utilities
 import numpy as np
 import pytest
 import itertools
-
+import gc
 
 
 penalty = 1e1
 ndiv0 = 8
 
-def define_problem_inputs(test_case_number, nref, mesh_type="cartesian"):
+def define_problem_inputs(test_case_number, nref, mesh_type="cartesian",comm=COMM_WORLD):
     if mesh_type == "cartesian":
         quadrilateral = True
         hexahedral = True
@@ -76,7 +76,11 @@ def define_problem_inputs(test_case_number, nref, mesh_type="cartesian"):
     if test_case_number == 3:
         # description = "Domain=[0,1]\time[0,1], zero Dirichlet BCs on x=0, x=1"
         ndiv = ndiv0 * 2**nref
-        mesh = RectangleMesh(ndiv, ndiv, Lx=1.0, Ly=1.0, quadrilateral=quadrilateral)
+        #mesh = RectangleMesh(ndiv, ndiv, Lx=1.0, Ly=1.0, quadrilateral=quadrilateral)
+
+        mesh1d = UnitIntervalMesh(ndiv)
+        mesh = ExtrudedMesh(mesh1d, ndiv, layer_height=1.0/ndiv)
+
 
         x,y = SpatialCoordinate(mesh)
         u_exact = x**2/2 - x**3/3 - 1/12 + y**2/2 - y**3/3 - 1/12
@@ -136,6 +140,58 @@ def define_problem_inputs(test_case_number, nref, mesh_type="cartesian"):
         weak_Dirichlet = []
         
         return mesh, u_exact, f, strong_Dirichlet, weak_Dirichlet
+    
+
+    if test_case_number == 7:
+        # description = "Domain=[0,1]\time[0,1], zero Dirichlet BCs on x=0, x=1"
+        ndiv = 32 * 2**nref
+
+        # create size partions 
+        # as a list of number of vertical layers for each partition
+        size_partitions = [ndiv // comm.size]*comm.size
+        size_partitions[0] += ndiv % comm.size
+        size_partitions = [ndiv-4,4]
+
+
+        if comm.rank == 0:
+            partitions = (size_partitions, list(range(ndiv)))  
+        else:
+            partitions = (None, None) 
+        
+        PETSc.Sys.Print(f"{ndiv=} - size_partitions: {size_partitions}")
+
+        distribution_parameters = {
+            "partition": partitions,
+            "overlap_type": (DistributedMeshOverlapType.FACET, 1)}
+        
+        #if comm.size == 1:
+        #distribution_parameters = None
+
+        mesh1d = UnitIntervalMesh(ndiv, distribution_parameters=distribution_parameters)
+        mesh = ExtrudedMesh(mesh1d, ndiv, layer_height=1.0/ndiv)
+
+        # x,y = SpatialCoordinate(mesh)
+        # u_exact = u_exact = sin(2 * pi * x) * cos(2 * pi *y)
+        # f = -div(grad(u_exact))
+
+        # strong_Dirichlet = [
+        #     (u_exact, "bottom"),
+        #     (u_exact, "top"),
+        # ]
+        # weak_Dirichlet = [
+        #     (u_exact, ds_v(1),1.0),
+        #     (u_exact, ds_v(2),1.0),
+        # ]
+
+        x,y = SpatialCoordinate(mesh)
+        u_exact = x**2/2 - x**3/3 - 1/12 + y**2/2 - y**3/3 - 1/12
+        f = -div(grad(u_exact))
+        
+        strong_Dirichlet = []
+        weak_Dirichlet = []
+        
+        
+        return mesh, u_exact, f, strong_Dirichlet, weak_Dirichlet
 
 
 
@@ -164,15 +220,19 @@ save_output = False
 @pytest.mark.parametrize("mesh_type", mesh_types)
 @pytest.mark.parametrize("pot_fem", pot_fems)
 @pytest.mark.parametrize("test_case_number", test_cases) 
-def test_case(mesh_type, pot_fem, test_case_number):
+def test_case(mesh_type, pot_fem, test_case_number,total_ref=4):
     beta = penalty*10**(2)
     PETSc.Sys.Print(f"Test case number: {test_case_number} - Mesh type: {mesh_type} - Space: {pot_fem}")
     #PETSc.Sys.Print("beta:", beta)
     hs=[]
     errorsL2 = []
-    for nref in range(4):
+    for nref in range(total_ref):
         hs.append(1.0/(ndiv0 * 2**nref))
         
+
+        mesh = None
+        gc.collect()
+
         # define problem inputs and reference solution
         inputs = define_problem_inputs(test_case_number, nref, mesh_type=mesh_type)
         if inputs is None:
@@ -270,9 +330,27 @@ def test_case(mesh_type, pot_fem, test_case_number):
 
 
 if __name__ == "__main__":
-    combinations = itertools.product(mesh_types, pot_fems, test_cases)
-    for mesh_type, pot_fem, test_case_number in combinations:
-        test_case(mesh_type, pot_fem, test_case_number)
+    # parse arguments
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mesh", type=str, default="cartesian", help="mesh type: cartesian, simplicial")
+    parser.add_argument("--nref", type=int, default=0, help="number of uniform refinements")
+    parser.add_argument("--fems", type=str, default="all", help="finite element spaces to test: all, DG0, CG1, CR1")
+    parser.add_argument("--test", type=int, default=0, help="test cases to run: all, 0,1,2,...")
+    args = parser.parse_args()
+
+    mesh_type = args.mesh
+    #nref = args.nref
+    fems = args.fems
+    # split fems
+    pot_fem = (fems[0:2],int(fems[2]))
+    print(pot_fem)
+    test_cases_number = args.test
+    
+
+    #combinations = itertools.product(mesh_types, pot_fems, test_cases)
+    #for mesh_type, pot_fem, test_case_number in combinations:
+    test_case(mesh_type, pot_fem, test_cases_number,total_ref=args.nref+1)
 
 
 

@@ -48,11 +48,11 @@ solver_parameters={
                 'pc_type': 'hypre',
                 #'snes_monitor': None,
                 #'snes_linesearch_monitor': None,
-                #'ksp_monitor': None,
+                'ksp_monitor': None,
                 }
 
 @pytest.mark.parametrize('nref', [1])
-def test_adjoint(nref, exponent_m=2.0, sigma=0.1, scaling=1.0, nsteps=10, verbose=False):
+def test_adjoint(nref, exponent_m=2.0, sigma=0.1, scaling=1.0, nsteps=10, verbose=True):
     n0 = 32
     nx = n0 * 2**nref
     ny = n0*2 * 2**nref
@@ -72,12 +72,13 @@ def test_adjoint(nref, exponent_m=2.0, sigma=0.1, scaling=1.0, nsteps=10, verbos
                                             solver_parameters=solver_parameters)
     if verbose:
         print(f'Now Conductivity to image map')
+    fire_adj.continue_annotation()
     image = pm_map(conductivity)
     image.rename('img')
-
     integral = assemble(image**2 * dx)
     integral_reduced = fire_adj.ReducedFunctional(integral, fire_adj.Control(conductivity))
-       
+    
+
     if verbose:
         print(f'Now we should see nsteps={pm_map.steps_done} linear system solves in adjoint mode')
     gradient = integral_reduced.derivative()
@@ -88,7 +89,7 @@ def test_adjoint(nref, exponent_m=2.0, sigma=0.1, scaling=1.0, nsteps=10, verbos
     conv = fire_adj.taylor_test(integral_reduced, conductivity, h)
     if verbose:
         print(f'conv={conv}')
-
+    fire_adj.stop_annotating()
     
     assert conv > 1.9, 'taylor test failed'
 
@@ -204,9 +205,11 @@ def test_tdens2image(nref,lower_factor,cond_zero,exponent_p, verbose=False, save
         scaling=scaling, 
         nsteps=8,
         solver_parameters=solver_parameters)
+    fire_adj.continue_annotation()
     image = pm_map(cond)
     name = f'img_pm'
     image.rename(name)
+    fire_adj.stop_annotating()
 
     if save:
         filename = f'images_img0.pvd'
@@ -257,8 +260,9 @@ def test_tdens2image(nref,lower_factor,cond_zero,exponent_p, verbose=False, save
 
 
 if (__name__ == '__main__'):    
-    test_adjoint(nref=1, exponent_m=2.0, sigma=0.1, scaling=1.0, nsteps=10, verbose=True)
+    test_adjoint(nref=1, exponent_m=2.0, sigma=0.1, scaling=1.0, nsteps=5, verbose=True)
 
+    exit()
     for nref in [1,2,3]:
         for lower_factor in [4,8]:
             for cond_zero in [1e0, 1e-1]:
