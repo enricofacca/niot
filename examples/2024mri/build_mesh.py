@@ -191,7 +191,7 @@ def setup(mri_directory,
 
 
         PETSc.Sys.Print("volex size:", hx, hy, hz)
-        scale = 4
+        scale = 2
         mesh_pygal = pygalmesh.generate_from_array(
                 mask,
                 voxel_size, 
@@ -234,6 +234,7 @@ def setup(mri_directory,
                                     name="relabeled_mesh")
     VTKFile("labeled_mesh.pvd").write(relabeled_mesh)
     # shift coordinate of the relabeled mesh
+    offset = affine[:3, 3]
     relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
     relabeled_mesh.coordinates.dat.data[:, 1] += offset[1]
     relabeled_mesh.coordinates.dat.data[:, 2] += offset[2]
@@ -277,8 +278,14 @@ def setup(mri_directory,
         solver.solve()
         VTKFile("direchlet.pvd").write(solution,sink_support_mesh)
 
+    outfilename = os.path.join(mri_directory,f"inputs_blur{blur_tof_4_main_network:.2e}_thr{threshold_tof_4_main_network:.2e}_TOF_blur{blur_tof_4_mesh:.2e}.pvd")
+    VTKFile(outfilename).write(tof_mesh,brain_mask_mesh,main_network_mesh)
+
     n_proc = COMM_WORLD.size
-    h5_filename = f"inputs_nproc{n_proc}.h5"
+    h5_filename = os.path.join(mri_directory,
+                               f"inputs_nproc{n_proc}" + 
+                               f"_MAIN_blur{blur_tof_4_main_network:.2e}" +
+                               f"_thr{threshold_tof_4_main_network:.2e}_TOF_blur{blur_tof_4_mesh:.2e}.h5")
     PETSc.Sys.Print(f"Saving to {h5_filename}", end="")
     print("name",relabeled_mesh.name)
     with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
