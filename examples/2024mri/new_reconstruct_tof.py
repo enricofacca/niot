@@ -114,6 +114,12 @@ def set_sink(option_type="segmented", **kargs):
         sink.interpolate(- conditional(aseg > 0, absorption,0)
                         * conditional(main_network > 0, 0, 1)
                         * (1-indicator_empty)) # remove blood vessels outside the mask 
+    if option_type == "sink_support":
+        sink_support = kargs['sink_support']
+        absorption = kargs['absorption']
+        sink = Function(sink_support.function_space(), name=f"sink{absorption:.1e}")
+        sink.assign(- absorption * sink_support)
+
     else:
         raise ValueError(f"Unknown sink option {option_type}")
 
@@ -457,20 +463,30 @@ def experiment(args):
             except:
                 PETSc.Sys.Print(f"No aseg found",end=" ")
                 aseg = None
+            
             brain_mask = afile.load_function(mesh, "brain_mask")
             PETSc.Sys.Print(f"brain mask",end=" ")
+            
             t1 = afile.load_function(mesh, "t1")
             PETSc.Sys.Print(f"t1",end=" ")
+            
             try:
                 inlets = afile.load_function(mesh, "inlets")
                 PETSc.Sys.Print(f"inlets",end=" ")
             except:
                 PETSc.Sys.Print(f"No inlets found",end=" ")
                 inlets = None
+
+            try:
+                sink_support = afile.load_function(mesh, "sink_support")
+                PETSc.Sys.Print(f"sink_support",end=" ")
+            except:
+                PETSc.Sys.Print(f"No sink_support found",end=" ")
+                sink_support = None
+
+            
             main_network = afile.load_function(mesh, "main_network")
             PETSc.Sys.Print(f"main network",end="")
-            external_network = afile.load_function(mesh, "external_network")
-            PETSc.Sys.Print(f"external network",end=" ")
             skeleton = afile.load_function(mesh, "skeleton")
             PETSc.Sys.Print(f"skeleton",end="")
             thickness = afile.load_function(mesh, "thickness")
@@ -508,12 +524,12 @@ def experiment(args):
         "aseg": aseg, 
         "brain_mask": brain_mask, 
         "t1": t1, 
+        "sink_support": sink_support,
         "inlets": inlets, 
         "main_network": main_network, 
-        "external_network": external_network,
         "cartesian_mesh": cartesian_mesh,
         "skeleton" : skeleton,
-        "thickness": thickness,
+        "thickness": thickness,        
     }
 
 
