@@ -10,7 +10,7 @@ from niot import image2dat as i2d
 from mwe import MyRelabeledMesh
 import meshio
 from firedrake import CheckpointFile, COMM_WORLD, PETSc, VTKFile, DirichletBC, FunctionSpace, Function, TestFunction, TrialFunction, inner, grad, dx, conditional
-import local_thickness as lt
+import localthickness as lt
 from skimage.morphology import skeletonize
 
 
@@ -171,7 +171,9 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0, build=True):
     marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
     main_network_indicator = Function(marker_space, name="main_network_indicator")
     x,y,z = mesh.coordinates
-    main_network_indicator.interpolate(main_network_mesh * conditional(z-zmin < hx,1,0)) 
+    main_network_indicator.interpolate(main_network_mesh * conditional(z-zmin < hx,1,0))
+    elem = main_network_indicator.topological.function_space().ufl_element()
+    PETSc.Sys.Print(elem.family(),elem.degree())
     relabeled_mesh = MyRelabeledMesh(mesh, [main_network_indicator], 
                                      [99],
                                      boundary_only=True,
@@ -179,7 +181,6 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0, build=True):
     VTKFile("labeled_mesh.pvd").write(relabeled_mesh)
     
     # save as pvd
-    VTKFile("tof_mesh.pvd").write(tof_mesh)
     DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
     tof_mesh = Function(DG0, name="tof")
     t1_mesh = Function(DG0, name="t1")

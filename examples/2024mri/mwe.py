@@ -8,7 +8,7 @@ from collections.abc import Sequence
 
 from firedrake import SpatialCoordinate
 from firedrake.utils import as_cstr, IntType, RealType
-
+from firedrake.petsc import PETSc
 from firedrake import DirichletBC
 
 DEFAULT_MESH_NAME = "RelabeledMesh"
@@ -75,6 +75,7 @@ def MyRelabeledMesh(mesh, indicator_functions, subdomain_ids, boundary_only=Fals
         elem = f.topological.function_space().ufl_element()
         if elem.reference_value_shape != ():
             raise RuntimeError(f"indicator functions must be scalar: got {elem.reference_value_shape} != ()")
+        PETSc.Sys.Print(elem.family(),elem.degree())
         if elem.family() in {"Discontinuous Lagrange", "DQ"} and elem.degree() == 0:
             # cells
             height = 0
@@ -94,7 +95,7 @@ def MyRelabeledMesh(mesh, indicator_functions, subdomain_ids, boundary_only=Fals
         plex1.markBoundaryFaces("boundary_faces")
         coords = plex1.getCoordinates()
         coord_sec = plex1.getCoordinateSection()
-        
+        PETSc.Sys.Print(dmlabel_name)
         if boundary_only and dmlabel_name == dmcommon.FACE_SETS_LABEL:
             group = "boundary_faces"
             section = f.topological.function_space().dm.getSection()
@@ -104,6 +105,7 @@ def MyRelabeledMesh(mesh, indicator_functions, subdomain_ids, boundary_only=Fals
                     offset = section.getOffset(facet_point)   
                     if f.dat.data_ro_with_halos[offset] > 0.5:
                         face_coords = plex1.vecGetClosure(coord_sec, coords, facet_point)
+                        PETSc.Sys.Print(plex1.comm.rank, face_coords)
                         plex1.setLabelValue(dmlabel_name, facet_point, subid)
             plex1.removeLabel("boundary_faces")
         elif boundary_only and dmlabel_name == dmcommon.CELL_SETS_LABEL:
@@ -136,39 +138,40 @@ def MyRelabeledMesh(mesh, indicator_functions, subdomain_ids, boundary_only=Fals
                           comm=tmesh.comm)
     return make_mesh_from_mesh_topology(tmesh1, name1)
 
-mesh = UnitSquareMesh(40, 40)#, reorder=False)
-x, y = SpatialCoordinate(mesh)
+if __name__ == "__main__":
+    mesh = UnitSquareMesh(40, 40)#, reorder=False)
+    x, y = SpatialCoordinate(mesh)
 
-# Define indicator function suitable for RelabeledMesh
-W = FunctionSpace(mesh, "HDiv Trace", 0)
-W = FunctionSpace(mesh, "Discontinuous Lagrange", 0)
-indicator = Function(W, name="boundary")
-indicator.interpolate(conditional(And(x > 0.25, y > 0.45), 1, 0))
-relabeled_mesh = MyRelabeledMesh(mesh, [indicator], [99], boundary_only=True)
+    # Define indicator function suitable for RelabeledMesh
+    W = FunctionSpace(mesh, "HDiv Trace", 0)
+    W = FunctionSpace(mesh, "Discontinuous Lagrange", 0)
+    indicator = Function(W, name="boundary")
+    indicator.interpolate(conditional(And(x > 0.25, y > 0.45), 1, 0))
+    relabeled_mesh = MyRelabeledMesh(mesh, [indicator], [99], boundary_only=True)
 
-# Verify with a Poisson Solve
-V = FunctionSpace(relabeled_mesh, "CG", 1)
-u = TrialFunction(V)
-v = TestFunction(V)
-DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
-#indicator_new = Function(DG0, name="boundary_new")
-#indicator_new.interpolate(indicator)
+    # Verify with a Poisson Solve
+    V = FunctionSpace(relabeled_mesh, "CG", 1)
+    u = TrialFunction(V)
+    v = TestFunction(V)
+    DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
+    #indicator_new = Function(DG0, name="boundary_new")
+    #indicator_new.interpolate(indicator)
 
-a = dot(grad(u), grad(v)) * dx
-L = v * dx
-bc = DirichletBC(V, 0.0, 99)
-
-u_sol = Function(V,name="u_sol")
-
-# Apply BC only on the newly marked region     
-try:
-    solve(a == L, u_sol, bcs=[bc])
-    print("Solve successful using new boundary ID.")
-except Exception as e:
-    print(f"Solve failed: {e}")
-
-outfile = VTKFile("solution.pvd")
-outfile.write(u_sol)#, indicator_new)
+    a = dot(grad(u), grad(v)) * dx
+    L = v * dx
+    bc = DirichletBC(V, 0.0, 99)
+    
+    u_sol = Function(V,name="u_sol")
+    
+    # Apply BC only on the newly marked region     
+    try:
+        solve(a == L, u_sol, bcs=[bc])
+        print("Solve successful using new boundary ID.")
+    except Exception as e:
+        print(f"Solve failed: {e}")
+        
+        outfile = VTKFile("solution.pvd")
+        outfile.write(u_sol)#, indicator_new)
 
 
 #indicator.interpolate(conditional(Or(And(x > 0.5,abs(y-1)<1e-4), And(abs(x-1)<1e-4,y > 0.5)), 1, 0))
