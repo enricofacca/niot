@@ -14,153 +14,210 @@ import localthickness as lt
 from skimage.morphology import skeletonize
 
 
-def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0, build=True):
-    save_npy = False
-    # load tof data and get basic info
-    dir_nii = mri_directory
-    tof_data = nibabel.load(f"{dir_nii}/TOF.nii.gz")
-    dimensions = tof_data.header.get_data_shape()[:3]
+def setup(mri_directory, 
+            threshold_tof_4_main_network,
+            blur_tof_4_main_network = 0.0, 
+            blur_tof_4_mesh = 0.0, 
+            build=True):
 
-    print(f"Data shape: {dimensions=}")
-    hx, hy, hz = tof_data.header['pixdim'][1:4]
+    def load_data(mri_directory):
+        save_npy = False
+        # load tof data and get basic info
+        dir_nii = mri_directory
+        tof_data = nibabel.load(f"{dir_nii}/TOF.nii.gz")
+        dimensions = tof_data.header.get_data_shape()[:3]
+
+        print(f"Data shape: {dimensions=}")
+        hx, hy, hz = tof_data.header['pixdim'][1:4]
+        lengths = np.array([float(dimensions[0]*hx), 
+                            float(dimensions[1]*hy), 
+                            float(dimensions[2]*hz)])
+        voxel_size = (hx, hy, hz)
+
+        # get brain mask
+        nii_file = f"{dir_nii}/brain_mask_smooth.nii.gz"
+        brain_mask_data = nibabel.load(nii_file)
+        brain_mask_np = brain_mask_data.get_fdata()  
+        
+
+        # load tof data
+        # tof_np = tof_data.get_fdata()
+        file_nii = f"{dir_nii}/TOF.nii.gz"
+        tof_data = nibabel.load(file_nii)
+        tof_np = tof_data.get_fdata()
+
+        # load tof data
+        # tof_np = tof_data.get_fdata()
+        file_nii = f"{dir_nii}/aseg.nii.gz"
+        data_aseg = nibabel.load(file_nii)
+        aseg_np = data_aseg.get_fdata()
+        
+
+        # load main network
+        file_nii = f"{dir_nii}/T1.nii.gz"
+        t1_data = nibabel.load(file_nii)
+        t1_np = t1_data.get_fdata()
+
+
+        return voxel_size, affine, tof_np, brain_mask_np, t1_np, aseg_np
+    
+    voxel_size, affine, tof_np, brain_mask_np, t1_np, aseg_np = load_data(mri_directory)
+    hx, hy, hz = voxel_size
+
+
+    def set_main_network(tof_np, threshold_tof, blur_tof, hx):
+        """
+        Get the main network, its skeleton, and local thickness.
+        Blur is applied before connected components analysis and improve skeletonization.
+        """
+        # blur tof, separate main network, and keep largest connected component
+        if blur_tof> 0:
+            print(f" - applying gaussian blur {blur_tof:.2e}")
+            tof_main_network_np = gaussian_filter(tof_np, sigma=blur_tof * hx)
+        else:
+            tof_main_network_np = tof_np.copy()
+        labels_np, nlabels = connected_components(tof_main_network_np, threshold_tof)
+        labels_np = main_network_equal_one(labels_np, nlabels, tof_np)
+
+
+        # save as nifti 
+        main_network = np.zeros_like(labels_np, dtype=np.uint8)
+        main_network[labels_np == 1] = 1
+        
+        # get the skeleton of main network
+        skeleton_np = skeletonize(main_network)
+        skeleton_np = skeleton_np.astype(np.uint8)
+
+        # compute local thickness of the main network
+        thickness_np = lt.local_thickness(main_network)
+        # scale by thickness 
+        thickness_np *= hx
+
+        return main_network, skeleton_np, thickness_np
+    
+    
+        
+
+    # blur tof
+    def set_tof4mesh(tof_np, blur_tof, hx):
+        """
+        Prepocess tof of assign a label to the mesh generation
+        """
+        if abs(blur_tof) < 1e-10:
+            return tof_smooth_np
+        else:
+            print(f" - applying gaussian blur {blur_tof:.2e}",end="")
+            tof_smooth_np = gaussian_filter(tof_np, sigma=blur_tof*hx)
+            print(f" - done",end="")
+            return tof_smooth_np
+        
+    
+    def set_sink_support(aseg_np, main_network):
+        """
+        set the sink support based on aseg
+        """
+        sink_support_np = np.zeros_like(aseg_np, dtype=np.uint8)
+        # label described in https://surfer.nmr.mgh.harvard.edu/fswiki/FsTutorial/AnatomicalROI/FreeSurferColorLUT
+        empty_markers = [4, # left-lateral ventricle
+                        5, # left-inf-lat-vent
+                        14, # 3rd ventricle
+                        15, # 4th ventricle
+                        24, # CSF
+                        43, # right-lateral ventricle
+                        44, # right-inf-lat-ventricle 
+                        ]
+        
+        sink_support_np[aseg_np > 0] = 1
+        for label in empty_markers:
+            sink_support_np[aseg_np == label] = 0
+        # remove main network from sink
+        sink_support_np[main_network > 0 ] = 0
+
+        return sink_support_np
+    
+    # process parameters
+    main_network_np, skeleton_np, thickness_np = set_main_network(tof_np, 
+                                                                  threshold_tof_4_main_network, 
+                                                                  blur_tof_4_main_network, hx)
+    sink_support_np = set_sink_support(aseg_np, main_network_np)
+    tof_smooth_np = set_tof4mesh(tof_np, blur_tof_4_mesh, blur_tof_4_mesh, hx)
+    
+
+
+    # save as nifti
+    for var, name in zip([main_network_np, skeleton_np, thickness_np, sink_support_np],
+                            ["main_network", "skeleton", "thickness", "sink_support"]):
+        outfilename = f"{name}_blur{blur_tof_4_main_network:.2e}_t{threshold_tof_4_main_network:.2e}.nii.gz"
+        print(f"Saving main network {outfilename}")
+        nibabel.save(nibabel.Nifti1Image(var, affine), outfilename)
+    
+    outfilename = f"tof_smooth_blur{blur_tof_4_mesh}.nii.gz"
+    print(f"Saving smoothed tof {outfilename}")
+    nibabel.save(nibabel.Nifti1Image(tof_smooth_np, affine), outfilename)
+    
+    
+    dimensions = tof_np.shape
     lengths = np.array([float(dimensions[0]*hx), 
                         float(dimensions[1]*hy), 
                         float(dimensions[2]*hz)])
-    
-    # get brain mask
-    nii_file = f"{dir_nii}/brain_mask_smooth.nii.gz"
-    brain_mask_data = nibabel.load(nii_file)
-    brain_mask_np = brain_mask_data.get_fdata()  
-    
-
-    # load tof data
-    # tof_np = tof_data.get_fdata()
-    file_nii = f"{dir_nii}/TOF.nii.gz"
-    tof_data = nibabel.load(file_nii)
-    tof_np = tof_data.get_fdata()
-
-    # blur tof 
-    if blur > 0:
-        print(f" - applying gaussian blur {blur:.2e}",end="")
-        tof_np = gaussian_filter(tof_np, sigma=blur*hx)
-        print(f" - done",end="")
-
-    # separe connected components
-    labels_np, nlabels = connected_components(tof_np, threshold)
-    labels_np = main_network_equal_one(labels_np, nlabels, tof_np)
-
-
-    # save as nifti 
-    main_network = np.zeros_like(labels_np, dtype=np.uint8)
-    main_network[labels_np == 1] = 1
-    outfilename = f"main_network_mesh.nii.gz"
-    print(f"Saving main network {outfilename}")
-    nibabel.save(nibabel.Nifti1Image(main_network, tof_data.affine), 
-                 outfilename)
-    
-
-    # get the skeleton of main network
-    skeleton_np = skeletonize(main_network)
-    skeleton_np = skeleton_np.astype(np.uint8)
-
-    # compute local thickness of the main network
-    thickness_np = lt.local_thickness(main_network)
-    # scale by thickness 
-    thickness_np *= hx
-
-    
-
-    # load tof data
-    # tof_np = tof_data.get_fdata()
-    file_nii = f"{dir_nii}/aseg.nii.gz"
-    data_aseg = nibabel.load(file_nii)
-    aseg_np = data_aseg.get_fdata()
-    
-
-    # load main network
-    file_nii = f"{dir_nii}/T1.nii.gz"
-    t1_data = nibabel.load(file_nii)
-    t1_np = t1_data.get_fdata()
-    
-    # blur tof 
-    if blur_tof > 0:
-        print(f" - applying gaussian blur {blur_tof:.2e}",end="")
-        tof_smooth_np = gaussian_filter(tof_np, sigma=blur_tof*hx)
-        print(f" - done",end="")
-
-    
-
-    # get the sink
-    sink_support_np = np.zeros_like(aseg_np, dtype=np.uint8)
-    # label described in https://surfer.nmr.mgh.harvard.edu/fswiki/FsTutorial/AnatomicalROI/FreeSurferColorLUT
-    empty_markers = [4, # left-lateral ventricle
-                     5, # left-inf-lat-vent
-                     14, # 3rd ventricle
-                     15, # 4th ventricle
-                     24, # CSF
-                     43, # right-lateral ventricle
-                     44, # right-inf-lat-ventricle 
-                     ]
-    
-    sink_support_np[aseg_np > 0] = 1
-    for label in empty_markers:
-        sink_support_np[aseg_np == label] = 0
-    # remove main network from sink
-    sink_support_np[main_network > 0 ] = 0
-
-
     cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
     tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
     t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
     brain_mask_cartesian = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name='brain_mask')
-    main_network_cartesian = i2d.numpy2firedrake(cartesian_mesh, main_network, name='main_network')
+    main_network_cartesian = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name='main_network')
     sink_support_cartesian = i2d.numpy2firedrake(cartesian_mesh, sink_support_np, name='sink_support')
     skeleton_cartesian = i2d.numpy2firedrake(cartesian_mesh, skeleton_np, name='skeleton')
     thickness_cartesian = i2d.numpy2firedrake(cartesian_mesh, thickness_np, name='thickness')
 
 
-
     #
-    # # Build mesh
+    # Build mesh
     #
-    mask = brain_mask_np.copy()
-    label_sink = 4
-    mask[sink_support_np > 0 ] = label_sink
-    
-    
-    label_tof = 3
-    t = 0.175 * tof_smooth_np.max()
-    mask[tof_smooth_np > t ] = label_tof
-    
-    
-    label_main = 2
-    # remove everything outside domain
-    mask[brain_mask_np < 1 ] = 0
-    # restore main_network
-    mask[main_network > 0 ] = label_main 
-    mask = mask.astype(np.uint8)
+    def build_mesh(brain_mask_np, sink_support_np, tof_np, main_network):
+        
+        mask = brain_mask_np.copy()
+        label_sink = 4
+        mask[sink_support_np > 0 ] = label_sink
+        
+        # blur tof
+        label_tof = 3
+        t = 0.175 * tof_np.max()
+        mask[tof_np > t ] = label_tof
+        
+        
+        label_main = 2
+        # remove everything outside domain
+        mask[brain_mask_np < 1 ] = 0
+        # restore main_network
+        mask[main_network > 0 ] = label_main 
+        mask = mask.astype(np.uint8)
 
 
-    voxel_size = (hx, hy, hz)
-    PETSc.Sys.Print("volex size:", hx, hy, hz)
+        voxel_size = (hx, hy, hz)
+        PETSc.Sys.Print("volex size:", hx, hy, hz)
+        
+        mesh_pygal = pygalmesh.generate_from_array(
+                mask,
+                voxel_size, 
+                max_facet_distance=0.2*hx,
+                max_cell_circumradius={
+                    "default": 8*hx, 
+                    label_main: hx,
+                    label_tof: hx,
+                    label_sink: 4*hx
+                },
+            )
+        return mesh_pygal
+        
     if build:
-        mesh = pygalmesh.generate_from_array(
-            mask,
-            voxel_size, 
-            max_facet_distance=0.2,
-            max_cell_circumradius={
-                "default": 8*hx, 
-                label_main: hx,
-                label_tof: hx,
-                label_sink: 4*hx
-            },
-        )
-        mesh.write("brain_main.vtu")
-    
+        mesh_pygal = build_mesh(brain_mask_np, sink_support_np, tof_smooth_np, main_network_np)
+        mesh_pygal.write("brain_main.vtu")
+        
         writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)
         writer("brain_main.msh", mesh)
-
     
+   
+    # reload the mesh from file
     mesh = Mesh("brain_main.msh")
     zmin = cartesian_mesh.zmin
     print(f"{zmin=}")
@@ -240,12 +297,6 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0, build=True):
         afile.save_function(thickness_mesh)
         PETSc.Sys.Print(f" thickness ", end="")
 
-    outfilename = f"mask_mesh.nii.gz"
-    print(f"Saving main network {outfilename}")
-    nibabel.save(nibabel.Nifti1Image(mask, tof_data.affine), 
-                 outfilename)
-
-
         
 
 if __name__ == '__main__':
@@ -255,11 +306,11 @@ if __name__ == '__main__':
                         help="Threshold for Tof. Default is 250.")
     parser.add_argument('--blur_main', type=float, default=0.0, 
                         help="Blur for connected components. If 0, no blur is applied.")
-    parser.add_argument('--blur_tof', type=float, default=0.0, 
+    parser.add_argument('--blur_mesh', type=float, default=0.0, 
                         help="Blur for connected components. If 0, no blur is applied.")
     parser.add_argument('--read', action='store_true')
     args = parser.parse_args()
 
-    setup(args.mri, args.threshold, args.blur_main, args.blur_tof, not args.read)
+    setup(args.mri, args.threshold, args.blur_main, args.blur_mesh, not args.read)
     
     
