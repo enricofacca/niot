@@ -59,7 +59,7 @@ def setup(mri_directory,
         t1_np = t1_data.get_fdata()
 
 
-        return voxel_size, affine, tof_np, brain_mask_np, t1_np, aseg_np
+        return voxel_size, tof_data.affine, tof_np, brain_mask_np, t1_np, aseg_np
     
     voxel_size, affine, tof_np, brain_mask_np, t1_np, aseg_np = load_data(mri_directory)
     hx, hy, hz = voxel_size
