@@ -191,29 +191,30 @@ def setup(mri_directory,
 
 
         PETSc.Sys.Print("volex size:", hx, hy, hz)
+        scale = 4
         mesh_pygal = pygalmesh.generate_from_array(
                 mask,
                 voxel_size, 
-                max_facet_distance=hx,
+                max_facet_distance=scale*hx,
                 max_cell_circumradius={
-                    "default": 8*hx, 
-                    label_main: hx,
-                    label_tof: hx,
-                    label_sink: 4*hx
+                    "default": scale*8*hx, 
+                    label_main: scale*hx,
+                    label_tof: scale*hx,
+                    label_sink: scale*4*hx
                 },
             )
         return mesh_pygal
         
     if build:
-        mesh_pygal = build_mesh(brain_mask_np, sink_support_np, tof_smooth_np, main_network_np)
-        mesh_pygal.write("brain_main.vtu")
+        mesh_pygal = build_mesh(voxel_size, brain_mask_np, sink_support_np, tof_smooth_np, main_network_np)
+        mesh_pygal.write(os.path.join(mri_directory,"brain_main.vtu"))
         
         writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)
-        writer("brain_main.msh", mesh)
+        writer(os.path.join(mri_directory,"brain_main.msh"), mesh_pygal)
     
    
     # reload the mesh from file
-    mesh = Mesh("brain_main.msh")
+    mesh = Mesh(os.path.join(mri_directory,"brain_main.msh"))
     zmin = 0.0
     DG0 = FunctionSpace(mesh, "DG", 0)
     main_network_mesh = Function(DG0, name="main_network_mesh")
