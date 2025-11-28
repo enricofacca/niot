@@ -232,15 +232,7 @@ def setup(mri_directory,
                                      [99],
                                      boundary_only=True,
                                     name="relabeled_mesh")
-    VTKFile("labeled_mesh.pvd").write(relabeled_mesh)
-    # shift coordinate of the relabeled mesh
-    offset = affine[:3, 3]
-    relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
-    relabeled_mesh.coordinates.dat.data[:, 1] += offset[1]
-    relabeled_mesh.coordinates.dat.data[:, 2] += offset[2]
-
-
-
+    
 
     # save as pvd
     DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
@@ -260,6 +252,15 @@ def setup(mri_directory,
     thickness_mesh.interpolate(thickness_cartesian)
     brain_mask_mesh.interpolate(brain_mask_cartesian)
     
+    VTKFile("labeled_mesh.pvd").write(relabeled_mesh)
+    # shift coordinate of the relabeled mesh
+    offset = affine[:3, 3]
+    relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
+    relabeled_mesh.coordinates.dat.data[:, 1] += offset[1]
+    relabeled_mesh.coordinates.dat.data[:, 2] += offset[2]
+
+
+
     test_dirichlet_bc = False
     if test_dirichlet_bc:
         V = FunctionSpace(relabeled_mesh, "CG", 1)
