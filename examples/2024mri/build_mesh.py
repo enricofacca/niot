@@ -147,11 +147,12 @@ def setup(mri_directory,
     # save as nifti
     for var, name in zip([main_network_np, skeleton_np, thickness_np, sink_support_np],
                             ["main_network", "skeleton", "thickness", "sink_support"]):
-        outfilename = f"{name}_blur{blur_tof_4_main_network:.2e}_t{threshold_tof_4_main_network:.2e}.nii.gz"
+        outfilename = os.path.join(mri_directory,f"{name}_blur{blur_tof_4_main_network:.2e}_t{threshold_tof_4_main_network:.2e}.nii.gz")
         print(f"Saving main network {outfilename}")
         nibabel.save(nibabel.Nifti1Image(var, affine), outfilename)
     
-    outfilename = f"tof_smooth_blur{blur_tof_4_mesh}.nii.gz"
+    outfilename = os.path.join(mri_directory,
+                               f"tof_smooth_blur{blur_tof_4_mesh}.nii.gz")
     print(f"Saving smoothed tof {outfilename}")
     nibabel.save(nibabel.Nifti1Image(tof_smooth_np, affine), outfilename)
     
