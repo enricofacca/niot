@@ -112,6 +112,7 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0, build=True):
     cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
     tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
     t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
+    brain_mask_cartesian = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name='brain_mask')
     main_network_cartesian = i2d.numpy2firedrake(cartesian_mesh, main_network, name='main_network')
     sink_support_cartesian = i2d.numpy2firedrake(cartesian_mesh, sink_support_np, name='sink_support')
     skeleton_cartesian = i2d.numpy2firedrake(cartesian_mesh, skeleton_np, name='skeleton')
@@ -139,18 +140,19 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0, build=True):
     mask[main_network > 0 ] = label_main 
     mask = mask.astype(np.uint8)
 
-    voxel_size = (hx, hy, hz)
 
+    voxel_size = (hx, hy, hz)
+    PETSc.Sys.Print("volex size:", hx, hy, hz)
     if build:
         mesh = pygalmesh.generate_from_array(
             mask,
             voxel_size, 
             max_facet_distance=0.2,
             max_cell_circumradius={
-                "default": 2.0, 
-                label_main: 0.5,
-                label_tof: 0.5,
-                label_sink: 2.0
+                "default": 8*hx, 
+                label_main: hx,
+                label_tof: hx,
+                label_sink: 4*hx
             },
         )
         mesh.write("brain_main.vtu")
@@ -188,6 +190,7 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0, build=True):
     sink_support_mesh = Function(DG0, name="sink_support")
     skeleton_mesh = Function(DG0, name="skeleton")
     thickness_mesh = Function(DG0, name="thickness")
+    brain_mask_mesh = Function(DG0, name="brain_mask")
     
     tof_mesh.interpolate(tof_cartesian)
     t1_mesh.interpolate(t1_cartesian)
@@ -195,6 +198,7 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0, build=True):
     sink_support_mesh.interpolate(sink_support_cartesian)
     skeleton_mesh.interpolate(skeleton_cartesian)
     thickness_mesh.interpolate(thickness_cartesian)
+    brain_mask_mesh.interpolate(brain_mask_cartesian)
     
     test_dirichlet_bc = False
     if test_dirichlet_bc:
@@ -225,6 +229,8 @@ def setup(mri_directory, threshold, blur = 0.0, blur_tof = 0.0, build=True):
         PETSc.Sys.Print(f" tof ", end="")
         afile.save_function(t1_mesh)
         PETSc.Sys.Print(f" t1 ", end="")
+        afile.save_function(brain_mask_mesh)
+        PETSc.Sys.Print(f" brain_mask ", end="")
         afile.save_function(main_network_mesh)
         PETSc.Sys.Print(f" main_network ", end="")
         afile.save_function(sink_support_mesh)
