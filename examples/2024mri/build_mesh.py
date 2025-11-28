@@ -137,7 +137,7 @@ def setup(mri_directory,
                                                                   threshold_tof_4_main_network, 
                                                                   blur_tof_4_main_network, hx)
     sink_support_np = set_sink_support(aseg_np, main_network_np)
-    tof_smooth_np = set_tof4mesh(tof_np, blur_tof_4_mesh, blur_tof_4_mesh, hx)
+    tof_smooth_np = set_tof4mesh(tof_np, blur_tof_4_mesh, hx)
     
 
 
