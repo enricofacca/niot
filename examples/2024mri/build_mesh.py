@@ -96,9 +96,6 @@ def setup(mri_directory,
         return main_network, skeleton_np, thickness_np
     
     
-        
-
-    # blur tof
     def set_tof4mesh(tof_np, blur_tof, hx):
         """
         Prepocess tof of assign a label to the mesh generation
@@ -174,8 +171,7 @@ def setup(mri_directory,
     #
     # Build mesh
     #
-    def build_mesh(brain_mask_np, sink_support_np, tof_np, main_network):
-        
+    def build_mesh(voxel_size, brain_mask_np, sink_support_np, tof_np, main_network, offset=(0,0,0)):
         mask = brain_mask_np.copy()
         label_sink = 4
         mask[sink_support_np > 0 ] = label_sink
@@ -194,13 +190,11 @@ def setup(mri_directory,
         mask = mask.astype(np.uint8)
 
 
-        voxel_size = (hx, hy, hz)
         PETSc.Sys.Print("volex size:", hx, hy, hz)
-        
         mesh_pygal = pygalmesh.generate_from_array(
                 mask,
                 voxel_size, 
-                max_facet_distance=0.2*hx,
+                max_facet_distance=hx,
                 max_cell_circumradius={
                     "default": 8*hx, 
                     label_main: hx,
@@ -220,8 +214,7 @@ def setup(mri_directory,
    
     # reload the mesh from file
     mesh = Mesh("brain_main.msh")
-    zmin = cartesian_mesh.zmin
-    print(f"{zmin=}")
+    zmin = 0.0
     DG0 = FunctionSpace(mesh, "DG", 0)
     main_network_mesh = Function(DG0, name="main_network_mesh")
     main_network_mesh.interpolate(main_network_cartesian)
@@ -239,7 +232,14 @@ def setup(mri_directory,
                                      boundary_only=True,
                                     name="relabeled_mesh")
     VTKFile("labeled_mesh.pvd").write(relabeled_mesh)
-    
+    # shift coordinate of the relabeled mesh
+    relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
+    relabeled_mesh.coordinates.dat.data[:, 1] += offset[1]
+    relabeled_mesh.coordinates.dat.data[:, 2] += offset[2]
+
+
+
+
     # save as pvd
     DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
     tof_mesh = Function(DG0, name="tof")
