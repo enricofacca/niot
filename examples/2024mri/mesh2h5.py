@@ -88,7 +88,7 @@ def setup(mri_directory,
         thickness_data = nibabel.load(f"{out_directory}/thickness.nii.gz")
         thickness_np = thickness_data.get_fdata()
 
-        tof_clean_data = nibabel.load(f"{out_directory}/tof_smooth.nii.gz")
+        tof_clean_data = nibabel.load(f"{out_directory}/tof_clean.nii.gz")
         tof_clean_np = tof_clean_data.get_fdata()
 
         return main_network_np, sink_support_np, skeleton_np, thickness_np, tof_clean_np
