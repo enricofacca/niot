@@ -16,9 +16,10 @@ from scipy.ndimage import binary_dilation
 import time
 
 def setup(mri_directory, 
-            threshold_tof_4_main_network,
-            blur_tof_4_main_network = 0.0, 
-            blur_tof_4_mesh = 0.0, 
+          out_directory,
+        threshold_tof_4_main_network,
+        blur_tof_4_main_network = 0.0, 
+        blur_tof_4_mesh = 0.0, 
             build=True,
           save_h5=False,
             firedrake_conversion=True,
@@ -158,18 +159,34 @@ def setup(mri_directory,
                                                                   threshold_tof_4_main_network, 
                                                                   blur_tof_4_main_network, hx)
     sink_support_np = set_sink_support(aseg_np, main_network_np)
-    sink_support_mesh_np = binary_dilation(sink_support_np,
+    
+    # in tof there are small isolated components that we do not want to fit
+    # so we apply a slight gaussian blur to remove them
+    tof_clean_np = gaussian_filter(tof_np, sigma = hx * 1.5)
+    
+
+    # save as nifti
+    for var, name in zip([main_network_np, skeleton_np, thickness_np, sink_support_np, tof_clean_np],
+                            ["main_network", "skeleton", "thickness", "sink_support", "tof_clean"]):
+        outfilename = os.path.join(out_directory,f"{name}.nii.gz")
+        print(f"Saving main network {outfilename}")
+        nibabel.save(nibabel.Nifti1Image(var, affine), outfilename)
+    
+    #
+    # Build mesh
+    #
+    def build_mesh(voxel_size, brain_mask_np, sink_support_np, tof_support_np, main_network_np):
+        # We need to preprocess the data
+
+        # dilate sink support to avoid small features
+        sink_support_mesh_np = binary_dilation(sink_support_np,
                                         iterations=2,mask=brain_mask_np)
-    sink_support_mesh_np = sink_support_mesh_np.astype(dtype=np.uint8)
-    
+        sink_support_mesh_np = sink_support_mesh_np.astype(dtype=np.uint8)
 
-
-    i2d.save_slice(sink_support_mesh_np, output_dir = "support_slices")
-    
-    
-    
-    
-    options_dict = {"mode" : "dilation",
+        # we create a neighborhood of the tof where we expect
+        # the tof to be reconstructed
+        # we set the region where tof must be reconstructed 
+        options_dict = {"mode" : "dilation",
                     "gaussian": {
                         "blur": blur_tof_4_mesh,
                         "hx": hx},
@@ -179,48 +196,23 @@ def setup(mri_directory,
                         "threshold": 180
                         }
                     }
-    # in tof there are small isolated components that we do not want to fit
-    # so we apply a slight gaussian blur to remove them
-    tof_clean_np = gaussian_filter(tof_np, sigma = hx * 1.5)
-    # we set the region where tof must be reconstructed 
-    tof_smooth_np = set_tof4mesh(tof_clean_np, options_dict).astype(np.float32)
+        tof_neigh_np = set_tof4mesh(tof_support_np, options_dict).astype(np.float32)
     
-
-    # save as nifti
-    for var, name in zip([main_network_np, skeleton_np, thickness_np, sink_support_np],
-                            ["main_network", "skeleton", "thickness", "sink_support"]):
-        outfilename = os.path.join(mri_directory,f"{name}_blur{blur_tof_4_main_network:.2e}_t{threshold_tof_4_main_network:.2e}.nii.gz")
-        print(f"Saving main network {outfilename}")
-        nibabel.save(nibabel.Nifti1Image(var, affine), outfilename)
     
-    outfilename = os.path.join(mri_directory,
-                               f"tof_mesh.nii.gz")
-    print(f"Saving smoothed tof {outfilename}")
-    nibabel.save(nibabel.Nifti1Image(tof_smooth_np, affine), outfilename)
-
-    outfilename = os.path.join(mri_directory,
-                               f"tof_clean.nii.gz")
-    print(f"Saving smoothed tof {outfilename}")
-    nibabel.save(nibabel.Nifti1Image(tof_clean_np, affine), outfilename)
-
-    #
-    # Build mesh
-    #
-    def build_mesh(voxel_size, brain_mask_np, sink_support_np, tof_support_np, main_network):
         mask = brain_mask_np.copy()
         label_sink = 4
-        mask[sink_support_np > 0 ] = label_sink
+        mask[sink_support_mesh_np > 0 ] = label_sink
         
         # blur tof
         label_tof = 3
-        mask[tof_support_np > 0 ] = label_tof
+        mask[tof_neigh_np > 0 ] = label_tof
         
         
         label_main = 2
         # remove everything outside domain
         mask[brain_mask_np < 1 ] = 0
         # restore main_network
-        mask[main_network > 0 ] = label_main 
+        mask[main_network_np > 0 ] = label_main 
         mask = mask.astype(np.uint8)
                 
         PETSc.Sys.Print("volex size:", hx, hy, hz)
@@ -242,23 +234,25 @@ def setup(mri_directory,
     if build:
         mesh_pygal, mask_np = build_mesh(voxel_size,
                                          brain_mask_np,
-                                         sink_support_mesh_np,
-                                         tof_smooth_np,
+                                         sink_support_np,
+                                         tof_clean_np,
                                          main_network_np)
+        # recenter mesh
         coordinate = mesh_pygal.points
+        offset = affine[:3, 3]
+        coordinate[:, 0] += offset[0]
+        coordinate[:, 1] += offset[1]
+        coordinate[:, 2] += offset[2]
         print("Mesh info:")
         print(f"coordinate_shape: {coordinate.shape}")
         print(f"Mesh has {len(coordinate)} points and {len(mesh_pygal.cells_dict['tetra'])} tetrahedra")
 
-        print(dir(mesh_pygal))
-        for key in mesh_pygal.cell_data_dict.keys():
-            print(f"{key}: {mesh_pygal.cell_data_dict[key]}")
+        # save mesh as vtu and msh
         mesh_pygal.write(os.path.join(mri_directory,"brain_main.vtu"))
-        
         writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)
         writer(os.path.join(mri_directory,"brain_main.msh"), mesh_pygal)
 
-        outfilename = os.path.join(mri_directory,
+        outfilename = os.path.join(out_directory,
                                f"mask_mesher.nii.gz")
         print(f"Saving mask mesher {outfilename}")
         nibabel.save(nibabel.Nifti1Image(mask_np, affine), outfilename)
@@ -273,7 +267,7 @@ def setup(mri_directory,
         PETSc.Sys.Print("Numpy to Firedrake Functions on Cartesian grid", end="")
         cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
         tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
-        tof_smooth_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_smooth_np, name='tof_smooth')
+        tof_smooth_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_clean_np, name='tof_smooth')
         t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
         brain_mask_cartesian = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name='brain_mask')
         main_network_cartesian = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name='main_network')
@@ -349,10 +343,10 @@ def setup(mri_directory,
         #VTKFile("labeled_mesh.pvd").write(relabeled_mesh)
         # shift coordinate of the relabeled mesh
         offset = affine[:3, 3]
-        relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
-        relabeled_mesh.coordinates.dat.data[:, 1] += offset[1]
-        relabeled_mesh.coordinates.dat.data[:, 2] += offset[2]
-        PETSc.Sys.Print("Offset completed")
+        #relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
+        #relabeled_mesh.coordinates.dat.data[:, 1] += offset[1]
+        #relabeled_mesh.coordinates.dat.data[:, 2] += offset[2]
+        #PETSc.Sys.Print("Offset completed")
 
 
         test_dirichlet_bc = False
@@ -410,6 +404,7 @@ def setup(mri_directory,
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--mri', type=str)
+    parser.add_argument('--out', type=str)
     parser.add_argument('--threshold', type=float, default=250,
                         help="Threshold for Tof. Default is 250.")
     parser.add_argument('--blur_main', type=float, default=0.0, 
@@ -422,6 +417,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    setup(args.mri, args.threshold, args.blur_main, args.blur_mesh, not args.read, args.h5, not args.meshonly)
+    setup(args.mri, args.out, args.threshold, args.blur_main, args.blur_mesh, not args.read, args.h5, not args.meshonly)
     
     
