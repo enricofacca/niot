@@ -165,6 +165,10 @@ def setup(mri_directory,
 
 
     i2d.save_slice(sink_support_mesh_np, output_dir = "support_slices")
+    
+    
+    
+    
     options_dict = {"mode" : "dilation",
                     "gaussian": {
                         "blur": blur_tof_4_mesh,
@@ -175,11 +179,12 @@ def setup(mri_directory,
                         "threshold": 180
                         }
                     }
-
-    tof_clean_np = gaussian_filter(tof_np, sigma = hx * 1.5) 
+    # in tof there are small isolated components that we do not want to fit
+    # so we apply a slight gaussian blur to remove them
+    tof_clean_np = gaussian_filter(tof_np, sigma = hx * 1.5)
+    # we set the region where tof must be reconstructed 
     tof_smooth_np = set_tof4mesh(tof_clean_np, options_dict).astype(np.float32)
     
-
 
     # save as nifti
     for var, name in zip([main_network_np, skeleton_np, thickness_np, sink_support_np],
@@ -246,6 +251,9 @@ def setup(mri_directory,
                                          sink_support_mesh_np,
                                          tof_smooth_np,
                                          main_network_np)
+        print(dir(mesh_pygal))
+        for key in mesh_pygal.cell_data_dict.keys():
+            print(f"{key}: {mesh_pygal.cell_data_dict[key]}")
         mesh_pygal.write(os.path.join(mri_directory,"brain_main.vtu"))
 
         
