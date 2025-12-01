@@ -116,7 +116,17 @@ def setup(mri_directory,
     mesh.coordinates.dat.data[:, 2] -= offset[2]
     PETSc.Sys.Print("Offset completed")
     
-
+    PETSc.Sys.Print("Numpy to Firedrake Functions on Cartesian grid", end="")
+    cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
+    tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
+    tof_smooth_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_clean_np, name='tof_smooth')
+    t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
+    brain_mask_cartesian = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name='brain_mask')
+    main_network_cartesian = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name='main_network')
+    sink_support_cartesian = i2d.numpy2firedrake(cartesian_mesh, sink_support_np, name='sink_support')
+    skeleton_cartesian = i2d.numpy2firedrake(cartesian_mesh, skeleton_np, name='skeleton')
+    thickness_cartesian = i2d.numpy2firedrake(cartesian_mesh, thickness_np, name='thickness')
+    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e}")
     
     
     
@@ -145,6 +155,8 @@ def setup(mri_directory,
     # brain_mask_mesh = Function(DG0, name="brain_mask")
         
     DG0 = FunctionSpace(mesh, "DG", 0)
+    main_network_mesh = Function(DG0, name="main_network")
+    main_network_mesh.interpolate(main_network_cartesian)
     main_network_mesh = i2d.numpy2firedrake(mesh, main_network_np, name='main_network',lengths=lengths)
         
     # relabeled mesh to mark the inlet boundary
