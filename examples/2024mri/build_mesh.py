@@ -225,7 +225,7 @@ def setup(mri_directory,
         
         
         PETSc.Sys.Print("volex size:", hx, hy, hz)
-        scale = 2
+        scale = 1
         mesh_pygal = pygalmesh.generate_from_array(
                 mask,
                 voxel_size, 
