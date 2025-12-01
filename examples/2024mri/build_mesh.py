@@ -12,6 +12,7 @@ import meshio
 from firedrake import CheckpointFile, COMM_WORLD, PETSc, VTKFile, DirichletBC, FunctionSpace, Function, TestFunction, TrialFunction, inner, grad, dx, conditional
 import localthickness as lt
 from skimage.morphology import skeletonize
+from scipy.ndimage import binary_dilation
 
 
 def setup(mri_directory, 
@@ -97,20 +98,36 @@ def setup(mri_directory,
         return main_network, skeleton_np, thickness_np
     
     
-    def set_tof4mesh(tof_np, blur_tof, hx):
+    def set_tof4mesh(tof_np, options_dict):
         """
         Prepocess tof of assign a label to the mesh generation
         """
-        if abs(blur_tof) < 1e-10:
-            return tof_smooth_np
-        else:
-            print(f" - applying gaussian blur {blur_tof:.2e}",end="")
-            tof_smooth_np = gaussian_filter(tof_np, sigma=blur_tof*hx)
+        mode = options_dict.get("mode","gaussian_blur")
+        if mode == "gaussian":
+            suboption = options_dict.get("gaussian")
+            blur_tof = suboption.get("blur",0.0)
+            hx = suboption.get("hx",1.0)
+            if abs(blur_tof) < 1e-10:
+                return tof_smooth_np
+            else:
+                print(f" - applying gaussian blur {blur_tof:.2e}",end="")
+                tof_smooth_np = gaussian_filter(tof_np, sigma=blur_tof*hx)
+                print(f" - done",end="")
+                return tof_smooth_np
+        elif mode == "dilation":
+            suboption = options_dict.get("dilation")
+            mask = suboption.get("mask",None)
+            iterations = suboption.get("iterations",2)
+            threshold = suboption.get("threshold", 180)
+            structure = tof_np > threshold
+            tof_smooth_np = binary_dilation(structure,iterations=iterations,mask=mask)
             print(f" - done",end="")
             return tof_smooth_np
+        else:
+            raise ValueError(f"Unknown mode {mode} for tof preprocessing")        
         
     
-    def set_sink_support(aseg_np, main_network):
+    def set_sink_support(aseg_np, main_network, dilatation_iterations, mask_brain_np):
         """
         set the sink support based on aseg
         """
@@ -128,8 +145,12 @@ def setup(mri_directory,
         sink_support_np[aseg_np > 0] = 1
         for label in empty_markers:
             sink_support_np[aseg_np == label] = 0
+        sink_support_np = binary_dilation(sink_support_np,
+                                        iterations=dilatation_iterations,mask=mask_brain_np)
+        sink_support_np = sink_support_np.astype(dtype=np.uint8)
         # remove main network from sink
         sink_support_np[main_network > 0 ] = 0
+        
 
         return sink_support_np
     
@@ -137,8 +158,23 @@ def setup(mri_directory,
     main_network_np, skeleton_np, thickness_np = set_main_network(tof_np, 
                                                                   threshold_tof_4_main_network, 
                                                                   blur_tof_4_main_network, hx)
-    sink_support_np = set_sink_support(aseg_np, main_network_np)
-    tof_smooth_np = set_tof4mesh(tof_np, blur_tof_4_mesh, hx)
+    sink_support_np = set_sink_support(aseg_np, main_network_np, 2, brain_mask_np)
+    
+
+    i2d.save_slice(sink_support_np, output_dir = "support_slices")
+    options_dict = {"mode" : "dilation",
+                    "gaussian": {
+                        "blur": blur_tof_4_mesh,
+                        "hx": hx},
+                    "dilation": {
+                        "mask": brain_mask_np,
+                        "iterations": 3,
+                        "threshold": 180
+                        }
+                    }
+
+    tof_clean_np = gaussian_filter(tof_np, sigma = hx * 1.5) 
+    tof_smooth_np = set_tof4mesh(tof_clean_np, options_dict).astype(np.float32)
     
 
 
@@ -150,39 +186,26 @@ def setup(mri_directory,
         nibabel.save(nibabel.Nifti1Image(var, affine), outfilename)
     
     outfilename = os.path.join(mri_directory,
-                               f"tof_smooth_blur{blur_tof_4_mesh}.nii.gz")
+                               f"tof_mesh.nii.gz")
     print(f"Saving smoothed tof {outfilename}")
     nibabel.save(nibabel.Nifti1Image(tof_smooth_np, affine), outfilename)
-    
-    
-    dimensions = tof_np.shape
-    lengths = np.array([float(dimensions[0]*hx), 
-                        float(dimensions[1]*hy), 
-                        float(dimensions[2]*hz)])
-    cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
-    tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
-    tof_smooth_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_smooth_np, name='tof_smooth')
-    t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
-    brain_mask_cartesian = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name='brain_mask')
-    main_network_cartesian = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name='main_network')
-    sink_support_cartesian = i2d.numpy2firedrake(cartesian_mesh, sink_support_np, name='sink_support')
-    skeleton_cartesian = i2d.numpy2firedrake(cartesian_mesh, skeleton_np, name='skeleton')
-    thickness_cartesian = i2d.numpy2firedrake(cartesian_mesh, thickness_np, name='thickness')
-    
-    
+
+    outfilename = os.path.join(mri_directory,
+                               f"tof_clean.nii.gz")
+    print(f"Saving smoothed tof {outfilename}")
+    nibabel.save(nibabel.Nifti1Image(tof_clean_np, affine), outfilename)
 
     #
     # Build mesh
     #
-    def build_mesh(voxel_size, brain_mask_np, sink_support_np, tof_np, main_network, offset=(0,0,0)):
+    def build_mesh(voxel_size, brain_mask_np, sink_support_np, tof_support_np, main_network):
         mask = brain_mask_np.copy()
         label_sink = 4
         mask[sink_support_np > 0 ] = label_sink
         
         # blur tof
         label_tof = 3
-        t = 0.175 * tof_np.max()
-        mask[tof_np > t ] = label_tof
+        mask[tof_support_np > 0 ] = label_tof
         
         
         label_main = 2
@@ -192,7 +215,12 @@ def setup(mri_directory,
         mask[main_network > 0 ] = label_main 
         mask = mask.astype(np.uint8)
 
-
+        outfilename = os.path.join(mri_directory,
+                               f"mask_mesher.nii.gz")
+        print(f"Saving mask mesher {outfilename}")
+        nibabel.save(nibabel.Nifti1Image(mask, affine), outfilename)
+        
+        
         PETSc.Sys.Print("volex size:", hx, hy, hz)
         scale = 2
         mesh_pygal = pygalmesh.generate_from_array(
@@ -216,16 +244,30 @@ def setup(mri_directory,
                                          main_network_np)
         mesh_pygal.write(os.path.join(mri_directory,"brain_main.vtu"))
 
-        outfilename = os.path.join(mri_directory,
-                               f"mask_mesher.nii.gz")
-        print(f"Saving mask mesher {outfilename}")
-        nibabel.save(nibabel.Nifti1Image(mask_np, affine), outfilename)
         
         
         writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)
         writer(os.path.join(mri_directory,"brain_main.msh"), mesh_pygal)
     
-   
+    dimensions = tof_np.shape
+    lengths = np.array([float(dimensions[0]*hx), 
+                        float(dimensions[1]*hy), 
+                        float(dimensions[2]*hz)])
+    cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
+    tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
+    tof_smooth_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_smooth_np, name='tof_smooth')
+    t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
+    brain_mask_cartesian = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name='brain_mask')
+    main_network_cartesian = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name='main_network')
+    sink_support_cartesian = i2d.numpy2firedrake(cartesian_mesh, sink_support_np, name='sink_support')
+    skeleton_cartesian = i2d.numpy2firedrake(cartesian_mesh, skeleton_np, name='skeleton')
+    thickness_cartesian = i2d.numpy2firedrake(cartesian_mesh, thickness_np, name='thickness')
+    
+
+
+
+
+
     # reload the mesh from file
     mesh = Mesh(os.path.join(mri_directory,"brain_main.msh"))
     zmin = 0.0
