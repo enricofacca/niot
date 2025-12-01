@@ -1494,3 +1494,16 @@ def topol_coords_edges_from_mask_3d(mask, Lx=1.0, Ly=1.0, Lz=1.0):
             print(f"Cell {i:4d}: {new_nodes_in_cells[i, :]}")
 
     return new_nodes_in_cells, xyz_coord, new_edges, active_cells, inverse_cells
+
+def save_slice(array, output_dir = "support_slices"):
+   # Slice the data vertically and print all slices as png files in the output directory
+   import matplotlib.pyplot as plt
+   import os
+   
+   if not os.path.exists(output_dir):
+      os.makedirs(output_dir)
+   for i in range(array.shape[2]):
+      # stack original and new mask side by side
+      print(f"Saving slice {i/array.shape[2]*100:.2f}%",end="\r")
+      new = array[:, :, i]
+      plt.imsave(os.path.join(output_dir, f"slice_{i:03d}.png"), new, cmap="gray")
