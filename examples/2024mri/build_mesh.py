@@ -18,7 +18,8 @@ def setup(mri_directory,
             threshold_tof_4_main_network,
             blur_tof_4_main_network = 0.0, 
             blur_tof_4_mesh = 0.0, 
-            build=True):
+            build=True,
+          save_h5=False):
 
     def load_data(mri_directory):
         save_npy = False
@@ -160,13 +161,15 @@ def setup(mri_directory,
                         float(dimensions[2]*hz)])
     cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
     tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
+    tof_smooth_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_smooth_np, name='tof_smooth')
     t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
     brain_mask_cartesian = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name='brain_mask')
     main_network_cartesian = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name='main_network')
     sink_support_cartesian = i2d.numpy2firedrake(cartesian_mesh, sink_support_np, name='sink_support')
     skeleton_cartesian = i2d.numpy2firedrake(cartesian_mesh, skeleton_np, name='skeleton')
     thickness_cartesian = i2d.numpy2firedrake(cartesian_mesh, thickness_np, name='thickness')
-
+    
+    
 
     #
     # Build mesh
@@ -195,19 +198,29 @@ def setup(mri_directory,
         mesh_pygal = pygalmesh.generate_from_array(
                 mask,
                 voxel_size, 
-                max_facet_distance=scale*hx,
+                max_facet_distance=8*scale*hx,
                 max_cell_circumradius={
-                    "default": scale*8*hx, 
+                    "default": scale*16*hx, 
                     label_main: scale*hx,
                     label_tof: scale*hx,
-                    label_sink: scale*4*hx
+                    label_sink: scale*8*hx
                 },
             )
-        return mesh_pygal
+        return mesh_pygal, mask
         
     if build:
-        mesh_pygal = build_mesh(voxel_size, brain_mask_np, sink_support_np, tof_smooth_np, main_network_np)
+        mesh_pygal, mask_np = build_mesh(voxel_size,
+                                         brain_mask_np,
+                                         sink_support_np,
+                                         tof_smooth_np,
+                                         main_network_np)
         mesh_pygal.write(os.path.join(mri_directory,"brain_main.vtu"))
+
+        outfilename = os.path.join(mri_directory,
+                               f"mask_mesher.nii.gz")
+        print(f"Saving mask mesher {outfilename}")
+        nibabel.save(nibabel.Nifti1Image(mask_np, affine), outfilename)
+        
         
         writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)
         writer(os.path.join(mri_directory,"brain_main.msh"), mesh_pygal)
@@ -219,7 +232,7 @@ def setup(mri_directory,
     DG0 = FunctionSpace(mesh, "DG", 0)
     main_network_mesh = Function(DG0, name="main_network_mesh")
     main_network_mesh.interpolate(main_network_cartesian)
-    
+        
 
     # relabeled mesh to mark the inlet boundary
     marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
@@ -237,6 +250,7 @@ def setup(mri_directory,
     # save as pvd
     DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
     tof_mesh = Function(DG0, name="tof")
+    tof_smooth_mesh = Function(DG0, name="tof_smooth")
     t1_mesh = Function(DG0, name="t1")
     main_network_mesh = Function(DG0, name="main_network")
     sink_support_mesh = Function(DG0, name="sink_support")
@@ -244,15 +258,24 @@ def setup(mri_directory,
     thickness_mesh = Function(DG0, name="thickness")
     brain_mask_mesh = Function(DG0, name="brain_mask")
     
+    
     tof_mesh.interpolate(tof_cartesian)
+    tod_mesh.interpolate(tof_smooth_cartesian)
     t1_mesh.interpolate(t1_cartesian)
     main_network_mesh.interpolate(main_network_cartesian)
     sink_support_mesh.interpolate(sink_support_cartesian)
     skeleton_mesh.interpolate(skeleton_cartesian)
     thickness_mesh.interpolate(thickness_cartesian)
     brain_mask_mesh.interpolate(brain_mask_cartesian)
+    test = TestFunction(DG0)
+    size = assemble(test *dx)
+    size_mesh = Function(DG0, name="size_mesh")
+    with size_mesh.dat.vec as s, size.dat.vec as h:
+        h.copy(s)
+
+
     
-    VTKFile("labeled_mesh.pvd").write(relabeled_mesh)
+    #VTKFile("labeled_mesh.pvd").write(relabeled_mesh)
     # shift coordinate of the relabeled mesh
     offset = affine[:3, 3]
     relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
@@ -280,33 +303,34 @@ def setup(mri_directory,
         VTKFile("direchlet.pvd").write(solution,sink_support_mesh)
 
     outfilename = os.path.join(mri_directory,f"inputs_blur{blur_tof_4_main_network:.2e}_thr{threshold_tof_4_main_network:.2e}_TOF_blur{blur_tof_4_mesh:.2e}.pvd")
-    VTKFile(outfilename).write(tof_mesh,brain_mask_mesh,main_network_mesh)
+    VTKFile(outfilename).write(tof_mesh,brain_mask_mesh,main_network_mesh,sink_support_mesh,size_mesh)
 
-    n_proc = COMM_WORLD.size
-    h5_filename = os.path.join(mri_directory,
-                               f"inputs_nproc{n_proc}" + 
-                               f"_MAIN_blur{blur_tof_4_main_network:.2e}" +
-                               f"_thr{threshold_tof_4_main_network:.2e}_TOF_blur{blur_tof_4_mesh:.2e}.h5")
-    PETSc.Sys.Print(f"Saving to {h5_filename}", end="")
-    print("name",relabeled_mesh.name)
-    with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
-        afile.save_mesh(relabeled_mesh,"relabeled_mesh")
-        PETSc.Sys.Print(f" mesh ", end="")
-        afile.save_function(tof_mesh)
-        PETSc.Sys.Print(f" tof ", end="")
-        afile.save_function(t1_mesh)
-        PETSc.Sys.Print(f" t1 ", end="")
-        afile.save_function(brain_mask_mesh)
-        PETSc.Sys.Print(f" brain_mask ", end="")
-        afile.save_function(main_network_mesh)
-        PETSc.Sys.Print(f" main_network ", end="")
-        afile.save_function(sink_support_mesh)
-        PETSc.Sys.Print(f" sink_support ", end="")
-        afile.save_function(skeleton_mesh)
-        PETSc.Sys.Print(f" skeleton ", end="")
-        afile.save_function(thickness_mesh)
-        PETSc.Sys.Print(f" thickness ", end="")
-
+    if save_h5:
+        n_proc = COMM_WORLD.size
+        h5_filename = os.path.join(mri_directory,
+                                   f"inputs_nproc{n_proc}" + 
+                                   f"_MAIN_blur{blur_tof_4_main_network:.2e}" +
+                                   f"_thr{threshold_tof_4_main_network:.2e}_TOF_blur{blur_tof_4_mesh:.2e}.h5")
+        PETSc.Sys.Print(f"Saving to {h5_filename}", end="")
+        print("name",relabeled_mesh.name)
+        with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
+            afile.save_mesh(relabeled_mesh,"relabeled_mesh")
+            PETSc.Sys.Print(f" mesh ", end="")
+            afile.save_function(tof_mesh)
+            PETSc.Sys.Print(f" tof ", end="")
+            afile.save_function(t1_mesh)
+            PETSc.Sys.Print(f" t1 ", end="")
+            afile.save_function(brain_mask_mesh)
+            PETSc.Sys.Print(f" brain_mask ", end="")
+            afile.save_function(main_network_mesh)
+            PETSc.Sys.Print(f" main_network ", end="")
+            afile.save_function(sink_support_mesh)
+            PETSc.Sys.Print(f" sink_support ", end="")
+            afile.save_function(skeleton_mesh)
+            PETSc.Sys.Print(f" skeleton ", end="")
+            afile.save_function(thickness_mesh)
+            PETSc.Sys.Print(f" thickness ", end="")
+            
         
 
 if __name__ == '__main__':
@@ -319,8 +343,9 @@ if __name__ == '__main__':
     parser.add_argument('--blur_mesh', type=float, default=0.0, 
                         help="Blur for connected components. If 0, no blur is applied.")
     parser.add_argument('--read', action='store_true')
+    parser.add_argument('--h5', action='store_true')
     args = parser.parse_args()
 
-    setup(args.mri, args.threshold, args.blur_main, args.blur_mesh, not args.read)
+    setup(args.mri, args.threshold, args.blur_main, args.blur_mesh, not args.read, args.h5)
     
     
