@@ -406,20 +406,12 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
    try:
       lengths = get_lengths(mesh)   
       nxyz = get_box_division(mesh)
+      invert_rows_columns = mesh.invert_rows_columns
    except:
       if lengths is None:
          raise ValueError('Mesh lengths must be provided')
-      if mesh.geometric_dimension() == 2:
-         if convention_2d_invert_rows_columns:
-            height, width  = value.shape
-         else:
-            width, height = value.shape
-         nxyz = (width, height)
-      elif mesh.geometric_dimension() == 3:
-         nxyz = value.shape
-      else:
-         raise ValueError('Only 2d and 3d images are supported')
-
+      nxyz = value.shape
+      invert_rows_columns = False
    
    DG0 = fd.FunctionSpace(mesh,'DG',0)
    img_function = fd.Function(DG0)
@@ -429,7 +421,7 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
       hx = lengths[0]/nxyz[0]
       hy = lengths[1]/nxyz[1]
       hz = lengths[2]/nxyz[2]
-      if mesh.invert_rows_columns:
+      if invert_rows_columns:
          def my_data(xyz): 
             x = xyz[:,0]
             y = xyz[:,1]
@@ -450,11 +442,6 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
             return value[i,j,k]
          
    elif mesh.geometric_dimension() == 2:
-      invert_rows_columns = mesh.invert_rows_columns
-      flip_up_down = mesh.flip_up_down
-   
-
-      #print(mesh.invert_rows_columns, mesh.flip_up_down)
       #   
       # NOTE that we are reading the transpose of the value
       #
