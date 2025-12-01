@@ -127,7 +127,7 @@ def setup(mri_directory,
             raise ValueError(f"Unknown mode {mode} for tof preprocessing")        
         
     
-    def set_sink_support(aseg_np, main_network, dilatation_iterations, mask_brain_np):
+    def set_sink_support(aseg_np, main_network):
         """
         set the sink support based on aseg
         """
@@ -145,12 +145,9 @@ def setup(mri_directory,
         sink_support_np[aseg_np > 0] = 1
         for label in empty_markers:
             sink_support_np[aseg_np == label] = 0
-        sink_support_np = binary_dilation(sink_support_np,
-                                        iterations=dilatation_iterations,mask=mask_brain_np)
-        sink_support_np = sink_support_np.astype(dtype=np.uint8)
+
         # remove main network from sink
-        sink_support_np[main_network > 0 ] = 0
-        
+        sink_support_np[main_network_np > 0 ] = 0
 
         return sink_support_np
     
@@ -159,9 +156,13 @@ def setup(mri_directory,
                                                                   threshold_tof_4_main_network, 
                                                                   blur_tof_4_main_network, hx)
     sink_support_np = set_sink_support(aseg_np, main_network_np, 2, brain_mask_np)
+    sink_support_mesh_np = binary_dilation(sink_support_np,
+                                        iterations=2,mask=brain_mask_np)
+    sink_support_mesh_np = sink_support_mesh_np.astype(dtype=np.uint8)
     
 
-    i2d.save_slice(sink_support_np, output_dir = "support_slices")
+
+    i2d.save_slice(sink_support_mesh_np, output_dir = "support_slices")
     options_dict = {"mode" : "dilation",
                     "gaussian": {
                         "blur": blur_tof_4_mesh,
@@ -239,7 +240,7 @@ def setup(mri_directory,
     if build:
         mesh_pygal, mask_np = build_mesh(voxel_size,
                                          brain_mask_np,
-                                         sink_support_np,
+                                         sink_support_mesh_np,
                                          tof_smooth_np,
                                          main_network_np)
         mesh_pygal.write(os.path.join(mri_directory,"brain_main.vtu"))
@@ -253,6 +254,8 @@ def setup(mri_directory,
     lengths = np.array([float(dimensions[0]*hx), 
                         float(dimensions[1]*hy), 
                         float(dimensions[2]*hz)])
+    start = time.time()
+    PETSc.Sys.Print("Numpy to Firedrake Functions on Cartesian grid", end="")
     cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
     tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
     tof_smooth_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_smooth_np, name='tof_smooth')
@@ -262,7 +265,7 @@ def setup(mri_directory,
     sink_support_cartesian = i2d.numpy2firedrake(cartesian_mesh, sink_support_np, name='sink_support')
     skeleton_cartesian = i2d.numpy2firedrake(cartesian_mesh, skeleton_np, name='skeleton')
     thickness_cartesian = i2d.numpy2firedrake(cartesian_mesh, thickness_np, name='thickness')
-    
+    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e}")
 
 
 
@@ -280,17 +283,23 @@ def setup(mri_directory,
         
 
     # relabeled mesh to mark the inlet boundary
+    start  = time.time()
+    PETSc.Sys.Print("intepolate marker for relabeled mesh", end="")
     marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
     main_network_indicator = Function(marker_space, name="main_network_indicator")
     x,y,z = mesh.coordinates
-    main_network_indicator.interpolate(main_network_mesh * conditional(z-zmin < hx,1,0))
+    main_network_indicator.interpolate(main_network_mesh * conditional(abs(z-zmin) < hx,1,0))
+    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+    
     elem = main_network_indicator.topological.function_space().ufl_element()
     PETSc.Sys.Print(elem.family(),elem.degree())
+    start  = time.time()
+    PETSc.Sys.Print("Relabeled mesh", end="")
     relabeled_mesh = MyRelabeledMesh(mesh, [main_network_indicator], 
                                      [99],
                                      boundary_only=True,
                                     name="relabeled_mesh")
-    PETSc.Sys.Print("Relabeled mesh created")
+    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
 
     # save as pvd
     DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
@@ -303,8 +312,10 @@ def setup(mri_directory,
     thickness_mesh = Function(DG0, name="thickness")
     brain_mask_mesh = Function(DG0, name="brain_mask")
     
-    
+    start  = time.time()
+    PETSc.Sys.Print("intepolate tof", end="")
     tof_mesh.interpolate(tof_cartesian)
+    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
     tof_smooth_mesh.interpolate(tof_smooth_cartesian)
     t1_mesh.interpolate(t1_cartesian)
     main_network_mesh.interpolate(main_network_cartesian)
