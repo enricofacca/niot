@@ -20,7 +20,9 @@ def setup(mri_directory,
             blur_tof_4_main_network = 0.0, 
             blur_tof_4_mesh = 0.0, 
             build=True,
-          save_h5=False):
+          save_h5=False,
+            firedrake_conversion=True,
+          ):
 
     def load_data(mri_directory):
         save_npy = False
@@ -251,145 +253,147 @@ def setup(mri_directory,
         writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)
         writer(os.path.join(mri_directory,"brain_main.msh"), mesh_pygal)
     
-    dimensions = tof_np.shape
-    lengths = np.array([float(dimensions[0]*hx), 
-                        float(dimensions[1]*hy), 
-                        float(dimensions[2]*hz)])
-    start = time.time()
-    PETSc.Sys.Print("Numpy to Firedrake Functions on Cartesian grid", end="")
-    cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
-    tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
-    tof_smooth_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_smooth_np, name='tof_smooth')
-    t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
-    brain_mask_cartesian = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name='brain_mask')
-    main_network_cartesian = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name='main_network')
-    sink_support_cartesian = i2d.numpy2firedrake(cartesian_mesh, sink_support_np, name='sink_support')
-    skeleton_cartesian = i2d.numpy2firedrake(cartesian_mesh, skeleton_np, name='skeleton')
-    thickness_cartesian = i2d.numpy2firedrake(cartesian_mesh, thickness_np, name='thickness')
-    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e}")
+    if firedrake_conversion:
+
+        dimensions = tof_np.shape
+        lengths = np.array([float(dimensions[0]*hx), 
+                            float(dimensions[1]*hy), 
+                            float(dimensions[2]*hz)])
+        start = time.time()
+        PETSc.Sys.Print("Numpy to Firedrake Functions on Cartesian grid", end="")
+        cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
+        tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
+        tof_smooth_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_smooth_np, name='tof_smooth')
+        t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
+        brain_mask_cartesian = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name='brain_mask')
+        main_network_cartesian = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name='main_network')
+        sink_support_cartesian = i2d.numpy2firedrake(cartesian_mesh, sink_support_np, name='sink_support')
+        skeleton_cartesian = i2d.numpy2firedrake(cartesian_mesh, skeleton_np, name='skeleton')
+        thickness_cartesian = i2d.numpy2firedrake(cartesian_mesh, thickness_np, name='thickness')
+        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e}")
 
 
 
 
 
-    # reload the mesh from file
-    PETSc.Sys.Print("reading mesh from .msh file")
-    start = time.time() 
-    mesh = Mesh(os.path.join(mri_directory,"brain_main.msh"))
-    PETSc.Sys.Print(f"completed in {time.time()-start:.2e} s")
-    zmin = 0.0
-    DG0 = FunctionSpace(mesh, "DG", 0)
-    main_network_mesh = Function(DG0, name="main_network_mesh")
-    main_network_mesh.interpolate(main_network_cartesian)
+        # reload the mesh from file
+        PETSc.Sys.Print("reading mesh from .msh file")
+        start = time.time() 
+        mesh = Mesh(os.path.join(mri_directory,"brain_main.msh"))
+        PETSc.Sys.Print(f"completed in {time.time()-start:.2e} s")
+        zmin = 0.0
+        DG0 = FunctionSpace(mesh, "DG", 0)
+        main_network_mesh = Function(DG0, name="main_network_mesh")
+        main_network_mesh.interpolate(main_network_cartesian)
+            
+
+        # relabeled mesh to mark the inlet boundary
+        start  = time.time()
+        PETSc.Sys.Print("intepolate marker for relabeled mesh", end="")
+        marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
+        main_network_indicator = Function(marker_space, name="main_network_indicator")
+        x,y,z = mesh.coordinates
+        main_network_indicator.interpolate(main_network_mesh * conditional(abs(z-zmin) < hx,1,0))
+        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
         
+        elem = main_network_indicator.topological.function_space().ufl_element()
+        PETSc.Sys.Print(elem.family(),elem.degree())
+        start  = time.time()
+        PETSc.Sys.Print("Relabeled mesh", end="")
+        relabeled_mesh = MyRelabeledMesh(mesh, [main_network_indicator], 
+                                        [99],
+                                        boundary_only=True,
+                                        name="relabeled_mesh")
+        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
 
-    # relabeled mesh to mark the inlet boundary
-    start  = time.time()
-    PETSc.Sys.Print("intepolate marker for relabeled mesh", end="")
-    marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
-    main_network_indicator = Function(marker_space, name="main_network_indicator")
-    x,y,z = mesh.coordinates
-    main_network_indicator.interpolate(main_network_mesh * conditional(abs(z-zmin) < hx,1,0))
-    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
-    
-    elem = main_network_indicator.topological.function_space().ufl_element()
-    PETSc.Sys.Print(elem.family(),elem.degree())
-    start  = time.time()
-    PETSc.Sys.Print("Relabeled mesh", end="")
-    relabeled_mesh = MyRelabeledMesh(mesh, [main_network_indicator], 
-                                     [99],
-                                     boundary_only=True,
-                                    name="relabeled_mesh")
-    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+        # save as pvd
+        DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
+        tof_mesh = Function(DG0, name="tof")
+        tof_smooth_mesh = Function(DG0, name="tof_smooth")
+        t1_mesh = Function(DG0, name="t1")
+        main_network_mesh = Function(DG0, name="main_network")
+        sink_support_mesh = Function(DG0, name="sink_support")
+        skeleton_mesh = Function(DG0, name="skeleton")
+        thickness_mesh = Function(DG0, name="thickness")
+        brain_mask_mesh = Function(DG0, name="brain_mask")
+        
+        start  = time.time()
+        PETSc.Sys.Print("intepolate tof", end="")
+        tof_mesh.interpolate(tof_cartesian)
+        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+        tof_smooth_mesh.interpolate(tof_smooth_cartesian)
+        t1_mesh.interpolate(t1_cartesian)
+        main_network_mesh.interpolate(main_network_cartesian)
+        sink_support_mesh.interpolate(sink_support_cartesian)
+        skeleton_mesh.interpolate(skeleton_cartesian)
+        thickness_mesh.interpolate(thickness_cartesian)
+        brain_mask_mesh.interpolate(brain_mask_cartesian)
+        test = TestFunction(DG0)
+        size = assemble(test *dx)
+        size_mesh = Function(DG0, name="size_mesh")
+        with size_mesh.dat.vec as s, size.dat.vec as h:
+            h.copy(s)
 
-    # save as pvd
-    DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
-    tof_mesh = Function(DG0, name="tof")
-    tof_smooth_mesh = Function(DG0, name="tof_smooth")
-    t1_mesh = Function(DG0, name="t1")
-    main_network_mesh = Function(DG0, name="main_network")
-    sink_support_mesh = Function(DG0, name="sink_support")
-    skeleton_mesh = Function(DG0, name="skeleton")
-    thickness_mesh = Function(DG0, name="thickness")
-    brain_mask_mesh = Function(DG0, name="brain_mask")
-    
-    start  = time.time()
-    PETSc.Sys.Print("intepolate tof", end="")
-    tof_mesh.interpolate(tof_cartesian)
-    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
-    tof_smooth_mesh.interpolate(tof_smooth_cartesian)
-    t1_mesh.interpolate(t1_cartesian)
-    main_network_mesh.interpolate(main_network_cartesian)
-    sink_support_mesh.interpolate(sink_support_cartesian)
-    skeleton_mesh.interpolate(skeleton_cartesian)
-    thickness_mesh.interpolate(thickness_cartesian)
-    brain_mask_mesh.interpolate(brain_mask_cartesian)
-    test = TestFunction(DG0)
-    size = assemble(test *dx)
-    size_mesh = Function(DG0, name="size_mesh")
-    with size_mesh.dat.vec as s, size.dat.vec as h:
-        h.copy(s)
-
-    PETSc.Sys.Print("Interpolation completed")
-    
-    #VTKFile("labeled_mesh.pvd").write(relabeled_mesh)
-    # shift coordinate of the relabeled mesh
-    offset = affine[:3, 3]
-    relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
-    relabeled_mesh.coordinates.dat.data[:, 1] += offset[1]
-    relabeled_mesh.coordinates.dat.data[:, 2] += offset[2]
-    PETSc.Sys.Print("Offset completed")
+        PETSc.Sys.Print("Interpolation completed")
+        
+        #VTKFile("labeled_mesh.pvd").write(relabeled_mesh)
+        # shift coordinate of the relabeled mesh
+        offset = affine[:3, 3]
+        relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
+        relabeled_mesh.coordinates.dat.data[:, 1] += offset[1]
+        relabeled_mesh.coordinates.dat.data[:, 2] += offset[2]
+        PETSc.Sys.Print("Offset completed")
 
 
-    test_dirichlet_bc = False
-    if test_dirichlet_bc:
-        V = FunctionSpace(relabeled_mesh, "CG", 1)
-        test = TestFunction(V)
-        trial = TrialFunction(V)
-        a = inner(grad(trial), grad(test)) * dx
-        L = sink_support_mesh * test * dx
+        test_dirichlet_bc = False
+        if test_dirichlet_bc:
+            V = FunctionSpace(relabeled_mesh, "CG", 1)
+            test = TestFunction(V)
+            trial = TrialFunction(V)
+            a = inner(grad(trial), grad(test)) * dx
+            L = sink_support_mesh * test * dx
 
-        solution = Function(V,name="solution")
-        problem = LinearVariationalProblem(a, L, solution, bcs=[DirichletBC(V, 0.0, 99)])
-        solver = LinearVariationalSolver(problem,
-                                solver_parameters={
-                                    "ksp_type": "cg",
-                                    "ksp_rtol": 1e-6,
-                                    "pc_type": "hypre"})
-        solver.solve()
-        VTKFile("direchlet.pvd").write(solution,sink_support_mesh)
+            solution = Function(V,name="solution")
+            problem = LinearVariationalProblem(a, L, solution, bcs=[DirichletBC(V, 0.0, 99)])
+            solver = LinearVariationalSolver(problem,
+                                    solver_parameters={
+                                        "ksp_type": "cg",
+                                        "ksp_rtol": 1e-6,
+                                        "pc_type": "hypre"})
+            solver.solve()
+            VTKFile("direchlet.pvd").write(solution,sink_support_mesh)
 
-    outfilename = os.path.join(mri_directory,f"inputs_blur{blur_tof_4_main_network:.2e}_thr{threshold_tof_4_main_network:.2e}_TOF_blur{blur_tof_4_mesh:.2e}.pvd")
-    VTKFile(outfilename).write(tof_mesh,
-                               brain_mask_mesh,
-                               main_network_mesh,
-                               sink_support_mesh,size_mesh,tof_smooth_mesh)
+        outfilename = os.path.join(mri_directory,f"inputs_blur{blur_tof_4_main_network:.2e}_thr{threshold_tof_4_main_network:.2e}_TOF_blur{blur_tof_4_mesh:.2e}.pvd")
+        VTKFile(outfilename).write(tof_mesh,
+                                brain_mask_mesh,
+                                main_network_mesh,
+                                sink_support_mesh,size_mesh,tof_smooth_mesh)
 
-    if save_h5:
-        n_proc = COMM_WORLD.size
-        h5_filename = os.path.join(mri_directory,
-                                   f"inputs_nproc{n_proc}" + 
-                                   f"_MAIN_blur{blur_tof_4_main_network:.2e}" +
-                                   f"_thr{threshold_tof_4_main_network:.2e}_TOF_blur{blur_tof_4_mesh:.2e}.h5")
-        PETSc.Sys.Print(f"Saving to {h5_filename}", end="")
-        print("name",relabeled_mesh.name)
-        with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
-            afile.save_mesh(relabeled_mesh,"relabeled_mesh")
-            PETSc.Sys.Print(f" mesh ", end="")
-            afile.save_function(tof_mesh)
-            PETSc.Sys.Print(f" tof ", end="")
-            afile.save_function(t1_mesh)
-            PETSc.Sys.Print(f" t1 ", end="")
-            afile.save_function(brain_mask_mesh)
-            PETSc.Sys.Print(f" brain_mask ", end="")
-            afile.save_function(main_network_mesh)
-            PETSc.Sys.Print(f" main_network ", end="")
-            afile.save_function(sink_support_mesh)
-            PETSc.Sys.Print(f" sink_support ", end="")
-            afile.save_function(skeleton_mesh)
-            PETSc.Sys.Print(f" skeleton ", end="")
-            afile.save_function(thickness_mesh)
-            PETSc.Sys.Print(f" thickness ", end="")
+        if save_h5:
+            n_proc = COMM_WORLD.size
+            h5_filename = os.path.join(mri_directory,
+                                    f"inputs_nproc{n_proc}" + 
+                                    f"_MAIN_blur{blur_tof_4_main_network:.2e}" +
+                                    f"_thr{threshold_tof_4_main_network:.2e}_TOF_blur{blur_tof_4_mesh:.2e}.h5")
+            PETSc.Sys.Print(f"Saving to {h5_filename}", end="")
+            print("name",relabeled_mesh.name)
+            with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
+                afile.save_mesh(relabeled_mesh,"relabeled_mesh")
+                PETSc.Sys.Print(f" mesh ", end="")
+                afile.save_function(tof_mesh)
+                PETSc.Sys.Print(f" tof ", end="")
+                afile.save_function(t1_mesh)
+                PETSc.Sys.Print(f" t1 ", end="")
+                afile.save_function(brain_mask_mesh)
+                PETSc.Sys.Print(f" brain_mask ", end="")
+                afile.save_function(main_network_mesh)
+                PETSc.Sys.Print(f" main_network ", end="")
+                afile.save_function(sink_support_mesh)
+                PETSc.Sys.Print(f" sink_support ", end="")
+                afile.save_function(skeleton_mesh)
+                PETSc.Sys.Print(f" skeleton ", end="")
+                afile.save_function(thickness_mesh)
+                PETSc.Sys.Print(f" thickness ", end="")
             
         
 
@@ -404,8 +408,10 @@ if __name__ == '__main__':
                         help="Blur for connected components. If 0, no blur is applied.")
     parser.add_argument('--read', action='store_true')
     parser.add_argument('--h5', action='store_true')
+    parser.add_argument('--meshonly', action='store_true')
+
     args = parser.parse_args()
 
-    setup(args.mri, args.threshold, args.blur_main, args.blur_mesh, not args.read, args.h5)
+    setup(args.mri, args.threshold, args.blur_main, args.blur_mesh, not args.read, args.h5, not args.meshonly)
     
     
