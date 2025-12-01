@@ -223,12 +223,12 @@ def setup(mri_directory,
         
         
         PETSc.Sys.Print("volex size:", hx, hy, hz)
-        scale = 1
+        scale = 2
         mesh_pygal = pygalmesh.generate_from_array(
                 mask,
                 voxel_size, 
                 #max_facet_distance=scale*hx,
-                max_circumradius_edge_ratio=3.0,
+                max_circumradius_edge_ratio=4.0,
                 max_cell_circumradius={
                     "default": scale*16*hx, 
                     label_main: scale*hx,
