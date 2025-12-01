@@ -390,7 +390,7 @@ def compatible(mesh, value):
       raise ValueError('Only 2D and 3D images are supported')
    return check
       
-def numpy2firedrake(mesh, value, name=None):
+def numpy2firedrake(mesh, value, name=None, lengths=None):
    '''
    Convert np array (2d o 3d) into a function compatible with the mesh solver.
    Args:
@@ -403,8 +403,22 @@ def numpy2firedrake(mesh, value, name=None):
    '''
 
    # Get information stored during mesh creation
-   lengths = get_lengths(mesh)   
-   nxyz = get_box_division(mesh)
+   try:
+      lengths = get_lengths(mesh)   
+      nxyz = get_box_division(mesh)
+   except:
+      if lengths is None:
+         raise ValueError('Mesh lengths must be provided')
+      if mesh.geometric_dimension() == 2:
+         if convention_2d_invert_rows_columns:
+            height, width  = value.shape
+         else:
+            width, height = value.shape
+         nxyz = (width, height)
+      elif mesh.geometric_dimension() == 3:
+         nxyz = value.shape
+      else:
+         raise ValueError('Only 2d and 3d images are supported')
 
    
    DG0 = fd.FunctionSpace(mesh,'DG',0)
