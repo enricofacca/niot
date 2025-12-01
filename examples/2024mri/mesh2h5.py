@@ -189,7 +189,7 @@ def setup(mri_directory,
         solver.solve()
         VTKFile("direchlet.pvd").write(solution,sink_support_mesh)
 
-    outfilename = os.path.join(mri_directory,f"inputs_blur{blur_tof_4_main_network:.2e}_thr{threshold_tof_4_main_network:.2e}_TOF_blur{blur_tof_4_mesh:.2e}.pvd")
+    outfilename = os.path.join(out_directory,f"inputs.pvd")
     VTKFile(outfilename).write(tof_mesh,
                             brain_mask_mesh,
                             main_network_mesh,
@@ -199,9 +199,7 @@ def setup(mri_directory,
     if save_h5:
         n_proc = COMM_WORLD.size
         h5_filename = os.path.join(mri_directory,
-                                f"inputs_nproc{n_proc}" + 
-                                f"_MAIN_blur{blur_tof_4_main_network:.2e}" +
-                                f"_thr{threshold_tof_4_main_network:.2e}_TOF_blur{blur_tof_4_mesh:.2e}.h5")
+                                f"inputs_nproc{n_proc}.h5")
         PETSc.Sys.Print(f"Saving to {h5_filename}", end="")
         print("name",relabeled_mesh.name)
         with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
