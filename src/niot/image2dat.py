@@ -426,9 +426,9 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
    
    
    if mesh.geometric_dimension() == 3:    
-      hx = lengths[0]/mesh.nx
-      hy = lengths[1]/mesh.ny
-      hz = lengths[2]/mesh.nz
+      hx = lengths[0]/nxyz[0]
+      hy = lengths[1]/nxyz[1]
+      hz = lengths[2]/nxyz[2]
       if mesh.invert_rows_columns:
          def my_data(xyz): 
             x = xyz[:,0]
