@@ -155,7 +155,7 @@ def setup(mri_directory,
     main_network_np, skeleton_np, thickness_np = set_main_network(tof_np, 
                                                                   threshold_tof_4_main_network, 
                                                                   blur_tof_4_main_network, hx)
-    sink_support_np = set_sink_support(aseg_np, main_network_np, 2, brain_mask_np)
+    sink_support_np = set_sink_support(aseg_np, main_network_np)
     sink_support_mesh_np = binary_dilation(sink_support_np,
                                         iterations=2,mask=brain_mask_np)
     sink_support_mesh_np = sink_support_mesh_np.astype(dtype=np.uint8)
