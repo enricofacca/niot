@@ -239,6 +239,18 @@ def setup(mri_directory,
                                          main_network_np)
         # recenter mesh
         coordinate = mesh_pygal.points
+        x, y, z = coordinate[:,0], coordinate[:,1], coordinate[:,2]
+        xmin, ymin, zmin = coordinate.min(axis=0)
+        xmax, ymax, zmax = coordinate.max(axis=0)
+        coordinate[x<0,:,:] = 0.0
+        coordinate[:, y<0,:] = 0.0
+        coordinate[:, :, z<0] = 0.0
+
+        coordinate[x>lengths[0],:,:] = lengths[0]
+        coordinate[:, y>lengths[1],:] = lengths[1]
+        coordinate[:, :, z>lengths[2]] = lengths[2]
+
+
         offset = affine[:3, 3]
         print("Offset:", offset)
         coordinate[:, 0] += offset[0]
