@@ -222,13 +222,7 @@ def setup(mri_directory,
         # restore main_network
         mask[main_network > 0 ] = label_main 
         mask = mask.astype(np.uint8)
-
-        outfilename = os.path.join(mri_directory,
-                               f"mask_mesher.nii.gz")
-        print(f"Saving mask mesher {outfilename}")
-        nibabel.save(nibabel.Nifti1Image(mask, affine), outfilename)
-        
-        
+                
         PETSc.Sys.Print("volex size:", hx, hy, hz)
         scale = 1
         mesh_pygal = pygalmesh.generate_from_array(
@@ -251,15 +245,23 @@ def setup(mri_directory,
                                          sink_support_mesh_np,
                                          tof_smooth_np,
                                          main_network_np)
+        coordinate = mesh_pygal.points
+        print("Mesh info:")
+        print(f"coordinate_shape: {coordinate.shape}")
+        print(f"Mesh has {len(coordinate)} points and {len(mesh_pygal.cells_dict['tetra'])} tetrahedra")
+
         print(dir(mesh_pygal))
         for key in mesh_pygal.cell_data_dict.keys():
             print(f"{key}: {mesh_pygal.cell_data_dict[key]}")
         mesh_pygal.write(os.path.join(mri_directory,"brain_main.vtu"))
-
-        
         
         writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)
         writer(os.path.join(mri_directory,"brain_main.msh"), mesh_pygal)
+
+        outfilename = os.path.join(mri_directory,
+                               f"mask_mesher.nii.gz")
+        print(f"Saving mask mesher {outfilename}")
+        nibabel.save(nibabel.Nifti1Image(mask_np, affine), outfilename)
     
     if firedrake_conversion:
 
