@@ -69,6 +69,11 @@ def setup(mri_directory,
     voxel_size, affine, tof_np, brain_mask_np, t1_np, aseg_np = load_data(mri_directory)
     hx, hy, hz = voxel_size
 
+    dimensions = tof_np.shape
+    lengths = np.array([float(dimensions[0]*hx), 
+                            float(dimensions[1]*hy), 
+                            float(dimensions[2]*hz)])
+
 
     def set_main_network(tof_np, threshold_tof, blur_tof, hx):
         """
@@ -242,7 +247,8 @@ def setup(mri_directory,
         x, y, z = coordinate[:,0], coordinate[:,1], coordinate[:,2]
         xmin, ymin, zmin = coordinate.min(axis=0)
         xmax, ymax, zmax = coordinate.max(axis=0)
-        print(f"Mesh bounds before recentering: \n x[{xmin:.2f}, {xmax:.2f}],\n y[{ymin:.2f}, {ymax:.2f}]xs,\n z[{zmin:.2f}, {zmax:.2f}]")
+        print(f"lengths: {lengths}")
+        print(f"Mesh bounds before recentering: \n x[{xmin:.2f}, {xmax:.2f}],\n y[{ymin:.2f}, {ymax:.2f}],\n z[{zmin:.2f}, {zmax:.2f}]")
         coordinate[x<0,0] = 0.0
         coordinate[y<0,1] = 0.0
         coordinate[z<0,2] = 0.0
@@ -272,11 +278,6 @@ def setup(mri_directory,
         nibabel.save(nibabel.Nifti1Image(mask_np, affine), outfilename)
     
     if firedrake_conversion:
-
-        dimensions = tof_np.shape
-        lengths = np.array([float(dimensions[0]*hx), 
-                            float(dimensions[1]*hy), 
-                            float(dimensions[2]*hz)])
         start = time.time()
         PETSc.Sys.Print("Numpy to Firedrake Functions on Cartesian grid", end="")
         cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
