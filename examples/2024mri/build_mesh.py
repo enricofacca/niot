@@ -260,7 +260,7 @@ def setup(mri_directory,
     
     
     tof_mesh.interpolate(tof_cartesian)
-    tod_mesh.interpolate(tof_smooth_cartesian)
+    tof_smooth_mesh.interpolate(tof_smooth_cartesian)
     t1_mesh.interpolate(t1_cartesian)
     main_network_mesh.interpolate(main_network_cartesian)
     sink_support_mesh.interpolate(sink_support_cartesian)
@@ -303,7 +303,10 @@ def setup(mri_directory,
         VTKFile("direchlet.pvd").write(solution,sink_support_mesh)
 
     outfilename = os.path.join(mri_directory,f"inputs_blur{blur_tof_4_main_network:.2e}_thr{threshold_tof_4_main_network:.2e}_TOF_blur{blur_tof_4_mesh:.2e}.pvd")
-    VTKFile(outfilename).write(tof_mesh,brain_mask_mesh,main_network_mesh,sink_support_mesh,size_mesh)
+    VTKFile(outfilename).write(tof_mesh,
+                               brain_mask_mesh,
+                               main_network_mesh,
+                               sink_support_mesh,size_mesh,tof_smooth_mesh)
 
     if save_h5:
         n_proc = COMM_WORLD.size
