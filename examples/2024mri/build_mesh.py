@@ -248,9 +248,9 @@ def setup(mri_directory,
         print(f"Mesh has {len(coordinate)} points and {len(mesh_pygal.cells_dict['tetra'])} tetrahedra")
 
         # save mesh as vtu and msh
-        mesh_pygal.write(os.path.join(mri_directory,"brain_main.vtu"))
+        mesh_pygal.write(os.path.join(out_directory,"brain_main.vtu"))
         writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)
-        writer(os.path.join(mri_directory,"brain_main.msh"), mesh_pygal)
+        writer(os.path.join(out_directory,"brain_main.msh"), mesh_pygal)
 
         outfilename = os.path.join(out_directory,
                                f"mask_mesher.nii.gz")

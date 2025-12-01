@@ -110,6 +110,11 @@ def setup(mri_directory,
     start = time.time() 
     mesh = Mesh(os.path.join(out_directory,"brain_main.msh"))
     PETSc.Sys.Print(f"completed in {time.time()-start:.2e} s")
+    PETSc.Sys.Print("Shifting coordinates")
+    mesh.coordinates.dat.data[:, 0] -= offset[0]
+    mesh.coordinates.dat.data[:, 1] -= offset[1]
+    mesh.coordinates.dat.data[:, 2] -= offset[2]
+    PETSc.Sys.Print("Offset completed")
     
 
     
@@ -143,7 +148,7 @@ def setup(mri_directory,
     main_network_mesh = i2d.numpy2firedrake(mesh, main_network_np, name='main_network',lengths=lengths)
         
     # relabeled mesh to mark the inlet boundary
-    zmin = offset[2]
+    zmin = 0
     start  = time.time()
     PETSc.Sys.Print("intepolate marker for relabeled mesh", end="")
     marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
@@ -159,6 +164,7 @@ def setup(mri_directory,
                                         boundary_only=True,
                                         name="relabeled_mesh")
     PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+    
 
     # save as pvd
     DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
@@ -171,6 +177,16 @@ def setup(mri_directory,
     skeleton_mesh = i2d.numpy2firedrake(relabeled_mesh, skeleton_np, name='skeleton',lengths=lengths)
     thickness_mesh = i2d.numpy2firedrake(relabeled_mesh, thickness_np, name='thickness',lengths=lengths)
     
+    PETSc.Sys.Print("Shifting coordinates of relabeled mesh")
+    relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
+    relabeled_mesh.coordinates.dat.data[:, 1] += offset[1]
+    relabeled_mesh.coordinates.dat.data[:, 2] += offset[2]
+    PETSc.Sys.Print("Offset completed")
+
+
+
+
+
     test_dirichlet_bc = False
     if test_dirichlet_bc:
         V = FunctionSpace(relabeled_mesh, "CG", 1)
