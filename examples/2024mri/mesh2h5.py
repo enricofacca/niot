@@ -110,6 +110,13 @@ def setup(mri_directory,
     start = time.time() 
     mesh = Mesh(os.path.join(out_directory,"brain_main.msh"))
     PETSc.Sys.Print(f"completed in {time.time()-start:.2e} s")
+    PETSc.Sys.Print("Offset completed")
+    PETSc.Sys.Print(f" xmin {mesh.coordinates.dat.data[:,0].min():.2f}, xmax {mesh.coordinates.dat.data[:,0].max():.2f}")
+    PETSc.Sys.Print(f" ymin {mesh.coordinates.dat.data[:,1].min():.2f}, ymax {mesh.coordinates.dat.data[:,1].max():.2f}")
+    PETSc.Sys.Print(f" zmin {mesh.coordinates.dat.data[:,2].min():.2f}, zmax {mesh.coordinates.dat.data[:,2].max():.2f}")
+    PETSc.Sys.Print(f" lengths: {lengths}") 
+    
+
     PETSc.Sys.Print("Shifting coordinates")
     mesh.coordinates.dat.data[:, 0] -= offset[0]
     mesh.coordinates.dat.data[:, 1] -= offset[1]
@@ -134,18 +141,7 @@ def setup(mri_directory,
     
     
     
-    # start = time.time()
-    # PETSc.Sys.Print("Numpy to Firedrake Functions on Cartesian grid", end="")
-    # cartesian_mesh =  i2d.cartesian_grid_3d(dimensions, lengths)
-    # tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
-    # tof_smooth_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_clean_np, name='tof_smooth')
-    # t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
-    # brain_mask_cartesian = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name='brain_mask')
-    # main_network_cartesian = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name='main_network')
-    # sink_support_cartesian = i2d.numpy2firedrake(cartesian_mesh, sink_support_np, name='sink_support')
-    # skeleton_cartesian = i2d.numpy2firedrake(cartesian_mesh, skeleton_np, name='skeleton')
-    # thickness_cartesian = i2d.numpy2firedrake(cartesian_mesh, thickness_np, name='thickness')
-    # PETSc.Sys.Print(f" - completed in {time.time()-start:.2e}")
+    
 
     # save as pvd
     # DG0 = FunctionSpace(mesh, "DG", 0)
@@ -183,16 +179,44 @@ def setup(mri_directory,
     
 
     # save as pvd
-    DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
-    tof_mesh = i2d.numpy2firedrake(relabeled_mesh, tof_np, name='tof',lengths=lengths)
-    tof_smooth_mesh = i2d.numpy2firedrake(relabeled_mesh, tof_clean_np, name='tof_smooth',lengths=lengths)
-    t1_mesh = i2d.numpy2firedrake(relabeled_mesh, t1_np, name='t1',lengths=lengths)
-    brain_mask_mesh = i2d.numpy2firedrake(relabeled_mesh, brain_mask_np, name='brain_mask',lengths=lengths)
-    main_network_mesh = i2d.numpy2firedrake(relabeled_mesh, main_network_np, name='main_network',lengths=lengths)
-    sink_support_mesh = i2d.numpy2firedrake(relabeled_mesh, sink_support_np, name='sink_support',lengths=lengths)
-    skeleton_mesh = i2d.numpy2firedrake(relabeled_mesh, skeleton_np, name='skeleton',lengths=lengths)
-    thickness_mesh = i2d.numpy2firedrake(relabeled_mesh, thickness_np, name='thickness',lengths=lengths)
-    
+    use_cartesian_interpolation = True
+    if use_cartesian_interpolation:
+        DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
+        tof_mesh = Function(DG0, name="tof")
+        tof_smooth_mesh = Function(DG0, name="tof_smooth")
+        t1_mesh = Function(DG0, name="t1")
+        main_network_mesh = Function(DG0, name="main_network")
+        sink_support_mesh = Function(DG0, name="sink_support")
+        skeleton_mesh = Function(DG0, name="skeleton")
+        thickness_mesh = Function(DG0, name="thickness")
+        brain_mask_mesh = Function(DG0, name="brain_mask")
+        
+        start  = time.time()
+        PETSc.Sys.Print("intepolate tof", end="")
+        tof_mesh.interpolate(tof_cartesian)
+        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+        tof_smooth_mesh.interpolate(tof_smooth_cartesian)
+        t1_mesh.interpolate(t1_cartesian)
+        main_network_mesh.interpolate(main_network_cartesian)
+        sink_support_mesh.interpolate(sink_support_cartesian)
+        skeleton_mesh.interpolate(skeleton_cartesian)
+        thickness_mesh.interpolate(thickness_cartesian)
+        brain_mask_mesh.interpolate(brain_mask_cartesian)
+        test = TestFunction(DG0)
+        size = assemble(test *dx)
+        size_mesh = Function(DG0, name="size_mesh")
+        with size_mesh.dat.vec as s, size.dat.vec as h:
+            h.copy(s)
+    else:
+        tof_mesh = i2d.numpy2firedrake(relabeled_mesh, tof_np, name='tof',lengths=lengths)
+        tof_smooth_mesh = i2d.numpy2firedrake(relabeled_mesh, tof_clean_np, name='tof_smooth',lengths=lengths)
+        t1_mesh = i2d.numpy2firedrake(relabeled_mesh, t1_np, name='t1',lengths=lengths)
+        brain_mask_mesh = i2d.numpy2firedrake(relabeled_mesh, brain_mask_np, name='brain_mask',lengths=lengths)
+        main_network_mesh = i2d.numpy2firedrake(relabeled_mesh, main_network_np, name='main_network',lengths=lengths)
+        sink_support_mesh = i2d.numpy2firedrake(relabeled_mesh, sink_support_np, name='sink_support',lengths=lengths)
+        skeleton_mesh = i2d.numpy2firedrake(relabeled_mesh, skeleton_np, name='skeleton',lengths=lengths)
+        thickness_mesh = i2d.numpy2firedrake(relabeled_mesh, thickness_np, name='thickness',lengths=lengths)
+        
     PETSc.Sys.Print("Shifting coordinates of relabeled mesh")
     relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
     relabeled_mesh.coordinates.dat.data[:, 1] += offset[1]
