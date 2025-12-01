@@ -100,7 +100,7 @@ def setup(mri_directory,
                         float(dimensions[1]*hy), 
                         float(dimensions[2]*hz)])
     offset = affine[:3, 3]
-
+    PETSc.Sys.Print(f" voxel_size: {voxel_size}, lengths: {lengths}, offset: {offset}")
     
     # preprocess data
     main_network_np, sink_support_np, skeleton_np, thickness_np, tof_clean_np = load_preprocessed(out_directory)

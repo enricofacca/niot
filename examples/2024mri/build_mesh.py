@@ -240,6 +240,7 @@ def setup(mri_directory,
         # recenter mesh
         coordinate = mesh_pygal.points
         offset = affine[:3, 3]
+        print("Offset:", offset)
         coordinate[:, 0] += offset[0]
         coordinate[:, 1] += offset[1]
         coordinate[:, 2] += offset[2]
