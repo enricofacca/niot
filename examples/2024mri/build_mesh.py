@@ -13,7 +13,7 @@ from firedrake import CheckpointFile, COMM_WORLD, PETSc, VTKFile, DirichletBC, F
 import localthickness as lt
 from skimage.morphology import skeletonize
 from scipy.ndimage import binary_dilation
-
+import time
 
 def setup(mri_directory, 
             threshold_tof_4_main_network,
@@ -226,7 +226,7 @@ def setup(mri_directory,
         mesh_pygal = pygalmesh.generate_from_array(
                 mask,
                 voxel_size, 
-                max_facet_distance=8*scale*hx,
+                max_facet_distance=scale*hx,
                 max_cell_circumradius={
                     "default": scale*16*hx, 
                     label_main: scale*hx,
@@ -269,7 +269,10 @@ def setup(mri_directory,
 
 
     # reload the mesh from file
+    PETSc.Sys.Print("reading mesh from .msh file")
+    start = time.time() 
     mesh = Mesh(os.path.join(mri_directory,"brain_main.msh"))
+    PETSc.Sys.Print(f"completed in {time.time()-start:.2e} s")
     zmin = 0.0
     DG0 = FunctionSpace(mesh, "DG", 0)
     main_network_mesh = Function(DG0, name="main_network_mesh")
@@ -287,7 +290,7 @@ def setup(mri_directory,
                                      [99],
                                      boundary_only=True,
                                     name="relabeled_mesh")
-    
+    PETSc.Sys.Print("Relabeled mesh created")
 
     # save as pvd
     DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
@@ -315,7 +318,7 @@ def setup(mri_directory,
     with size_mesh.dat.vec as s, size.dat.vec as h:
         h.copy(s)
 
-
+    PETSc.Sys.Print("Interpolation completed")
     
     #VTKFile("labeled_mesh.pvd").write(relabeled_mesh)
     # shift coordinate of the relabeled mesh
@@ -323,7 +326,7 @@ def setup(mri_directory,
     relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
     relabeled_mesh.coordinates.dat.data[:, 1] += offset[1]
     relabeled_mesh.coordinates.dat.data[:, 2] += offset[2]
-
+    PETSc.Sys.Print("Offset completed")
 
 
     test_dirichlet_bc = False
