@@ -16,7 +16,7 @@ def convert_msh_to_h5(input_directory, out_directory):
     h5_filename = os.path.join(out_directory, f"brain_main_{nproc:04d}.h5")
     PETSc.Sys.Print(f"Saving mesh to {h5_filename}...", end="")
     with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
-            afile.save_mesh(mesh,"relabeled_mesh")
+            afile.save_mesh(mesh,"mesh")
             PETSc.Sys.Print(f" completed in {time.time()-start:.2e} s")
 
 

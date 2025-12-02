@@ -116,7 +116,7 @@ def setup(mri_directory,
             raise FileNotFoundError
         start = time.time() 
         with CheckpointFile(meshfile, 'r', comm=COMM_WORLD) as afile:
-            mesh = afile.load_mesh("relabeled_mesh")
+            mesh = afile.load_mesh("mesh")
         PETSc.Sys.Print(f"Mesh loaded in {time.time()-start:.2e} s")
     else:#except:
         PETSc.Sys.Print("reading mesh from .msh file")
