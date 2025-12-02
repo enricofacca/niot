@@ -6,16 +6,18 @@ import argparse
 
 def convert_msh_to_h5(input_directory, out_directory):
     start = time.time() 
+    PETSc.Sys.Print(f"Mesh loading started...", end="")
     mesh = Mesh(os.path.join(input_directory,"brain_main.msh"))
-    PETSc.Sys.Print(f"Mesh loaded in {time.time()-start:.2e} s")
+    PETSc.Sys.Print(f" completed in {time.time()-start:.2e} s")
 
     nproc = PETSc.COMM_WORLD.getSize()
 
     start = time.time() 
     h5_filename = os.path.join(out_directory, f"brain_main_{nproc:04d}.h5")
+    PETSc.Sys.Print(f"Saving mesh to {h5_filename}...", end="")
     with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
             afile.save_mesh(mesh,"relabeled_mesh")
-            PETSc.Sys.Print(f" mesh saved to {h5_filename} in {time.time()-start:.2e} s")
+            PETSc.Sys.Print(f" completed in {time.time()-start:.2e} s")
 
 
 if __name__ == "__main__":
