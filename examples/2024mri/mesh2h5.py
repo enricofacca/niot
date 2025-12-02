@@ -107,7 +107,8 @@ def setup(mri_directory,
     
     # reload the mesh from file
     nproc = PETSc.COMM_WORLD.getSize()
-    try:
+    if True:
+    #try:
         meshfile = os.path.join(out_directory, f"brain_main_{nproc:04d}.h5")
         PETSc.Sys.Print(f"Loading mesh from {meshfile}")
         if not os.path.exists(meshfile):
@@ -117,7 +118,7 @@ def setup(mri_directory,
         with CheckpointFile(meshfile, 'r', comm=COMM_WORLD) as afile:
             mesh = afile.load_mesh("relabeled_mesh")
         PETSc.Sys.Print(f"Mesh loaded in {time.time()-start:.2e} s")
-    except:
+    else:#except:
         PETSc.Sys.Print("reading mesh from .msh file")
         start = time.time() 
         mesh = Mesh(os.path.join(out_directory,"brain_main.msh"))
