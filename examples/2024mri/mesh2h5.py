@@ -110,6 +110,9 @@ def setup(mri_directory,
     try:
         meshfile = os.path.join(out_directory, f"brain_main_{nproc:04d}.h5")
         PETSc.Sys.Print(f"Loading mesh from {meshfile}")
+        if not os.path.exists(meshfile):
+            PETSc.Sys.Print(f"Mesh in {meshfile} not found")
+            raise FileNotFoundError
         start = time.time() 
         with CheckpointFile(meshfile, 'r', comm=COMM_WORLD) as afile:
             mesh = afile.load_mesh("relabeled_mesh")
