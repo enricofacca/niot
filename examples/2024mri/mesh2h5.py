@@ -184,7 +184,13 @@ def setup(mri_directory,
                                         boundary_only=True,
                                         name="relabeled_mesh")
     PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
-    
+
+    PETSc.Sys.Print("Relabel mesh")
+    PETSc.Sys.Print(f" xmin {relabeled_mesh.coordinates.dat.data[:,0].min():.2f}, xmax {relabeled_mesh.coordinates.dat.data[:,0].max():.2f}")
+    PETSc.Sys.Print(f" ymin {relabeled_mesh.coordinates.dat.data[:,1].min():.2f}, ymax {relabeled_mesh.coordinates.dat.data[:,1].max():.2f}")
+    PETSc.Sys.Print(f" zmin {relabeled_mesh.coordinates.dat.data[:,2].min():.2f}, zmax {relabeled_mesh.coordinates.dat.data[:,2].max():.2f}")
+    PETSc.Sys.Print(f" lengths: {lengths}")    
+
 
     # save as pvd
     use_cartesian_interpolation = True
