@@ -8,6 +8,7 @@ def convert_msh_to_h5(input_directory, out_directory):
     start = time.time() 
     PETSc.Sys.Print(f"Mesh loading started...", end="")
     mesh = Mesh(os.path.join(input_directory,"brain_main.msh"))
+    mesh.name = "mesh"
     PETSc.Sys.Print(f" completed in {time.time()-start:.2e} s")
     print("New boundary markers (should include 99):", mesh.topology.exterior_facets.unique_markers)
     nproc = PETSc.COMM_WORLD.getSize()
