@@ -185,6 +185,14 @@ def setup(mri_directory,
                                         name="relabeled_mesh")
     PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
 
+    PETSc.Sys.Print("Shifting coordinates. I do not know why relabeled mesh shift them back")
+    relabeled_mesh.coordinates.dat.data[:, 0] -= offset[0]
+    relabeled_mesh.coordinates.dat.data[:, 1] -= offset[1]
+    relabeled_mesh.coordinates.dat.data[:, 2] -= offset[2]
+    PETSc.Sys.Print("Offset completed")
+
+
+
     PETSc.Sys.Print("Relabel mesh")
     PETSc.Sys.Print(f" xmin {relabeled_mesh.coordinates.dat.data[:,0].min():.2f}, xmax {relabeled_mesh.coordinates.dat.data[:,0].max():.2f}")
     PETSc.Sys.Print(f" ymin {relabeled_mesh.coordinates.dat.data[:,1].min():.2f}, ymax {relabeled_mesh.coordinates.dat.data[:,1].max():.2f}")
