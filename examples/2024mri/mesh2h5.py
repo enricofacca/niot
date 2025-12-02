@@ -193,7 +193,7 @@ def setup(mri_directory,
 
 
     # save as pvd
-    use_cartesian_interpolation = True
+    use_cartesian_interpolation = False
     if use_cartesian_interpolation:
         DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
         tof_mesh = Function(DG0, name="tof")
