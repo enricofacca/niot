@@ -244,18 +244,11 @@ def setup(mri_directory,
                                          main_network_np)
         # recenter mesh
         coordinate = mesh_pygal.points
-        x, y, z = coordinate[:,0], coordinate[:,1], coordinate[:,2]
-        xmin, ymin, zmin = coordinate.min(axis=0)
-        xmax, ymax, zmax = coordinate.max(axis=0)
-        print(f"lengths: {lengths}")
-        print(f"Mesh bounds before recentering: \n x[{xmin:.2f}, {xmax:.2f}],\n y[{ymin:.2f}, {ymax:.2f}],\n z[{zmin:.2f}, {zmax:.2f}]")
-        coordinate[x<0,0] = 0.0
-        coordinate[y<0,1] = 0.0
-        coordinate[z<0,2] = 0.0
 
-        coordinate[x>lengths[0],0] = lengths[0]
-        coordinate[y>lengths[1],1] = lengths[1]
-        coordinate[z>lengths[2],2] = lengths[2]
+        # move the coordinate where they exceed the domain [0, lengths[0]], [0, lengths[1]], [0, lengths[2]]
+        coordinate[:,0] = np.clip(coordinate[:,0], 0.0, lengths[0])
+        coordinate[:,1] = np.clip(coordinate[:,1], 0.0, lengths[1])
+        coordinate[:,2] = np.clip(coordinate[:,2], 0.0, lengths[2])
 
         xmin, ymin, zmin = coordinate.min(axis=0)
         xmax, ymax, zmax = coordinate.max(axis=0)

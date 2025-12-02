@@ -129,6 +129,14 @@ def setup(mri_directory,
     
     PETSc.Sys.Print("Numpy to Firedrake Functions on Cartesian grid", end="")
     cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
+    PETSc.Sys.Print("Cartesian mesh")
+    PETSc.Sys.Print(f" xmin {cartesian_mesh.coordinates.dat.data[:,0].min():.2f}, xmax {cartesian_mesh.coordinates.dat.data[:,0].max():.2f}")
+    PETSc.Sys.Print(f" ymin {cartesian_mesh.coordinates.dat.data[:,1].min():.2f}, ymax {cartesian_mesh.coordinates.dat.data[:,1].max():.2f}")
+    PETSc.Sys.Print(f" zmin {cartesian_mesh.coordinates.dat.data[:,2].min():.2f}, zmax {cartesian_mesh.coordinates.dat.data[:,2].max():.2f}")
+    PETSc.Sys.Print(f" lengths: {lengths}") 
+    
+
+
     tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
     tof_smooth_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_clean_np, name='tof_smooth')
     t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
