@@ -106,10 +106,20 @@ def setup(mri_directory,
     main_network_np, sink_support_np, skeleton_np, thickness_np, tof_clean_np = load_preprocessed(out_directory)
     
     # reload the mesh from file
-    PETSc.Sys.Print("reading mesh from .msh file")
-    start = time.time() 
-    mesh = Mesh(os.path.join(out_directory,"brain_main.msh"))
-    PETSc.Sys.Print(f"completed in {time.time()-start:.2e} s")
+    nproc = PETSc.COMM_WORLD.getSize()
+    try:
+        meshfile = os.path.join(out_directory, f"brain_main_{nproc:04d}.h5")
+        PETSc.Sys.Print(f"Loading mesh from {meshfile}")
+        start = time.time() 
+        with CheckpointFile(meshfile, 'r', comm=COMM_WORLD) as afile:
+            mesh = afile.load_mesh("relabeled_mesh")
+        PETSc.Sys.Print(f"Mesh loaded in {time.time()-start:.2e} s")
+    except:
+        PETSc.Sys.Print("reading mesh from .msh file")
+        start = time.time() 
+        mesh = Mesh(os.path.join(out_directory,"brain_main.msh"))
+        PETSc.Sys.Print(f"completed in {time.time()-start:.2e} s")
+    
     PETSc.Sys.Print("Offset completed")
     PETSc.Sys.Print(f" xmin {mesh.coordinates.dat.data[:,0].min():.2f}, xmax {mesh.coordinates.dat.data[:,0].max():.2f}")
     PETSc.Sys.Print(f" ymin {mesh.coordinates.dat.data[:,1].min():.2f}, ymax {mesh.coordinates.dat.data[:,1].max():.2f}")
@@ -201,7 +211,7 @@ def setup(mri_directory,
 
 
     # save as pvd
-    use_cartesian_interpolation = False
+    use_cartesian_interpolation = True
     if use_cartesian_interpolation:
         DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
         tof_mesh = Function(DG0, name="tof")
