@@ -257,6 +257,11 @@ def setup(mri_directory,
         coordinate[y>lengths[1],1] = lengths[1]
         coordinate[z>lengths[2],2] = lengths[2]
 
+        xmin, ymin, zmin = coordinate.min(axis=0)
+        xmax, ymax, zmax = coordinate.max(axis=0)
+        print(f"lengths: {lengths}")
+        print(f"Mesh bounds after recentering: \n x[{xmin:.2f}, {xmax:.2f}],\n y[{ymin:.2f}, {ymax:.2f}],\n z[{zmin:.2f}, {zmax:.2f}]")
+        
 
         offset = affine[:3, 3]
         print("Offset:", offset)
