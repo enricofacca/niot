@@ -11,8 +11,8 @@ import numpy as np
 out_directory = sys.argv[1]
 comm = COMM_WORLD
 n_proc = COMM_WORLD.size
-h5_file = os.path.join(out_directory, f"inputs_{n_proc:04d}.h5")
-
+h5_file = os.path.join(out_directory, f"inputs_{n_proc}.h5")
+PETSc.Sys.Print(f"Loading data from {h5_file}")
 with CheckpointFile(h5_file, 'r',comm=comm) as afile:
     start = time()
     PETSc.Sys.Print(f"Start mesh ")
