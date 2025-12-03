@@ -14,14 +14,14 @@ import localthickness as lt
 from skimage.morphology import skeletonize
 from scipy.ndimage import binary_dilation
 import time
-from mpi4py import MPI, MIN, MAX
+from mpi4py import MPI
 
 def bounding_box(mesh):
     lower = mesh.coordinates.dat.data.min(axis=0)
     upper = mesh.coordinates.dat.data.max(axis=0)
     # with the following we create an array in all processes 
-    global_lower = mesh.comm.allreduce(lower, op=MIN)
-    global_upper = mesh.comm.allreduce(upper, op=MAX)
+    global_lower = mesh.comm.allreduce(lower, op=MPI.MIN)
+    global_upper = mesh.comm.allreduce(upper, op=MPI.MAX)
     
     return global_lower, global_upper
 
