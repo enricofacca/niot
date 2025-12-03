@@ -204,7 +204,7 @@ def setup(mri_directory,
     hz = lengths[2]/dimensions[2]
     print(f"{hx=} {hy=} {hz=}")
     main_network_mesh_np = i2d.numpy2firedrake(mesh, main_network_np, name='main_network_np',lengths=lengths)
-    PETSc.Sys.Print(" - completed in {time.time()-start:.2e} s")
+    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
 
 
 
@@ -213,7 +213,7 @@ def setup(mri_directory,
     DG0 = FunctionSpace(mesh, "DG", 0)
     main_network_mesh = Function(DG0, name="main_network")
     main_network_mesh.interpolate(main_network_cartesian)
-    PETSc.Sys.Print(" - completed in {time.time()-start:.2e} s")
+    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
 
     diff = assemble(abs(main_network_mesh - main_network_mesh_np)*dx)
     mass = assemble(abs(main_network_mesh)*dx)
