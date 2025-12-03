@@ -343,7 +343,7 @@ def setup(mri_directory,
         data4pvd.append(solution)
         DG0_Cartesian = FunctionSpace(cartesian_mesh, "DG", 0)
         solution_cartesian = interpolate(solution, DG0_Cartesian, allow_missing_dofs=True,  default_missing_val=-99)
-        solution_np = i2d.firedrake2numpy(solution_cartesian, dimensions, lengths)
+        solution_np = i2d.firedrake2numpy(solution_cartesian)
         if cartesian_mesh.comm.rank == 0:
             outfilename = os.path.join(out_directory,f"solution_dirichlet.nii.gz")
             nibabel.save(nibabel.Nifti1Image(solution_np, affine), outfilename)
