@@ -248,10 +248,10 @@ def setup(mri_directory,
         marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
         main_network_indicator = Function(marker_space, name="main_network_indicator")
         x,y,z = mesh.coordinates
-        main_network_indicator.interpolate(main_network_mesh * conditional(abs(z-zmin) < hx,1,0))
+        main_network_bottom_indicator.interpolate(main_network_mesh * conditional(abs(z-zmin) < hx,1,0))
         start  = time.time()
         PETSc.Sys.Print("Relabeled mesh", end="")
-        relabeled_mesh = RelabeledMesh(mesh, [main_network_mesh], 
+        relabeled_mesh = RelabeledMesh(mesh, [main_network_bottom_indicator], 
                                             [99],
                                             name="relabeled_mesh")
         PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
@@ -264,14 +264,7 @@ def setup(mri_directory,
         PETSc.Sys.Print("Offset completed")
 
     lower, upper = bounding_box(relabeled_mesh)
-    PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
-
-
-    PETSc.Sys.Print("Relabel mesh")
-    PETSc.Sys.Print(f" xmin {relabeled_mesh.coordinates.dat.data[:,0].min():.2f}, xmax {relabeled_mesh.coordinates.dat.data[:,0].max():.2f}")
-    PETSc.Sys.Print(f" ymin {relabeled_mesh.coordinates.dat.data[:,1].min():.2f}, ymax {relabeled_mesh.coordinates.dat.data[:,1].max():.2f}")
-    PETSc.Sys.Print(f" zmin {relabeled_mesh.coordinates.dat.data[:,2].min():.2f}, zmax {relabeled_mesh.coordinates.dat.data[:,2].max():.2f}")
-    PETSc.Sys.Print(f" lengths: {lengths}")    
+    PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper} length={lengths}")
 
 
     # save as pvd
