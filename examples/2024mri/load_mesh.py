@@ -5,6 +5,7 @@ import os
 import sys
 import nibabel
 import numpy as np
+from mesh2h5 import bounding_box
 #
 # load data
 #
@@ -45,12 +46,12 @@ problem = LinearVariationalProblem(a, L, solution, bcs=[DirichletBC(V, 0.0,\
 solver = LinearVariationalSolver(problem,
                                  solver_parameters={
                                      "ksp_type": "cg",
-                                     "ksp_rtol": 1e-6,
+                                     "ksp_rtol": 1e-8,
                                     "pc_type": "hypre",
                                     "ksp_monitor_true_residual": None})
 solver.solve()
 
-main_file = os.path.join(out_directory, f"main_network.nii.gz")
+main_file = os.path.join(out_directory, f"preprocessed/main_network.nii.gz")
 main_data = nibabel.load(main_file)
 dimensions = main_data.header.get_data_shape()[:3]
 
@@ -70,6 +71,10 @@ mesh.coordinates.dat.data[:, 0] -= offset[0]
 mesh.coordinates.dat.data[:, 1] -= offset[1]
 mesh.coordinates.dat.data[:, 2] -= offset[2]
 PETSc.Sys.Print("Offset completed")
+lower, upper = bounding_box(mesh)
+PETSc.Sys.Print(f" {lower[0]:.2e}<= x <>{upper[0]:.2e}. Lx={lengths[0]:.2e}")
+PETSc.Sys.Print(f" {lower[1]:.2e}<= y <>{upper[1]:.2e}. Ly={lengths[1]:.2e}")
+PETSc.Sys.Print(f" {lower[2]:.2e}<= z <>{upper[2]:.2e}. Lz={lengths[2]:.2e}")
 
 
 V = FunctionSpace(mesh, "CG", 1)
