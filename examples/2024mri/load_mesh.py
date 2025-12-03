@@ -68,7 +68,7 @@ affine = main_data.affine
 offset = affine[:3, 3]
 
 
-cartesian_mesh = i2d.create_cartesian_mesh(dimensions, lengths, comm=comm)
+cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
 PETSc.Sys.Print("Shifting coordinates of relabeled mesh")
 mesh.coordinates.dat.data[:, 0] -= offset[0]
 mesh.coordinates.dat.data[:, 1] -= offset[1]
