@@ -14,6 +14,16 @@ import localthickness as lt
 from skimage.morphology import skeletonize
 from scipy.ndimage import binary_dilation
 import time
+from mpi4py import MPI, MIN, MAX
+
+def bounding_box(mesh):
+    lower = mesh.coordinates.dat.data.min(axis=0)
+    upper = mesh.coordinates.dat.data.max(axis=0)
+    # with the following we create an array in all processes 
+    global_lower = mesh.comm.allreduce(lower, op=MIN)
+    global_upper = mesh.comm.allreduce(upper, op=MAX)
+    
+    return global_lower, global_upper
 
 def setup(mri_directory, 
           out_directory,
@@ -125,6 +135,8 @@ def setup(mri_directory,
         PETSc.Sys.Print(f"completed in {time.time()-start:.2e} s")
     
     PETSc.Sys.Print("Offset completed")
+    lower, upper = bounding_box(mesh)
+    PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
     PETSc.Sys.Print(f" xmin {mesh.coordinates.dat.data[:,0].min():.2f}, xmax {mesh.coordinates.dat.data[:,0].max():.2f}")
     PETSc.Sys.Print(f" ymin {mesh.coordinates.dat.data[:,1].min():.2f}, ymax {mesh.coordinates.dat.data[:,1].max():.2f}")
     PETSc.Sys.Print(f" zmin {mesh.coordinates.dat.data[:,2].min():.2f}, zmax {mesh.coordinates.dat.data[:,2].max():.2f}")
@@ -141,7 +153,6 @@ def setup(mri_directory,
     PETSc.Sys.Print(f" zmin {mesh.coordinates.dat.data[:,2].min():.2f}, zmax {mesh.coordinates.dat.data[:,2].max():.2f}")
     PETSc.Sys.Print(f" lengths: {lengths}") 
     
-    PETSc.Sys.Print("Numpy to Firedrake Functions on Cartesian grid", end="")
     cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
     PETSc.Sys.Print("Cartesian mesh")
     PETSc.Sys.Print(f" xmin {cartesian_mesh.coordinates.dat.data[:,0].min():.2f}, xmax {cartesian_mesh.coordinates.dat.data[:,0].max():.2f}")
@@ -151,6 +162,7 @@ def setup(mri_directory,
     
 
 
+    PETSc.Sys.Print("Numpy to Firedrake Functions on Cartesian grid", end="")
     tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
     tof_smooth_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_clean_np, name='tof_smooth')
     t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
@@ -175,12 +187,29 @@ def setup(mri_directory,
     # skeleton_mesh = Function(DG0, name="skeleton")
     # thickness_mesh = Function(DG0, name="thickness")
     # brain_mask_mesh = Function(DG0, name="brain_mask")
-        
+
+    start  = time.time()
+    PETSc.Sys.Print("Intepolate main network from numpy", end="")    
+    DG0 = FunctionSpace(mesh, "DG", 0)
+    main_network_mesh_np = Function(DG0, name="main_network_np")
+    main_network_mesh_np = i2d.numpy2firedrake(mesh, main_network_np, name='main_network',lengths=lengths)
+    PETSc.Sys.Print(" - completed in {time.time()-start:.2e} s")
+
+
+
+    start  = time.time()
+    PETSc.Sys.Print("Intepolate main network from cartesian", end="")    
     DG0 = FunctionSpace(mesh, "DG", 0)
     main_network_mesh = Function(DG0, name="main_network")
     main_network_mesh.interpolate(main_network_cartesian)
     main_network_mesh = i2d.numpy2firedrake(mesh, main_network_np, name='main_network',lengths=lengths)
-        
+    PETSc.Sys.Print(" - completed in {time.time()-start:.2e} s")
+
+    diff = assemble(abs(main_network_mesh - main_network_mesh_np)*dx)
+    mass = assemble(abs(main_network_mesh)*dx)
+    PETSc.Sys.Print(f" Difference between two main network interpolation: diff={diff:.2e} relative diff={diff/mass:.2e}")
+
+
     # relabeled mesh to mark the inlet boundary
     zmin = 0
     start  = time.time()

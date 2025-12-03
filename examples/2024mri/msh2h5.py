@@ -19,9 +19,16 @@ def convert_msh_to_h5(input_directory, out_directory):
     with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
         afile.save_mesh(mesh,"mesh")
         PETSc.Sys.Print(f" completed in {time.time()-start:.2e} s")
-    num_cells = mesh.num_cells()
-    num_vertices = mesh.num_vertices()
-    num_facets = mesh.num_facets()
+    
+    num_cells = 0
+    num_vertices = 0
+    num_facets = 0
+    for i in range(nproc):
+        if i == PETSc.COMM_WORLD.getRank():
+            PETSc.Sys.Print(f"Process {i} saved mesh to {h5_filename}")
+            num_cells += mesh.num_cells()
+            num_vertices += mesh.num_vertices()
+            num_facets += mesh.num_facets()
 
 
     PETSc.Sys.Print(f'Cells: {num_cells}'
