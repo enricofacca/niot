@@ -6,6 +6,7 @@ import sys
 import nibabel
 import numpy as np
 from mesh2h5 import bounding_box
+from niot import i2d
 #
 # load data
 #
