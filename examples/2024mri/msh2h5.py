@@ -17,8 +17,16 @@ def convert_msh_to_h5(input_directory, out_directory):
     h5_filename = os.path.join(out_directory, f"brain_main_{nproc:04d}.h5")
     PETSc.Sys.Print(f"Saving mesh to {h5_filename}...", end="")
     with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
-            afile.save_mesh(mesh,"mesh")
-            PETSc.Sys.Print(f" completed in {time.time()-start:.2e} s")
+        afile.save_mesh(mesh,"mesh")
+        PETSc.Sys.Print(f" completed in {time.time()-start:.2e} s")
+    num_cells = mesh.num_cells()
+    num_vertices = mesh.num_vertices()
+    num_facets = mesh.num_facets()
+
+
+    PETSc.Sys.Print(f'Cells: {num_cells}'
+                    + f' Nodes: {num_vertices}'
+                    + f' Facets: {num_facets}')
 
 
 if __name__ == "__main__":
