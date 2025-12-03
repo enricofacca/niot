@@ -246,10 +246,11 @@ def setup(mri_directory,
         start  = time.time()
         PETSc.Sys.Print("intepolate marker for relabeled mesh", end="")
         marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
-        main_network_indicator = Function(marker_space, name="main_network_indicator")
+        main_network_bottom_indicator = Function(marker_space, name="main_network_indicator")
         x,y,z = mesh.coordinates
         main_network_bottom_indicator.interpolate(main_network_mesh * conditional(abs(z-zmin) < hx,1,0))
         start  = time.time()
+        PETSc.Sys.Print(f" done in {time.time()-start:.2e} s")
         PETSc.Sys.Print("Relabeled mesh", end="")
         relabeled_mesh = RelabeledMesh(mesh, [main_network_bottom_indicator], 
                                             [99],
