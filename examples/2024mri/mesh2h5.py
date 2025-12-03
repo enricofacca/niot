@@ -321,7 +321,39 @@ def setup(mri_directory,
 
 
     
+    
+    if save_h5:
+        n_proc = COMM_WORLD.size
+        h5_filename = os.path.join(mri_directory,
+                                f"inputs_nproc{n_proc}.h5")
+        PETSc.Sys.Print(f"Saving to {h5_filename}", end="")
+        print("name",relabeled_mesh.name)
+        with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
+            afile.save_mesh(relabeled_mesh,"relabeled_mesh")
+            PETSc.Sys.Print(f" mesh ", end="")
+            afile.save_function(tof_mesh)
+            PETSc.Sys.Print(f" tof ", end="")
+            afile.save_function(t1_mesh)
+            PETSc.Sys.Print(f" t1 ", end="")
+            afile.save_function(brain_mask_mesh)
+            PETSc.Sys.Print(f" brain_mask ", end="")
+            afile.save_function(main_network_mesh)
+            PETSc.Sys.Print(f" main_network ", end="")
+            afile.save_function(sink_support_mesh)
+            PETSc.Sys.Print(f" sink_support ", end="")
+            afile.save_function(skeleton_mesh)
+            PETSc.Sys.Print(f" skeleton ", end="")
+            afile.save_function(thickness_mesh)
+            PETSc.Sys.Print(f" thickness ", end="")
+
     if test_dirichlet_bc:
+        PETSc.Sys.Print("Shifting coordinates of relabeled mesh")
+        relabeled_mesh.coordinates.dat.data[:, 0] -= offset[0]
+        relabeled_mesh.coordinates.dat.data[:, 1] -= offset[1]
+        relabeled_mesh.coordinates.dat.data[:, 2] -= offset[2]
+        PETSc.Sys.Print("Offset completed")
+
+
         V = FunctionSpace(relabeled_mesh, "CG", 1)
         test = TestFunction(V)
         trial = TrialFunction(V)
@@ -353,29 +385,6 @@ def setup(mri_directory,
         outfilename = os.path.join(out_directory,f"inputs.pvd")
         VTKFile(outfilename).write(*data4pvd)
 
-    if save_h5:
-        n_proc = COMM_WORLD.size
-        h5_filename = os.path.join(mri_directory,
-                                f"inputs_nproc{n_proc}.h5")
-        PETSc.Sys.Print(f"Saving to {h5_filename}", end="")
-        print("name",relabeled_mesh.name)
-        with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
-            afile.save_mesh(relabeled_mesh,"relabeled_mesh")
-            PETSc.Sys.Print(f" mesh ", end="")
-            afile.save_function(tof_mesh)
-            PETSc.Sys.Print(f" tof ", end="")
-            afile.save_function(t1_mesh)
-            PETSc.Sys.Print(f" t1 ", end="")
-            afile.save_function(brain_mask_mesh)
-            PETSc.Sys.Print(f" brain_mask ", end="")
-            afile.save_function(main_network_mesh)
-            PETSc.Sys.Print(f" main_network ", end="")
-            afile.save_function(sink_support_mesh)
-            PETSc.Sys.Print(f" sink_support ", end="")
-            afile.save_function(skeleton_mesh)
-            PETSc.Sys.Print(f" skeleton ", end="")
-            afile.save_function(thickness_mesh)
-            PETSc.Sys.Print(f" thickness ", end="")
         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
