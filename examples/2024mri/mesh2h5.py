@@ -319,6 +319,11 @@ def setup(mri_directory,
     lower, upper = bounding_box(relabeled_mesh)
     PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
 
+    data4pvd = [tof_mesh,
+                            brain_mask_mesh,
+                            main_network_mesh,
+                            sink_support_mesh,
+                            tof_smooth_mesh]
 
 
     test_dirichlet_bc = True
@@ -329,23 +334,25 @@ def setup(mri_directory,
         a = inner(grad(trial), grad(test)) * dx
         L = - sink_support_mesh * test * dx
 
+        start = time.time()
         solution = Function(V,name="solution")
         problem = LinearVariationalProblem(a, L, solution, bcs=[DirichletBC(V, 0.0, 99)])
         solver = LinearVariationalSolver(problem,
                                 solver_parameters={
                                     "ksp_type": "cg",
                                     "ksp_rtol": 1e-6,
-                                    "pc_type": "hypre"})
+                                    "pc_type": "hypre",
+                                    "ksp_monitor_true_residual": None})
+
         solver.solve()
-        outfilename = os.path.join(out_directory,f"dirichlet.pvd")
-        VTKFile(outfilename).write(solution,sink_support_mesh)
+        PETSc.Sys.Print(f"Dirichlet BC test solve completed in {time.time()-start:.2e} s")
+
+        data4pvd.append(solution)
+
+
 
     outfilename = os.path.join(out_directory,f"inputs.pvd")
-    VTKFile(outfilename).write(tof_mesh,
-                            brain_mask_mesh,
-                            main_network_mesh,
-                            sink_support_mesh,
-                            tof_smooth_mesh)
+    VTKFile(outfilename).write(*data4pvd)
 
     if save_h5:
         n_proc = COMM_WORLD.size
