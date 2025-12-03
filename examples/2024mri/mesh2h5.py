@@ -19,11 +19,14 @@ from mpi4py import MPI
 def bounding_box(mesh):
     lower = mesh.coordinates.dat.data.min(axis=0)
     upper = mesh.coordinates.dat.data.max(axis=0)
-    # with the following we create an array in all processes 
-    global_lower = mesh.comm.allreduce(lower, op=MPI.MIN)
-    global_upper = mesh.comm.allreduce(upper, op=MPI.MAX)
     
-    return global_lower, global_upper
+    global_lower = []
+    global_upper = []
+    for i in range(mesh.geometric_dimension()):
+        global_lower.append(mesh.comm.allreduce(lower[i], op=MPI.MIN))
+        global_upper.append(mesh.comm.allreduce(upper[i], op=MPI.MAX))
+    
+    return np.array(global_lower), np.array(global_upper)
 
 def setup(mri_directory, 
           out_directory,
