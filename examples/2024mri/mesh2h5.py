@@ -31,7 +31,7 @@ def bounding_box(mesh):
 def setup(mri_directory, 
           out_directory,
             save_h5=False,
-            save_pvd=False
+            save_pvd=False,
             test_dirichlet_bc = False
           ):
 
