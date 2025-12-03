@@ -30,12 +30,7 @@ def bounding_box(mesh):
 
 def setup(mri_directory, 
           out_directory,
-        threshold_tof_4_main_network,
-        blur_tof_4_main_network = 0.0, 
-        blur_tof_4_mesh = 0.0, 
-            build=True,
-          save_h5=False,
-            firedrake_conversion=True,
+            save_h5=False,
           ):
 
     def load_data(mri_directory):
