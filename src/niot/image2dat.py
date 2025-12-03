@@ -411,6 +411,7 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
       if lengths is None:
          raise ValueError('Mesh lengths must be provided')
       nxyz = value.shape
+      print(nxyz)
       invert_rows_columns = False
    
    DG0 = fd.FunctionSpace(mesh,'DG',0)
@@ -421,6 +422,7 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
       hx = lengths[0]/nxyz[0]
       hy = lengths[1]/nxyz[1]
       hz = lengths[2]/nxyz[2]
+      print("hx,hy,hz", hx,hy,hz)
       if invert_rows_columns:
          def my_data(xyz): 
             x = xyz[:,0]
