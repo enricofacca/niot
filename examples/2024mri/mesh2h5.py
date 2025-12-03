@@ -31,6 +31,7 @@ def bounding_box(mesh):
 def setup(mri_directory, 
           out_directory,
             save_h5=False,
+            save_pvd=False
           ):
 
     def load_data(mri_directory):
@@ -133,11 +134,9 @@ def setup(mri_directory,
     
     PETSc.Sys.Print("Offset completed")
     lower, upper = bounding_box(mesh)
-    PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
-    PETSc.Sys.Print(f" xmin {mesh.coordinates.dat.data[:,0].min():.2f}, xmax {mesh.coordinates.dat.data[:,0].max():.2f}")
-    PETSc.Sys.Print(f" ymin {mesh.coordinates.dat.data[:,1].min():.2f}, ymax {mesh.coordinates.dat.data[:,1].max():.2f}")
-    PETSc.Sys.Print(f" zmin {mesh.coordinates.dat.data[:,2].min():.2f}, zmax {mesh.coordinates.dat.data[:,2].max():.2f}")
-    PETSc.Sys.Print(f" lengths: {lengths}") 
+    PETSc.Sys.Print(f" {lower[0]:.2e}<= x <>{upper[0]:.2e}. Lx={lengths[0]:.2e}")
+    PETSc.Sys.Print(f" {lower[1]:.2e}<= y <>{upper[1]:.2e}. Ly={lengths[1]:.2e}")
+    PETSc.Sys.Print(f" {lower[2]:.2e}<= z <>{upper[2]:.2e}. Lz={lengths[2]:.2e}") 
     
 
     PETSc.Sys.Print("Shifting coordinates")
@@ -146,49 +145,32 @@ def setup(mri_directory,
     mesh.coordinates.dat.data[:, 2] -= offset[2]
     PETSc.Sys.Print("Offset completed")
     lower, upper = bounding_box(mesh)
-    PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
-    PETSc.Sys.Print(f" xmin {mesh.coordinates.dat.data[:,0].min():.2f}, xmax {mesh.coordinates.dat.data[:,0].max():.2f}")
-    PETSc.Sys.Print(f" ymin {mesh.coordinates.dat.data[:,1].min():.2f}, ymax {mesh.coordinates.dat.data[:,1].max():.2f}")
-    PETSc.Sys.Print(f" zmin {mesh.coordinates.dat.data[:,2].min():.2f}, zmax {mesh.coordinates.dat.data[:,2].max():.2f}")
-    PETSc.Sys.Print(f" lengths: {lengths}") 
+    PETSc.Sys.Print(f" {lower[0]:.2e}<= x <>{upper[0]:.2e}. Lx={lengths[0]:.2e}")
+    PETSc.Sys.Print(f" {lower[1]:.2e}<= y <>{upper[1]:.2e}. Ly={lengths[1]:.2e}")
+    PETSc.Sys.Print(f" {lower[2]:.2e}<= z <>{upper[2]:.2e}. Lz={lengths[2]:.2e}")
     
     cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
     PETSc.Sys.Print("Cartesian mesh")
     lower, upper = bounding_box(cartesian_mesh)
-    PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
-    PETSc.Sys.Print(f" xmin {cartesian_mesh.coordinates.dat.data[:,0].min():.2f}, xmax {cartesian_mesh.coordinates.dat.data[:,0].max():.2f}")
-    PETSc.Sys.Print(f" ymin {cartesian_mesh.coordinates.dat.data[:,1].min():.2f}, ymax {cartesian_mesh.coordinates.dat.data[:,1].max():.2f}")
-    PETSc.Sys.Print(f" zmin {cartesian_mesh.coordinates.dat.data[:,2].min():.2f}, zmax {cartesian_mesh.coordinates.dat.data[:,2].max():.2f}")
-    PETSc.Sys.Print(f" lengths: {lengths}") 
+    PETSc.Sys.Print(f" {lower[0]:.2e}<= x <>{upper[0]:.2e}. Lx={lengths[0]:.2e}")
+    PETSc.Sys.Print(f" {lower[1]:.2e}<= y <>{upper[1]:.2e}. Ly={lengths[1]:.2e}")
+    PETSc.Sys.Print(f" {lower[2]:.2e}<= z <>{upper[2]:.2e}. Lz={lengths[2]:.2e}")
     
 
-
-    PETSc.Sys.Print("Numpy to Firedrake Functions on Cartesian grid", end="")
-    tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
-    tof_smooth_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_clean_np, name='tof_smooth')
-    t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
-    brain_mask_cartesian = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name='brain_mask')
-    main_network_cartesian = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name='main_network')
-    sink_support_cartesian = i2d.numpy2firedrake(cartesian_mesh, sink_support_np, name='sink_support')
-    skeleton_cartesian = i2d.numpy2firedrake(cartesian_mesh, skeleton_np, name='skeleton')
-    thickness_cartesian = i2d.numpy2firedrake(cartesian_mesh, thickness_np, name='thickness')
-    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e}")
+    interpolate_cartesian = False
+    if interpolate_cartesian:
+        PETSc.Sys.Print("Numpy to Firedrake Functions on Cartesian grid", end="")
+        tof_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_np, name='tof')
+        tof_smooth_cartesian = i2d.numpy2firedrake(cartesian_mesh, tof_clean_np, name='tof_smooth')
+        t1_cartesian = i2d.numpy2firedrake(cartesian_mesh, t1_np, name='t1')
+        brain_mask_cartesian = i2d.numpy2firedrake(cartesian_mesh, brain_mask_np, name='brain_mask')
+        main_network_cartesian = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name='main_network')
+        sink_support_cartesian = i2d.numpy2firedrake(cartesian_mesh, sink_support_np, name='sink_support')
+        skeleton_cartesian = i2d.numpy2firedrake(cartesian_mesh, skeleton_np, name='skeleton')
+        thickness_cartesian = i2d.numpy2firedrake(cartesian_mesh, thickness_np, name='thickness')
+        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e}")
+        
     
-    
-    
-    
-
-    # save as pvd
-    # DG0 = FunctionSpace(mesh, "DG", 0)
-    # tof_mesh = Function(DG0, name="tof")
-    # tof_smooth_mesh = Function(DG0, name="tof_smooth")
-    # t1_mesh = Function(DG0, name="t1")
-    # main_network_mesh = Function(DG0, name="main_network")
-    # sink_support_mesh = Function(DG0, name="sink_support")
-    # skeleton_mesh = Function(DG0, name="skeleton")
-    # thickness_mesh = Function(DG0, name="thickness")
-    # brain_mask_mesh = Function(DG0, name="brain_mask")
-
     def interpolate_from_numpy(target_mesh, data_np, lengths, name):
         start  = time.time()
         PETSc.Sys.Print("Intepolate main network from numpy", end="")    
@@ -207,10 +189,10 @@ def setup(mri_directory,
         return data_mesh, data_cartesian 
 
     main_network_mesh = interpolate_from_numpy(mesh, main_network_np, lengths, name="main_network")
-    main_network_mesh2, main_network_cartesian2 = interpolate_from_cartesian(mesh, cartesian_mesh, main_network_np, name="main_network2")
+    #main_network_mesh2, main_network_cartesian2 = interpolate_from_cartesian(mesh, cartesian_mesh, main_network_np, name="main_network2")
     
-    assemble_diff = assemble((main_network_mesh - main_network_mesh2)**2 * dx)
-    PETSc.Sys.Print(f"Difference between two interpolation methods for main network: {assemble_diff:.2e}")
+    #assemble_diff = assemble((main_network_mesh - main_network_mesh2)**2 * dx)
+    #PETSc.Sys.Print(f"Difference between two interpolation methods for main network: {assemble_diff:.2e}")
     
     # relabeled mesh to mark the inlet boundary
     my = False
@@ -256,16 +238,23 @@ def setup(mri_directory,
                                             name="relabeled_mesh")
         PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
         lower, upper = bounding_box(relabeled_mesh)
-        PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
+        PETSc.Sys.Print("Bounding box lower after relabeling:")
+        PETSc.Sys.Print(f" {lower[0]:.2e}<= x <>{upper[0]:.2e}. Lx={lengths[0]:.2e}")
+        PETSc.Sys.Print(f" {lower[1]:.2e}<= y <>{upper[1]:.2e}. Ly={lengths[1]:.2e}")
+        PETSc.Sys.Print(f" {lower[2]:.2e}<= z <>{upper[2]:.2e}. Lz={lengths[2]:.2e}")
+    
         PETSc.Sys.Print("Shifting coordinates. I do not know why relabeled mesh shift them back")
         relabeled_mesh.coordinates.dat.data[:, 0] -= offset[0]
         relabeled_mesh.coordinates.dat.data[:, 1] -= offset[1]
         relabeled_mesh.coordinates.dat.data[:, 2] -= offset[2]
         PETSc.Sys.Print("Offset completed")
 
+    PETSc.Sys.Print(f" Relabeled mesh created")
     lower, upper = bounding_box(relabeled_mesh)
-    PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper} length={lengths}")
-
+    PETSc.Sys.Print(f" {lower[0]:.2e}<= x <>{upper[0]:.2e}. Lx={lengths[0]:.2e}")
+    PETSc.Sys.Print(f" {lower[1]:.2e}<= y <>{upper[1]:.2e}. Ly={lengths[1]:.2e}")
+    PETSc.Sys.Print(f" {lower[2]:.2e}<= z <>{upper[2]:.2e}. Lz={lengths[2]:.2e}")
+    
 
     # save as pvd
     use_cartesian_interpolation = False
@@ -307,7 +296,10 @@ def setup(mri_directory,
         thickness_mesh = i2d.numpy2firedrake(relabeled_mesh, thickness_np, name='thickness',lengths=lengths)
     
     lower, upper = bounding_box(relabeled_mesh)
-    PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
+    PETSc.Sys.Print(f" {lower[0]:.2e}<= x <>{upper[0]:.2e}. Lx={lengths[0]:.2e}")
+    PETSc.Sys.Print(f" {lower[1]:.2e}<= y <>{upper[1]:.2e}. Ly={lengths[1]:.2e}")
+    PETSc.Sys.Print(f" {lower[2]:.2e}<= z <>{upper[2]:.2e}. Lz={lengths[2]:.2e}")
+    
 
     PETSc.Sys.Print("Shifting coordinates of relabeled mesh")
     relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
@@ -315,9 +307,11 @@ def setup(mri_directory,
     relabeled_mesh.coordinates.dat.data[:, 2] += offset[2]
     PETSc.Sys.Print("Offset completed")
 
-    lower, upper = bounding_box(relabeled_mesh)
-    PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
-
+    lower, upper = bounding_box(cartesian_mesh)
+    PETSc.Sys.Print(f" {lower[0]:.2e}<= x <>{upper[0]:.2e}. Lx={lengths[0]:.2e}")
+    PETSc.Sys.Print(f" {lower[1]:.2e}<= y <>{upper[1]:.2e}. Ly={lengths[1]:.2e}")
+    PETSc.Sys.Print(f" {lower[2]:.2e}<= z <>{upper[2]:.2e}. Lz={lengths[2]:.2e}")
+    
     data4pvd = [tof_mesh,
                             brain_mask_mesh,
                             main_network_mesh,
@@ -345,13 +339,12 @@ def setup(mri_directory,
 
         solver.solve()
         PETSc.Sys.Print(f"Dirichlet BC test solve completed in {time.time()-start:.2e} s")
-
         data4pvd.append(solution)
 
 
-
-    outfilename = os.path.join(out_directory,f"inputs.pvd")
-    VTKFile(outfilename).write(*data4pvd)
+    if save_pvd:
+        outfilename = os.path.join(out_directory,f"inputs.pvd")
+        VTKFile(outfilename).write(*data4pvd)
 
     if save_h5:
         n_proc = COMM_WORLD.size
@@ -382,8 +375,9 @@ if __name__ == '__main__':
     parser.add_argument('--mri', type=str)
     parser.add_argument('--out', type=str)
     parser.add_argument('--h5', action='store_true')
+    parser.add_argument('--pvd', action='store_true')
     args = parser.parse_args()
 
-    setup(args.mri, args.out, args.h5)
+    setup(args.mri, args.out, args.h5, args.pvd)
     
     
