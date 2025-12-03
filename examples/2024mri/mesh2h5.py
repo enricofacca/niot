@@ -195,55 +195,81 @@ def setup(mri_directory,
     # thickness_mesh = Function(DG0, name="thickness")
     # brain_mask_mesh = Function(DG0, name="brain_mask")
 
-    start  = time.time()
-    PETSc.Sys.Print("Intepolate main network from numpy", end="")    
-    DG0 = FunctionSpace(mesh, "DG", 0)
-    print(f"{lengths=} {main_network_np.shape=}")
-    hx = lengths[0]/dimensions[0]
-    hy = lengths[1]/dimensions[1]
-    hz = lengths[2]/dimensions[2]
-    print(f"{hx=} {hy=} {hz=}")
-    main_network_mesh_np = i2d.numpy2firedrake(mesh, main_network_np, name='main_network_np',lengths=lengths)
-    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
-
-
-
-    start  = time.time()
-    PETSc.Sys.Print("Intepolate main network from cartesian", end="")    
-    DG0 = FunctionSpace(mesh, "DG", 0)
-    main_network_mesh = Function(DG0, name="main_network")
-    main_network_mesh.interpolate(main_network_cartesian)
-    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
-
-    diff = assemble(abs(main_network_mesh - main_network_mesh_np)*dx)
-    mass = assemble(abs(main_network_mesh)*dx)
-    PETSc.Sys.Print(f" Difference between two main network interpolation: diff={diff:.2e} relative diff={diff/mass:.2e}")
-
-
-    # relabeled mesh to mark the inlet boundary
-    zmin = 0
-    start  = time.time()
-    PETSc.Sys.Print("intepolate marker for relabeled mesh", end="")
-    marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
-    main_network_indicator = Function(marker_space, name="main_network_indicator")
-    x,y,z = mesh.coordinates
-    main_network_indicator.interpolate(main_network_mesh * conditional(abs(z-zmin) < hx,1,0))
-    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+    def interpolate_from_numpy(target_mesh, data_np, lengths, name):
+        start  = time.time()
+        PETSc.Sys.Print("Intepolate main network from numpy", end="")    
+        data_mesh = i2d.numpy2firedrake(target_mesh, data_np, name=name,lengths=lengths)
+        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+        return data_mesh
         
-    start  = time.time()
-    PETSc.Sys.Print("Relabeled mesh", end="")
-    relabeled_mesh = MyRelabeledMesh(mesh, [main_network_indicator], 
-                                        [99],
-                                        boundary_only=True,
-                                        name="relabeled_mesh")
-    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+    def interpolate_from_cartesian(target_mesh, cartesian_mesh, data_np, name):
+        start  = time.time()
+        PETSc.Sys.Print("Intepolate main network from cartesian", end="")    
+        DG0 = FunctionSpace(target_mesh, "DG", 0)
+        data_mesh = Function(DG0, name=name)
+        data_cartesian = i2d.numpy2firedrake(cartesian_mesh, data_np, name=name)
+        data_mesh.interpolate(main_network_cartesian)
+        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+        return data_mesh, data_cartesian 
 
-    PETSc.Sys.Print("Shifting coordinates. I do not know why relabeled mesh shift them back")
-    relabeled_mesh.coordinates.dat.data[:, 0] -= offset[0]
-    relabeled_mesh.coordinates.dat.data[:, 1] -= offset[1]
-    relabeled_mesh.coordinates.dat.data[:, 2] -= offset[2]
-    PETSc.Sys.Print("Offset completed")
+    main_network_mesh = interpolate_from_numpy(mesh, main_network_np, lengths, name="main_network")
+    main_network_mesh2, main_network_cartesian2 = interpolate_from_cartesian(mesh, cartesian_mesh, main_network_np, name="main_network2")
+    
+    assemble_diff = assemble((main_network_mesh - main_network_mesh2)**2 * dx)
+    PETSc.Sys.Print(f"Difference between two interpolation methods for main network: {assemble_diff:.2e}")
+    
+    # relabeled mesh to mark the inlet boundary
+    my = False
+    if my:
+        zmin = 0
+        start  = time.time()
+        PETSc.Sys.Print("intepolate marker for relabeled mesh", end="")
+        marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
+        main_network_indicator = Function(marker_space, name="main_network_indicator")
+        x,y,z = mesh.coordinates
+        main_network_indicator.interpolate(main_network_mesh * conditional(abs(z-zmin) < hx,1,0))
+        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+            
+        start  = time.time()
+        PETSc.Sys.Print("Relabeled mesh", end="")
+        relabeled_mesh = MyRelabeledMesh(mesh, [main_network_indicator], 
+                                            [99],
+                                            boundary_only=True,
+                                            name="relabeled_mesh")
+        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
 
+        lower, upper = bounding_box(relabeled_mesh)
+        PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
+
+        PETSc.Sys.Print("Shifting coordinates. I do not know why relabeled mesh shift them back")
+        relabeled_mesh.coordinates.dat.data[:, 0] -= offset[0]
+        relabeled_mesh.coordinates.dat.data[:, 1] -= offset[1]
+        relabeled_mesh.coordinates.dat.data[:, 2] -= offset[2]
+        PETSc.Sys.Print("Offset completed")
+    else:
+        zmin = 0
+        start  = time.time()
+        PETSc.Sys.Print("intepolate marker for relabeled mesh", end="")
+        marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
+        main_network_indicator = Function(marker_space, name="main_network_indicator")
+        x,y,z = mesh.coordinates
+        main_network_indicator.interpolate(main_network_mesh * conditional(abs(z-zmin) < hx,1,0))
+        start  = time.time()
+        PETSc.Sys.Print("Relabeled mesh", end="")
+        relabeled_mesh = RelabeledMesh(mesh, [main_network_mesh], 
+                                            [99],
+                                            name="relabeled_mesh")
+        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+        lower, upper = bounding_box(relabeled_mesh)
+        PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
+        PETSc.Sys.Print("Shifting coordinates. I do not know why relabeled mesh shift them back")
+        relabeled_mesh.coordinates.dat.data[:, 0] -= offset[0]
+        relabeled_mesh.coordinates.dat.data[:, 1] -= offset[1]
+        relabeled_mesh.coordinates.dat.data[:, 2] -= offset[2]
+        PETSc.Sys.Print("Offset completed")
+
+    lower, upper = bounding_box(relabeled_mesh)
+    PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
 
 
     PETSc.Sys.Print("Relabel mesh")
@@ -254,7 +280,7 @@ def setup(mri_directory,
 
 
     # save as pvd
-    use_cartesian_interpolation = True
+    use_cartesian_interpolation = False
     if use_cartesian_interpolation:
         DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
         tof_mesh = Function(DG0, name="tof")
@@ -291,24 +317,28 @@ def setup(mri_directory,
         sink_support_mesh = i2d.numpy2firedrake(relabeled_mesh, sink_support_np, name='sink_support',lengths=lengths)
         skeleton_mesh = i2d.numpy2firedrake(relabeled_mesh, skeleton_np, name='skeleton',lengths=lengths)
         thickness_mesh = i2d.numpy2firedrake(relabeled_mesh, thickness_np, name='thickness',lengths=lengths)
-        
+    
+    lower, upper = bounding_box(relabeled_mesh)
+    PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
+
     PETSc.Sys.Print("Shifting coordinates of relabeled mesh")
     relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
     relabeled_mesh.coordinates.dat.data[:, 1] += offset[1]
     relabeled_mesh.coordinates.dat.data[:, 2] += offset[2]
     PETSc.Sys.Print("Offset completed")
 
+    lower, upper = bounding_box(relabeled_mesh)
+    PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
 
 
 
-
-    test_dirichlet_bc = False
+    test_dirichlet_bc = True
     if test_dirichlet_bc:
         V = FunctionSpace(relabeled_mesh, "CG", 1)
         test = TestFunction(V)
         trial = TrialFunction(V)
         a = inner(grad(trial), grad(test)) * dx
-        L = sink_support_mesh * test * dx
+        L = - sink_support_mesh * test * dx
 
         solution = Function(V,name="solution")
         problem = LinearVariationalProblem(a, L, solution, bcs=[DirichletBC(V, 0.0, 99)])
@@ -318,7 +348,8 @@ def setup(mri_directory,
                                     "ksp_rtol": 1e-6,
                                     "pc_type": "hypre"})
         solver.solve()
-        VTKFile("direchlet.pvd").write(solution,sink_support_mesh)
+        outfilename = os.path.join(out_directory,f"dirichlet.pvd")
+        VTKFile(outfilename).write(solution,sink_support_mesh)
 
     outfilename = os.path.join(out_directory,f"inputs.pvd")
     VTKFile(outfilename).write(tof_mesh,
