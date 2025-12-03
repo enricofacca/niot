@@ -151,6 +151,8 @@ def setup(mri_directory,
     mesh.coordinates.dat.data[:, 1] -= offset[1]
     mesh.coordinates.dat.data[:, 2] -= offset[2]
     PETSc.Sys.Print("Offset completed")
+    lower, upper = bounding_box(mesh)
+    PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
     PETSc.Sys.Print(f" xmin {mesh.coordinates.dat.data[:,0].min():.2f}, xmax {mesh.coordinates.dat.data[:,0].max():.2f}")
     PETSc.Sys.Print(f" ymin {mesh.coordinates.dat.data[:,1].min():.2f}, ymax {mesh.coordinates.dat.data[:,1].max():.2f}")
     PETSc.Sys.Print(f" zmin {mesh.coordinates.dat.data[:,2].min():.2f}, zmax {mesh.coordinates.dat.data[:,2].max():.2f}")
@@ -158,6 +160,8 @@ def setup(mri_directory,
     
     cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths)
     PETSc.Sys.Print("Cartesian mesh")
+    lower, upper = bounding_box(cartesian_mesh)
+    PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
     PETSc.Sys.Print(f" xmin {cartesian_mesh.coordinates.dat.data[:,0].min():.2f}, xmax {cartesian_mesh.coordinates.dat.data[:,0].max():.2f}")
     PETSc.Sys.Print(f" ymin {cartesian_mesh.coordinates.dat.data[:,1].min():.2f}, ymax {cartesian_mesh.coordinates.dat.data[:,1].max():.2f}")
     PETSc.Sys.Print(f" zmin {cartesian_mesh.coordinates.dat.data[:,2].min():.2f}, zmax {cartesian_mesh.coordinates.dat.data[:,2].max():.2f}")
