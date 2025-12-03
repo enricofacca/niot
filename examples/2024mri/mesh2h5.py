@@ -32,6 +32,7 @@ def setup(mri_directory,
           out_directory,
             save_h5=False,
             save_pvd=False
+            test_dirichlet_bc = False
           ):
 
     def load_data(mri_directory):
@@ -319,7 +320,7 @@ def setup(mri_directory,
                             tof_smooth_mesh]
 
 
-    test_dirichlet_bc = True
+    
     if test_dirichlet_bc:
         V = FunctionSpace(relabeled_mesh, "CG", 1)
         test = TestFunction(V)
@@ -340,7 +341,12 @@ def setup(mri_directory,
         solver.solve()
         PETSc.Sys.Print(f"Dirichlet BC test solve completed in {time.time()-start:.2e} s")
         data4pvd.append(solution)
-
+        solution_cartesian = i2d.firedrake2numpy(solution, dimensions, fill=-99)
+        solution_np = i2d.firedrake2numpy(solution_cartesian, dimensions, lengths)
+        if cartesian_mesh.comm.rank == 0:
+            outfilename = os.path.join(out_directory,f"solution_dirichlet.nii.gz")
+            nibabel.save(nibabel.Nifti1Image(solution_np, affine), outfilename)
+        cartesian_mesh.comm.barrier()
 
     if save_pvd:
         outfilename = os.path.join(out_directory,f"inputs.pvd")
@@ -376,8 +382,9 @@ if __name__ == '__main__':
     parser.add_argument('--out', type=str)
     parser.add_argument('--h5', action='store_true')
     parser.add_argument('--pvd', action='store_true')
+    parser.add_argument('--test', action='store_true')
     args = parser.parse_args()
 
-    setup(args.mri, args.out, args.h5, args.pvd)
+    setup(args.mri, args.out, args.h5, args.pvd, args.test)
     
     
