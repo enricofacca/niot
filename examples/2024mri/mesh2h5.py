@@ -326,7 +326,7 @@ def setup(mri_directory,
         test = TestFunction(V)
         trial = TrialFunction(V)
         a = inner(grad(trial), grad(test)) * dx
-        L = - sink_support_mesh * test * dx
+        L = sink_support_mesh * test * dx
 
         start = time.time()
         solution = Function(V,name="solution")
