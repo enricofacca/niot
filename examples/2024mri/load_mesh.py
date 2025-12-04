@@ -85,9 +85,9 @@ solver = LinearVariationalSolver(problem,
                             "pc_hypre_boomeramg_strong_threshold": 0.7,
                             "pc_hypre_boomeramg_max_iter": 1,
                             "pc_hypre_boomeramg_agg_nl": 4,
-                            "pc_hypre_boomeramg_agg_num_paths": 2,
+                            "pc_hypre_boomeramg_agg_num_paths": 3,
                             "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
-                                "ksp_monitor_true_residual": None})
+                            "ksp_monitor_true_residual": None})
 
 
 
