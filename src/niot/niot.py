@@ -268,7 +268,7 @@ class SpaceDiscretization:
                 # if the mesh is simplicial, we use the DG0 laplacian taken from
                 # https://www.firedrakeproject.org/demos/saddle_point_systems.py.html
                 # Without scaling the scheme is not consistent.
-                form = self.DG0_scaling * facet_weigtht * inner(jump(test, self.normal), jump(trial, self.normal)) * d_internal_faces
+                form = self.DG0_scaling * facet_weight * inner(jump(test, self.normal), jump(trial, self.normal)) * d_internal_faces
             else:
                 form =  facet_weight * jump(test) * jump(trial) / self.delta_h * d_internal_faces
         elif degree == 1:
