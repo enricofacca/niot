@@ -527,7 +527,7 @@ def experiment(args):
         "sink_support": sink_support,
         "inlets": inlets, 
         "main_network": main_network, 
-        "mesh": cartesian_mesh,
+        "mesh": mesh,
         "skeleton" : skeleton,
         "thickness": thickness,        
     }
@@ -558,9 +558,9 @@ def experiment(args):
         
         if option == "one":
             try:
-                mesh = kwargs['cartesian_mesh']
+                mesh = kwargs['mesh']
             except:
-                raise ValueError("cartesian_mesh not provided")
+                raise ValueError("mesh not provided")
             one = Function(FunctionSpace(mesh,"R",0), name=common_name+"one")
             one.assign(1.0)
             return one
@@ -706,9 +706,9 @@ def experiment(args):
 
         if option_type == "one":
             try:
-                mesh = kwargs['cartesian_mesh']
+                mesh = kwargs['mesh']
             except:
-                raise ValueError("cartesian_mesh not provided")
+                raise ValueError("mesh not provided")
             one = Function(FunctionSpace(mesh,"R",0), name=common_name+"one")
             one.assign(1.0)
             return one
@@ -816,9 +816,9 @@ def experiment(args):
         
         if option_type == "one":
             try:
-                mesh = kwargs['cartesian_mesh']
+                mesh = kwargs['mesh']
             except:
-                raise ValueError("cartesian_mesh not provided")
+                raise ValueError("mesh not provided")
             one = Function(FunctionSpace(mesh,"R",0), name=common_name+"one")
             one.assign(1.0)
             return one
@@ -928,10 +928,10 @@ def experiment(args):
                 raise ValueError("path initial tdens to provided")
             
             try:
-                cartesian_mesh = kwargs["cartesian_mesh"]
+                mesh = kwargs["mesh"]
             except:
-                raise ValueError("cartesian_mesh not provided")
-            initial = nii2firedrake(path,cartesian_mesh,name=common_name+"load",comm=cartesian_mesh.comm)
+                raise ValueError("mesh not provided")
+            initial = nii2firedrake(path, mesh, name=common_name+"load",comm=mesh.comm)
             return initial
         
         if option_type == "corrupted":
@@ -1022,9 +1022,9 @@ def experiment(args):
                 raise ValueError("mu0 not provided")
             
             try:
-                mesh = kwargs['cartesian_mesh']
+                mesh = kwargs['mesh']
             except:
-                raise ValueError("cartesian_mesh not provided")
+                raise ValueError("mesh not provided")
             
             h = ( mesh.zmax - mesh.zmin ) / mesh.nz
             
@@ -1108,7 +1108,7 @@ def experiment(args):
         #
         sink = set_sink(option_type="segmented",**combination, **input_data)
 
-        R = FunctionSpace(cartesian_mesh,"R",0)
+        R = FunctionSpace(mesh,"R",0)
         source = Function(R, name="source")
         source.assign(0.0)
 
@@ -1204,7 +1204,7 @@ def experiment(args):
         
 
         # setup solver
-        cartesian_mesh.comm.Barrier()
+        mesh.comm.Barrier()
         niot_solver = NiotSolver(btp, 
                              corrupted,  
                              confidence=confidence, 
@@ -1277,7 +1277,7 @@ def experiment(args):
 
         try:
             file_nii_pot = combination["initial_pot"]
-            pot = nii2firedrake(file_nii_pot, cartesian_mesh, name="initial_pot",comm=cartesian_mesh.comm)
+            pot = nii2firedrake(file_nii_pot, mesh, name="initial_pot",comm=mesh.comm)
             niot_solver.set_solution(pot=pot)
         except:
             pass
