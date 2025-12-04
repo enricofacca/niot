@@ -69,12 +69,12 @@ test = TestFunction(V)
 trial = TrialFunction(V)
 const = Function(R, name="const")
 const.assign(0.0)
-a = (1+const)*inner(grad(trial), grad(test)) * dx
+a = (1+const*main_network)*inner(grad(trial), grad(test)) * dx
 L = sink_support * test * dx
 
 for i in range(4):
     start = time()
-    const.assign(i*main_network)
+    const.assign(4**i)
     solution = Function(V,name="solution")
     problem = LinearVariationalProblem(a, L, solution, bcs=[DirichletBC(V, 0.0, 99)])
     solver = LinearVariationalSolver(problem,
