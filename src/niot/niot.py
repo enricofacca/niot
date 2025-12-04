@@ -1057,7 +1057,9 @@ class NiotSolver:
         
         
         if self.btp.Dirichlet is not None:
-            raise NotImplementedError('Strong Dirichlet boundary conditions not implemented')
+            pot_bcs = []
+            for bc in self.btp.Dirichlet:
+                pot_bcs.append(DirichletBC(self.fems.pot_space, bc[1], bc[0]))
         else:
             pot_bcs = None
 
