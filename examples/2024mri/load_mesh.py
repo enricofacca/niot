@@ -37,23 +37,6 @@ with CheckpointFile(h5_file, 'r',comm=comm) as afile:
     PETSc.Sys.Print(f" Loaded sink in {time()-start:.2f} seconds")
 
     
-V = FunctionSpace(mesh, "CG", 1)
-test = TestFunction(V)
-trial = TrialFunction(V)
-a = inner(grad(trial), grad(test)) * dx
-L = 1e-3 * sink_support * test * dx
-
-solution = Function(V,name="solution")
-problem = LinearVariationalProblem(a, L, solution, bcs=[DirichletBC(V, 0.0,\
-                                                                    99)])
-solver = LinearVariationalSolver(problem,
-                                 solver_parameters={
-                                     "ksp_type": "cg",
-                                     "ksp_rtol": 1e-8,
-                                    "pc_type": "hypre",
-                                    "ksp_monitor_true_residual": None})
-solver.solve()
-
 main_file = os.path.join(out_directory, f"preprocessed/main_network.nii.gz")
 main_data = nibabel.load(main_file)
 dimensions = main_data.header.get_data_shape()[:3]
@@ -91,7 +74,7 @@ L = sink_support * test * dx
 
 for i in range(4):
     start = time()
-    const.assign(i*1.0)
+    const.assign(i*main_network)
     solution = Function(V,name="solution")
     problem = LinearVariationalProblem(a, L, solution, bcs=[DirichletBC(V, 0.0, 99)])
     solver = LinearVariationalSolver(problem,
