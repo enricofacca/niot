@@ -702,7 +702,7 @@ class NiotSolver:
             'ksp_rtol': self.ctrl_get('constraint_tol'),
             'ksp_dtol': 1e5,
             'ksp_max_it' : 1000,
-            'ksp_initial_guess_nonzero': True, 
+            #'ksp_initial_guess_nonzero': True, 
             #'ksp_norm_type': 'unpreconditioned',
             #'ksp_monitor_true_residual' : None, 
         }
