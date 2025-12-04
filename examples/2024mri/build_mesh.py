@@ -182,10 +182,8 @@ def setup(mri_directory,
         (external_network_np, "external_network"),
     ]
     for var, name in data:
-        print(f"{out_directory=}")
-        print(f"Saving {name} as nifti")
         outfilename = os.path.join(out_directory,f"{name}.nii.gz")
-        print(f"Saving main network {outfilename}")
+        print(f"Saving {outfilename}")
         nibabel.save(nibabel.Nifti1Image(var, affine), outfilename)
     
     #
@@ -397,31 +395,7 @@ def setup(mri_directory,
                                 main_network_mesh,
                                 sink_support_mesh,size_mesh,tof_smooth_mesh)
 
-        if save_h5:
-            n_proc = COMM_WORLD.size
-            h5_filename = os.path.join(mri_directory,
-                                    f"inputs_nproc{n_proc}" + 
-                                    f"_MAIN_blur{blur_tof_4_main_network:.2e}" +
-                                    f"_thr{threshold_tof_4_main_network:.2e}_TOF_blur{blur_tof_4_mesh:.2e}.h5")
-            PETSc.Sys.Print(f"Saving to {h5_filename}", end="")
-            print("name",relabeled_mesh.name)
-            with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
-                afile.save_mesh(relabeled_mesh,"relabeled_mesh")
-                PETSc.Sys.Print(f" mesh ", end="")
-                afile.save_function(tof_mesh)
-                PETSc.Sys.Print(f" tof ", end="")
-                afile.save_function(t1_mesh)
-                PETSc.Sys.Print(f" t1 ", end="")
-                afile.save_function(brain_mask_mesh)
-                PETSc.Sys.Print(f" brain_mask ", end="")
-                afile.save_function(main_network_mesh)
-                PETSc.Sys.Print(f" main_network ", end="")
-                afile.save_function(sink_support_mesh)
-                PETSc.Sys.Print(f" sink_support ", end="")
-                afile.save_function(skeleton_mesh)
-                PETSc.Sys.Print(f" skeleton ", end="")
-                afile.save_function(thickness_mesh)
-                PETSc.Sys.Print(f" thickness ", end="")
+      
             
         
 
@@ -436,11 +410,10 @@ if __name__ == '__main__':
     parser.add_argument('--blur_mesh', type=float, default=0.0, 
                         help="Blur for connected components. If 0, no blur is applied.")
     parser.add_argument('--read', action='store_true')
-    parser.add_argument('--h5', action='store_true')
     parser.add_argument('--meshonly', action='store_true')
 
     args = parser.parse_args()
 
-    setup(args.mri, args.out, args.threshold, args.blur_main, args.blur_mesh, not args.read, args.h5, not args.meshonly)
+    setup(args.mri, args.out, args.threshold, args.blur_main, args.blur_mesh, not args.read, not args.meshonly)
     
     
