@@ -81,23 +81,28 @@ PETSc.Sys.Print(f" {lower[2]:.2e}<= z <>{upper[2]:.2e}. Lz={lengths[2]:.2e}")
 
 
 V = FunctionSpace(mesh, "CG", 1)
+R = FunctionSpace(mesh, "R", 0)
 test = TestFunction(V)
 trial = TrialFunction(V)
-a = inner(grad(trial), grad(test)) * dx
+const = Function(R, name="const")
+const.assign(0.0)
+a = (1+const)*inner(grad(trial), grad(test)) * dx
 L = sink_support * test * dx
 
-start = time.time()
-solution = Function(V,name="solution")
-problem = LinearVariationalProblem(a, L, solution, bcs=[DirichletBC(V, 0.0, 99)])
-solver = LinearVariationalSolver(problem,
-                        solver_parameters={
-                            "ksp_type": "cg",
-                            "ksp_rtol": 1e-6,
-                            "pc_type": "hypre",
-                            "ksp_monitor_true_residual": None})
+for i in range(4):
+    start = time()
+    const.assign(i*1.0)
+    solution = Function(V,name="solution")
+    problem = LinearVariationalProblem(a, L, solution, bcs=[DirichletBC(V, 0.0, 99)])
+    solver = LinearVariationalSolver(problem,
+                            solver_parameters={
+                                "ksp_type": "cg",
+                                "ksp_rtol": 1e-6,
+                                "pc_type": "hypre",
+                                "ksp_monitor_true_residual": None})
 
-solver.solve()
-PETSc.Sys.Print(f"Dirichlet BC test solve completed in {time.time()-start:.2e} s")
+    solver.solve()
+    PETSc.Sys.Print(f"Dirichlet BC test solve completed in {time()-start:.2e} s")
 data4pvd.append(solution)
 DG0_Cartesian = FunctionSpace(cartesian_mesh, "DG", 0)
 solution_cartesian = assemble(interpolate(solution, DG0_Cartesian, allow_missing_dofs=True,  default_missing_val=-99))
