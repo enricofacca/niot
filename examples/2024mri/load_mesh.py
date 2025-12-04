@@ -82,9 +82,10 @@ solver = LinearVariationalSolver(problem,
                             # tuning parameters for the multigrid 
                             # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
                             "pc_hypre_type": "boomeramg",
-                            "pc_hypre_boomeramg_strong_threshold": 0.75,
+                            "pc_hypre_boomeramg_strong_threshold": 0.7,
                             "pc_hypre_boomeramg_max_iter": 1,
-                            "pc_hypre_boomeramg_agg_nl": 2,
+                            "pc_hypre_boomeramg_agg_nl": 4,
+                            "pc_hypre_boomeramg_agg_num_paths": 2
                             "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
                                 "ksp_monitor_true_residual": None})
 
