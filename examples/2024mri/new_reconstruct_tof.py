@@ -382,30 +382,7 @@ def experiment(args):
     out_directory = results + test_case
     mpi_mkdir(out_directory)
 
-    #
-    # check presence of data required
-    #
-    if COMM_WORLD.rank == 0:
-        files = [
-            f"{args.mri}/TOF.nii.gz",
-                f"{args.mri}/T1.nii.gz",
-                f"{args.mri}/inlets.nii.gz",
-                f"{args.mri}/brain_mask_smooth.nii.gz",
-                ]
-        for file in files:
-            if not os.path.exists(file):
-                raise ValueError(f"File {file} not found")
-        
-        # threshold dependend files
-        main_network_file = f"{args.mri}/main_network_t{threshold:.2e}.nii.gz"
-        external_network_file = f"{args.mri}/external_network_t{threshold:.2e}.nii.gz"            
-        if not os.path.exists(main_network_file) or not os.path.exists(external_network_file):
-            PETSc.Sys.Print(f"Identifty main network and external network",end="")
-            # this only use numpy, so we run only on one processor
-            save_main_and_external_network_as_nifti(args.mri, threshold)
-            PETSc.Sys.Print(f"- done")
-
-    COMM_WORLD.barrier()
+    
 
 
     # create ensemble of processors
@@ -423,15 +400,9 @@ def experiment(args):
     #
     # check if h5 already exists or build it, but it may run out of memory
     #
-    PETSc.Sys.Print(f"**** Inputs loading ****")
-    if blur > 0:
-        label = f"t{threshold:.2e}_blur{blur:.2e}"  
-    else: 
-        label = f"t{threshold:.2e}"
-
-    if not args.checkpoint_file is None:
+    if args.h5 != "":
         #h5_file = f"{args.mri}/inputs_{label}_nproc{args.n_ensemble}.h5"
-        h5_file = args.checkpoint_file
+        h5_file = args.h5
         # if os.path.exists(h5_file):
         #     PETSc.Sys.Print(f"Found checkpoint file {h5_file}")
         # else:   
@@ -499,6 +470,35 @@ def experiment(args):
             my_ensemble.ensemble_comm.barrier()
 
     else:
+        #
+        # check presence of data required
+        #
+        if COMM_WORLD.rank == 0:
+            files = [
+                f"{args.mri}/TOF.nii.gz",
+                    f"{args.mri}/T1.nii.gz",
+                    f"{args.mri}/brain_mask_smooth.nii.gz",
+                    ]
+            for file in files:
+                if not os.path.exists(file):
+                    raise ValueError(f"File {file} not found")
+            
+            # threshold dependend files
+            main_network_file = f"{args.mri}/main_network_t{threshold:.2e}.nii.gz"
+            external_network_file = f"{args.mri}/external_network_t{threshold:.2e}.nii.gz"            
+            if not os.path.exists(main_network_file) or not os.path.exists(external_network_file):
+                PETSc.Sys.Print(f"Identifty main network and external network",end="")
+                # this only use numpy, so we run only on one processor
+                save_main_and_external_network_as_nifti(args.mri, threshold)
+                PETSc.Sys.Print(f"- done")
+
+        PETSc.Sys.Print(f"**** Inputs loading ****")
+        if blur > 0:
+            label = f"t{threshold:.2e}_blur{blur:.2e}"  
+        else: 
+            label = f"t{threshold:.2e}"
+
+        COMM_WORLD.barrier()
         data = setup_h5(args.mri, threshold, blur=blur, masked_mesh=masked_mesh, comm=comm)
         cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets, skeleton, thickness = data
         
@@ -527,7 +527,7 @@ def experiment(args):
         "sink_support": sink_support,
         "inlets": inlets, 
         "main_network": main_network, 
-        "cartesian_mesh": cartesian_mesh,
+        "mesh": cartesian_mesh,
         "skeleton" : skeleton,
         "thickness": thickness,        
     }
@@ -1389,7 +1389,7 @@ if __name__ == "__main__":
     parser.add_argument("--mri", type=str, default="./mri/", help="directory with mri data")
     parser.add_argument("--out", type=str, default="./runs/", help="output directory")
     parser.add_argument("--options", type=str, default="options.json", help="Json file with controls")
-    parser.add_argument("--reuse_h5", type=bool, default=False, help="Reuse h5 file with inputs")
+    parser.add_argument("--h5", type=str, default="", help="h5 file with inputs")
 
     args, unknown = parser.parse_known_args()
 
