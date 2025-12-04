@@ -346,6 +346,8 @@ def setup(mri_directory,
             afile.save_function(skeleton_mesh)
             PETSc.Sys.Print(f" skeleton ", end="")
             afile.save_function(thickness_mesh)
+            PETSc.Sys.Print(f" Include info ")
+            afile.require_group("/info/")
             PETSc.Sys.Print(f" thickness ", end="")
             afile.set_attr("/info/", "affine", affine)
             PETSc.Sys.Print(f" affine ")
