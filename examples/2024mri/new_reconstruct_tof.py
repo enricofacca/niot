@@ -1070,7 +1070,7 @@ def experiment(args):
 
 
     combinations = list(product_dict(**options))
-
+    PETSc.Sys.Print(combinations)
 
     
     
