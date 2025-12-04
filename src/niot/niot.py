@@ -168,16 +168,16 @@ class SpaceDiscretization:
         self.pot_trial = TrialFunction(self.pot_space)
         self.pot_test = TestFunction(self.pot_space)
 
-        if ((pot_space=='DG') or (pot_space =="DQ") ) and (pot_deg == 0):
-            self.delta_h = Laplacian_facet_weight(mesh, mode = "center_distance")#"face_over_cell")
-            self.cell2face = cell2face
-            # quantities for DG0 laplacian
-            alpha = Constant(4.0)
-            self.h = h_size(mesh, mode = h_mode)
-            # self.h = h_size(mesh, mode = "face_over_cell")
-            h_avg = (self.h('+') + self.h('-'))/2.0
-            self.DG0_scaling = alpha/h_avg
-            self.normal = FacetNormal(mesh)
+        #if ((pot_space=='DG') or (pot_space =="DQ") ) and (pot_deg == 0):
+        self.delta_h = Laplacian_facet_weight(mesh, mode = "center_distance")#"face_over_cell")
+        self.cell2face = cell2face
+        # quantities for DG0 laplacian
+        alpha = Constant(4.0)
+        self.h = h_size(mesh, mode = h_mode)
+        # self.h = h_size(mesh, mode = "face_over_cell")
+        h_avg = (self.h('+') + self.h('-'))/2.0
+        self.DG0_scaling = alpha/h_avg
+        self.normal = FacetNormal(mesh)
 
         # For Tdens unknow, create fem, function space, test and trial
         # space
