@@ -403,10 +403,10 @@ def experiment(args):
     if args.h5 != "":
         #h5_file = f"{args.mri}/inputs_{label}_nproc{args.n_ensemble}.h5"
         h5_file = args.h5
-        # if os.path.exists(h5_file):
-        #     PETSc.Sys.Print(f"Found checkpoint file {h5_file}")
-        # else:   
-        #     PETSc.Sys.Print(f"Checkpoint not found. Creating it but we may run out of memory.\n"
+        if os.path.exists(h5_file):
+             PETSc.Sys.Print(f"Found checkpoint file {h5_file}")
+        else:   
+             PETSc.Sys.Print(f"Checkpoint not found {h5_file}. Creating it but we may run out of memory.\n")
         #                     f"Consider running mpiexec -n {args.n_ensemble} python build_checkpointfile.py "
         #                     )
         #     if use_ensemble:
