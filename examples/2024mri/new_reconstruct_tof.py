@@ -1109,7 +1109,7 @@ def experiment(args):
         #
         # btp inputs
         #
-        sink = set_sink(option_type="segmented",**combination, **input_data)
+        sink = set_sink(option_type="sink_support",**combination, **input_data)
 
         R = FunctionSpace(mesh,"R",0)
         source = Function(R, name="source")
