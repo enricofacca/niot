@@ -462,6 +462,16 @@ def experiment(args):
             PETSc.Sys.Print(f"skeleton",end="")
             thickness = afile.load_function(mesh, "thickness")
             PETSc.Sys.Print(f"thickness",end=" ")
+            affine = afile.get_attr("affine", "affine")
+            PETSc.Sys.Print(f" affine ")
+            offset = afile.get_attr("offset", "offset")
+            PETSc.Sys.Print(f" offeset")
+            voxel_size = afile.get_attr("voxel_size", "voxel_size")
+            PETSc.Sys.Print(f" voxel_size ")
+            dimensions = afile.set_attr("dimensions", "dimensions")
+            PETSc.Sys.Print(f" dimensions ")
+            
+            
             external_network = Function(main_network.function_space(), name="external_network")
             external_network.assign(0.0)
         
@@ -518,8 +528,6 @@ def experiment(args):
     # mesh.hx = hx
     # mesh.hy = hy
     # mesh.hz = hz
-
-
     
     input_data = { 
         "tof": tof, 
@@ -533,6 +541,10 @@ def experiment(args):
         "mesh": mesh,
         "skeleton" : skeleton,
         "thickness": thickness,        
+        "affine": affine,
+        "offset": offset,
+        "voxel_size": voxel_size,
+        "dimensions": dimensions
     }
 
 
@@ -1029,7 +1041,11 @@ def experiment(args):
             except:
                 raise ValueError("mesh not provided")
             
-            h = ( mesh.zmax - mesh.zmin ) / mesh.nz
+            try:
+                voxel_size = kwargs['voxel_size']
+                h = min(voxel_size)
+            except:
+                raise ValueError("voxel_size not provided")
             
             try:
                 lift = option["lift"]

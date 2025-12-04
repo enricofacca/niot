@@ -1,7 +1,7 @@
 import nibabel 
 import argparse
 import numpy as np
-from connected_components_tof import connected_components, main_network_equal_one
+from connected_components_tof import connected_components, main_network_equal_one, find_external_network
 import os
 from scipy.ndimage import gaussian_filter
 import pygalmesh
@@ -88,9 +88,8 @@ def setup(mri_directory,
             tof_main_network_np = tof_np.copy()
         labels_np, nlabels = connected_components(tof_main_network_np, threshold_tof)
         labels_np = main_network_equal_one(labels_np, nlabels, tof_np)
-
-
-        # save as nifti 
+        
+        # define main network 
         main_network = np.zeros_like(labels_np, dtype=np.uint8)
         main_network[labels_np == 1] = 1
         
@@ -103,7 +102,10 @@ def setup(mri_directory,
         # scale by thickness 
         thickness_np *= hx
 
-        return main_network, skeleton_np, thickness_np
+        # find external network
+        external_network_np = find_external_network(labels_np)
+
+        return main_network, skeleton_np, thickness_np, external_network_np
     
     
     def set_tof4mesh(tof_np, options_dict):
@@ -160,7 +162,7 @@ def setup(mri_directory,
         return sink_support_np
     
     # process parameters
-    main_network_np, skeleton_np, thickness_np = set_main_network(tof_np, 
+    main_network_np, skeleton_np, thickness_np, external_network_np = set_main_network(tof_np, 
                                                                   threshold_tof_4_main_network, 
                                                                   blur_tof_4_main_network, hx)
     sink_support_np = set_sink_support(aseg_np, main_network_np)
@@ -171,8 +173,15 @@ def setup(mri_directory,
     
 
     # save as nifti
-    for var, name in zip([main_network_np, skeleton_np, thickness_np, sink_support_np, tof_clean_np],
-                            ["main_network", "skeleton", "thickness", "sink_support", "tof_clean"]):
+    data = [
+        (main_network_np, "main_network"),
+        (skeleton_np, "skeleton"),
+        (thickness_np, "thickness"),
+        (sink_support_np, "sink_support"),
+        (tof_clean_np, "tof_clean"),
+        (external_network_np, "external_network"),
+    ]
+    for var, name in data:
         outfilename = os.path.join(out_directory,f"{name}.nii.gz")
         print(f"Saving main network {outfilename}")
         nibabel.save(nibabel.Nifti1Image(var, affine), outfilename)

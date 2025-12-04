@@ -89,6 +89,8 @@ def setup(mri_directory,
         main_network_data = nibabel.load(f"{out_directory}/main_network.nii.gz")
         main_network_np = main_network_data.get_fdata()
 
+        external_network_np = nibabel.load(f"{out_directory}/external_network.nii.gz").get_fdata()
+
         sink_support_data = nibabel.load(f"{out_directory}/sink_support.nii.gz")
         sink_support_np = sink_support_data.get_fdata()
 
@@ -314,10 +316,10 @@ def setup(mri_directory,
     PETSc.Sys.Print(f" {lower[2]:.2e}<= z <>{upper[2]:.2e}. Lz={lengths[2]:.2e}")
     
     data4pvd = [tof_mesh,
-                            brain_mask_mesh,
-                            main_network_mesh,
-                            sink_support_mesh,
-                            tof_smooth_mesh]
+                brain_mask_mesh,
+                main_network_mesh,
+                sink_support_mesh,
+                tof_smooth_mesh]
 
 
     
@@ -345,6 +347,15 @@ def setup(mri_directory,
             PETSc.Sys.Print(f" skeleton ", end="")
             afile.save_function(thickness_mesh)
             PETSc.Sys.Print(f" thickness ", end="")
+            afile.set_attr("affine", "affine", affine)
+            PETSc.Sys.Print(f" affine ")
+            afile.set_attr("offset", "offset", offset)
+            PETSc.Sys.Print(f" offeset")
+            afile.set_attr("voxel_size", "voxel_size", voxel_size)
+            PETSc.Sys.Print(f" voxel_size ")
+            afile.set_attr("dimensions", "dimensions", dimensions)
+            PETSc.Sys.Print(f" dimensions ")
+            PETSc.Sys.Print(f" - done")
 
     if test_dirichlet_bc:
         PETSc.Sys.Print("Shifting coordinates of relabeled mesh")
