@@ -2409,6 +2409,22 @@ class NiotSolver:
             mesh = afile.load_mesh('mesh')
             sol = afile.load_function(mesh, 'sol')
         return sol 
+    
+    def save_function(self, func, filename):
+        '''
+        Save into a file the function func
+        '''
+        
+        # get extension
+        ext = filename.split('.')[-1]
+        if ext == 'gz':
+            cartesian_fun = assemble(interpolate(func,self.DG0_cartesian))
+            
+        elif ext == 'h5':
+            with HDF5File(self.mesh.comm, filename, 'w') as h5f:
+                h5f.write(func, 'function')
+        else:
+            raise ValueError(f'Extension {ext} not supported.')
 
 
 

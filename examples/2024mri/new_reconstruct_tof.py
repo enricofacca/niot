@@ -64,8 +64,21 @@ def product_dict(**kwargs):
     for instance in itertools.product(*kwargs.values()):
         yield dict(zip(keys, instance))
 
-def save_as_nifti(function, affine, filename):
-    function_np = i2d.firedrake2numpy(function)
+def save_as_nifti(function, affine, filename, shape=None):
+    mesh = function.function_space().mesh()
+    if mesh.is_simplex():
+        lower, upper = i2d.bounding_box(mesh)
+        lengths = upper - lower
+        cartesian_mesh = i2d.cartesian_grid_3d(shape,
+                                                lengths=lengths,
+                                                comm=function.function_space().mesh().comm)
+        DG0_cartesian = FunctionSpace(cartesian_mesh, "DG", 0)
+        function_cartesian = Function(DG0_cartesian, name=function.name+"_cartesian")
+        function_cartesian.interpolate(function)
+        return
+    else:
+        function_cartesian = function
+    function_np = i2d.firedrake2numpy(function_cartesian)
     nibabel.save(nibabel.Nifti1Image(function_np, affine), filename)
     function_np = None
     gc.collect()
