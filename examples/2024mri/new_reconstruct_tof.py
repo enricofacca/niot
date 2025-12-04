@@ -66,7 +66,8 @@ def product_dict(**kwargs):
 
 def save_as_nifti(function, affine, filename, shape=None):
     mesh = function.function_space().mesh()
-    if mesh.is_simplex():
+    # We need to interpolate to a cartesian grid
+    if mesh.ufl_cell().is_simplex():
         lower, upper = i2d.bounding_box(mesh)
         lengths = upper - lower
         cartesian_mesh = i2d.cartesian_grid_3d(shape,
