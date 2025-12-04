@@ -424,7 +424,7 @@ def experiment(args):
         # load data
         #
         with CheckpointFile(h5_file, 'r',comm=comm) as afile:
-            mesh = afile.load_mesh("mesh")
+            mesh = afile.load_mesh("relabeled_mesh")
             PETSc.Sys.Print(f"mesh",end=" ")
             tof = afile.load_function(mesh, "tof")
             PETSc.Sys.Print(f"tof",end=" ")
