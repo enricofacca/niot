@@ -1165,11 +1165,11 @@ def experiment(args):
         # 
         # set labels defining the experiment
         # 
-        labels.append(
-            *[f"wd{combination['wd']:.1e}",
+        labels += [
+            f"wd{combination['wd']:.1e}",
             initial.name(),
             confidence.name(),
-            ])
+            ]
 
         tdens2image = combination["map"]
         if tdens2image['type'] == 'identity':
