@@ -1266,7 +1266,7 @@ def experiment(args):
         niot_solver.ctrl_set('max_iter', max_iter)
         
         niot_solver.ctrl_set('max_restart', 4)
-        niot_solver.ctrl_set('verbose', 0)
+        niot_solver.ctrl_set('verbose', 3)
 
         
 
