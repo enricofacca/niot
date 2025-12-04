@@ -1166,7 +1166,7 @@ def experiment(args):
         # set labels defining the experiment
         # 
         labels.append(
-            [f"wd{combination['wd']:.1e}",
+            *[f"wd{combination['wd']:.1e}",
             initial.name(),
             confidence.name(),
             ])
