@@ -468,7 +468,7 @@ def experiment(args):
             PETSc.Sys.Print(f" offeset")
             voxel_size = afile.get_attr("/info/", "voxel_size")
             PETSc.Sys.Print(f" voxel_size ")
-            dimensions = afile.set_attr("/info/", "dimensions")
+            dimensions = afile.get_attr("/info/", "dimensions")
             PETSc.Sys.Print(f" dimensions ")
             
             
