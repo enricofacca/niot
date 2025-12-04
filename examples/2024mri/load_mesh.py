@@ -72,21 +72,23 @@ const.assign(0.0)
 a = (1+const*main_network)*inner(grad(trial), grad(test)) * dx
 L = sink_support * test * dx
 
+solution = Function(V,name="solution")
+problem = LinearVariationalProblem(a, L, solution, bcs=[DirichletBC(V, 0.0, 99)])
+solver = LinearVariationalSolver(problem,
+                        solver_parameters={
+                            "ksp_type": "cg",
+                            "ksp_rtol": 1e-6,
+                            "pc_type": "hypre",
+                            "ksp_monitor_true_residual": None})
+
+
+
 for i in range(4):
     start = time()
     const.assign(4**i)
-    solution = Function(V,name="solution")
-    problem = LinearVariationalProblem(a, L, solution, bcs=[DirichletBC(V, 0.0, 99)])
-    solver = LinearVariationalSolver(problem,
-                            solver_parameters={
-                                "ksp_type": "cg",
-                                "ksp_rtol": 1e-6,
-                                "pc_type": "hypre",
-                                "ksp_monitor_true_residual": None})
-
     solver.solve()
     PETSc.Sys.Print(f"Dirichlet BC test solve completed in {time()-start:.2e} s")
-data4pvd.append(solution)
+
 DG0_Cartesian = FunctionSpace(cartesian_mesh, "DG", 0)
 solution_cartesian = assemble(interpolate(solution, DG0_Cartesian, allow_missing_dofs=True,  default_missing_val=-99))
 solution_np = i2d.firedrake2numpy(solution_cartesian)
