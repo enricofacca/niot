@@ -462,6 +462,8 @@ def experiment(args):
             PETSc.Sys.Print(f"skeleton",end="")
             thickness = afile.load_function(mesh, "thickness")
             PETSc.Sys.Print(f"thickness",end=" ")
+            external_network = Function(main_network.function_space(), name="external_network")
+            external_network.assign(0.0)
         
         PETSc.Sys.Print(f"Checkpoint loaded")
         PETSc.Sys.Print(f"**** Inputs loaded ****")
@@ -527,6 +529,7 @@ def experiment(args):
         "sink_support": sink_support,
         "inlets": inlets, 
         "main_network": main_network, 
+        "external_network": external_network,
         "mesh": mesh,
         "skeleton" : skeleton,
         "thickness": thickness,        
