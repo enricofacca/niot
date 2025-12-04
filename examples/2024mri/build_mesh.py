@@ -182,6 +182,7 @@ def setup(mri_directory,
         (external_network_np, "external_network"),
     ]
     for var, name in data:
+        print(f"{out_directory=}")
         print(f"Saving {name} as nifti")
         outfilename = os.path.join(out_directory,f"{name}.nii.gz")
         print(f"Saving main network {outfilename}")
