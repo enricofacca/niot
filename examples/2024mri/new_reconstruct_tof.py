@@ -1094,6 +1094,7 @@ def experiment(args):
 
     
     for i, combination in enumerate(todo):
+        labels = []
         try:
             spaces = combination["spaces"]
             if spaces != "DG0DG0":
@@ -1148,10 +1149,11 @@ def experiment(args):
         # 
         # set labels defining the experiment
         # 
-        labels = [f"wd{combination['wd']:.1e}",
-                  initial.name(),
-                  confidence.name(),
-                  ]
+        labels.append(
+            [f"wd{combination['wd']:.1e}",
+            initial.name(),
+            confidence.name(),
+            ])
 
         tdens2image = combination["map"]
         if tdens2image['type'] == 'identity':
