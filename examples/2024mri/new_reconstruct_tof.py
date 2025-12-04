@@ -1100,6 +1100,7 @@ def experiment(args):
                 labels.append(f"spaces{spaces}")
         except:
             spaces = "DG0DG0"
+        PETSc.Sys.Print(f"{spaces}= {spaces}")
         
         #
         # set corrupted network
