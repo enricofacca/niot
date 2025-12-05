@@ -64,19 +64,18 @@ def product_dict(**kwargs):
     for instance in itertools.product(*kwargs.values()):
         yield dict(zip(keys, instance))
 
-def save_as_nifti(function, affine, filename, shape=None):
+def transfer_to_cartesian(f, interpolator, interpolate_fun):
+    interpolate_fun.interpolate(f)
+    f_cartesian = assemble(interpolator)
+    return f_cartesian
+
+
+
+def save_as_nifti(function, affine, filename, interpolator=None, interpolate_fun=None):
     mesh = function.function_space().mesh()
     # We need to interpolate to a cartesian grid
     if mesh.ufl_cell().is_simplex():
-        lower, upper = i2d.bounding_box(mesh)
-        lengths = upper - lower
-        cartesian_mesh = i2d.cartesian_grid_3d(shape,
-                                                lengths=lengths,
-                                                comm=function.function_space().mesh().comm)
-        DG0_cartesian = FunctionSpace(cartesian_mesh, "DG", 0)
-        function_cartesian = Function(DG0_cartesian, name=function.name()+"_cartesian")
-        function_cartesian.interpolate(function)
-        return
+        function_cartesian = transfer_to_cartesian(function, interpolator, interpolate_fun)
     else:
         function_cartesian = function
     function_np = i2d.firedrake2numpy(function_cartesian)
@@ -1119,9 +1118,14 @@ def experiment(args):
         todo = combinations
         PETSc.Sys.Print(f"color {color_rank} TODO {len(todo)=}",comm=comm)
     
+    DG0_cartesian = FunctionSpace(cartesian_mesh, "DG", 0)
+    DG0 = FunctionSpace(mesh, "DG", 0)
+    interpolate_fun = Function(DG0, name="interpolatator_fun")
+    interpolator = interpolate(interpolate_fun, DG0_cartesian, 
+                                 allow_missing_dofs=True,  
+                                 default_missing_val=-1e30)
     
-
-
+    
     
     for i, combination in enumerate(todo):
         labels = []
@@ -1321,28 +1325,41 @@ def experiment(args):
 
         save_inputs = combination.get("save_inputs", 0) == 1
         if save_inputs:
-            filename = f"{label_dir}/corrupted.nii.gz"
-            save_as_nifti(corrupted, affine, filename, shape=dimensions)
+            if spaces == "DG0DG0":
+                filename = f"{label_dir}/corrupted.nii.gz"
+                save_as_nifti(corrupted, affine, filename, interpolator, interpolate_fun)
 
-            filename = f"{label_dir}/sink.nii.gz"
-            save_as_nifti(sink, affine, filename, shape=dimensions)
+                filename = f"{label_dir}/sink.nii.gz"
+                save_as_nifti(sink, affine, filename, interpolator, interpolate_fun)
 
-            if combination["initial"] != "one":
-                filename = f"{label_dir}/initial.nii.gz"
-                save_as_nifti(initial, affine, filename, shape=dimensions)
+                if combination["initial"] != "one":
+                    filename = f"{label_dir}/initial.nii.gz"
+                    save_as_nifti(initial, affine, filename, interpolator, interpolate_fun)
 
 
-            if combination["confidence"] != "one":
-                filename = f"{label_dir}/confidence.nii.gz"
-                save_as_nifti(confidence, affine, filename, shape=dimensions)
+                if combination["confidence"] != "one":
+                    filename = f"{label_dir}/confidence.nii.gz"
+                    save_as_nifti(confidence, affine, filename, interpolator, interpolate_fun)
 
-            if combination["kappa"] != "one":
-                filename = f"{label_dir}/kappa.nii.gz"
-                save_as_nifti(kappa, affine, filename, shape=dimensions)
-            
-            filaname = f"{label_dir}/main_network.nii.gz"
-            save_as_nifti(main_network, affine, filaname, shape=dimensions)
-        
+                if combination["kappa"] != "one":
+                    filename = f"{label_dir}/kappa.nii.gz"
+                    save_as_nifti(kappa, affine, filename, interpolator, interpolate_fun)
+                
+                filaname = f"{label_dir}/main_network.nii.gz"
+                save_as_nifti(main_network, affine, filaname, interpolator, interpolate_fun)
+            else:
+                h5_file_inputs = os.path.join(label_dir, "inputs.h5")
+                with CheckpointFile(h5_file_inputs, 'w',comm=comm) as afile:
+                    afile.save_function(corrupted, "corrupted")
+                    afile.save_function(sink, "sink")
+                    if combination["initial"] != "one":
+                        afile.save_function(initial, "initial")
+                    if combination["confidence"] != "one":
+                        afile.save_function(confidence, "confidence")
+                    if combination["kappa"] != "one":
+                        afile.save_function(kappa, "kappa")
+                    afile.save_function(main_network, "main_network")
+
         
         #
         # run solver, buffering the saving of the solution
@@ -1373,24 +1390,35 @@ def experiment(args):
             # save solution
             pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
             
+            if spaces == "DG0DG0":
+                filename=f"{label_dir}/tdens_{file_label}.nii.gz"
+                save_as_nifti(tdens, affine, filename, interpolator, interpolate_fun)
             
-            filename=f"{label_dir}/tdens_{file_label}.nii.gz"
-            save_as_nifti(tdens, affine, filename,shape=dimensions)
-            
-            filename=f"{label_dir}/pot_{file_label}.nii.gz"
-            save_as_nifti(pot, affine, filename,shape=dimensions)
+                filename=f"{label_dir}/pot_{file_label}.nii.gz"
+                save_as_nifti(pot, affine, filename, interpolator, interpolate_fun)
         
-            tdens2image = combination["map"]
-            if tdens2image['type'] == 'pm':
-                filename = f"{label_dir}/image_reconstruction_{file_label}.nii.gz"
-                save_as_nifti(niot_solver.reconstruction, affine, filename, shape=dimensions)
-                
+                if combination["map"]['type'] == 'pm':
+                    filename = f"{label_dir}/image_reconstruction_{file_label}.nii.gz"
+                    save_as_nifti(niot_solver.reconstruction, affine, filename, interpolator, interpolate_fun)
+            else:
+                h5_file = os.path.join(label_dir, f"solution_{file_label}.h5")
+                # if file exists, remove it
+                if os.path.exists(h5_file):
+                    if comm.rank == 0:
+                        os.remove(h5_file)
+                    comm.Barrier()
+
+                with CheckpointFile(h5_file, 'w',comm=comm) as afile:
+                    afile.save_function(tdens, "tdens")
+                    afile.save_function(pot, "pot")
+                    if combination["map"]['type'] == 'pm':
+                        afile.save_function(niot_solver.reconstruction, "image_reconstruction")
 
             save_intermediate = False
             if save_intermediate and combination["map"]["type"] != "identity":
                 for i, img in enumerate(niot_solver.tdens2image_map.intermediate_images):
                     filename = f"{label_dir}/image_intermediate_{file_label}_{i}.nii.gz"
-                    save_as_nifti(img, affine, filename, shape=dimensions)
+                    save_as_nifti(img, affine, filename, interpolator, interpolate_fun)
                 
                 
             

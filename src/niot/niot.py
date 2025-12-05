@@ -157,7 +157,7 @@ class SpaceDiscretization:
                  tdens_space='DG', 
                  tdens_deg=0, 
                  cell2face='harmonic_mean',
-                 h_mode="CellDiameter"
+                 h_mode="CellDiameter",
                  ):
         #tdens_fem='DG0',pot_fem='P1'):
         '''
@@ -2409,6 +2409,7 @@ class NiotSolver:
             mesh = afile.load_mesh('mesh')
             sol = afile.load_function(mesh, 'sol')
         return sol 
+    
     
     def save_function(self, func, filename):
         '''

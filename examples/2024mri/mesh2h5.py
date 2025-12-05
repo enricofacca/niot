@@ -4,7 +4,7 @@ import numpy as np
 from connected_components_tof import connected_components, main_network_equal_one
 import os
 from scipy.ndimage import gaussian_filter
-import pygalmesh
+#import pygalmesh
 from firedrake import *
 from niot import image2dat as i2d
 from mwe import MyRelabeledMesh
@@ -320,9 +320,31 @@ def setup(mri_directory,
                 main_network_mesh,
                 sink_support_mesh,
                 tof_smooth_mesh]
-
-
     
+    DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
+    interpolate_fun = Function(DG0, name="interpolate_fun")
+    DG0_cartesian = FunctionSpace(cartesian_mesh, "DG", 0)
+    interpolatator = interpolate(interpolate_fun, DG0_cartesian, allow_missing_dofs=True,  default_missing_val=0)
+
+    def transfer(interpolator, source_on_mesh):
+        PETSc.Sys.Print("Transferring function to cartesian mesh", end="")
+        start = time.time()
+        interpolate_fun.assign(source_mesh)    
+        transferred_fun_cartesian = assemble(interpolator)
+        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+        return transferred_fun_cartesian
+
+    for source_mesh in [tof_mesh,
+                        brain_mask_mesh,
+                        main_network_mesh,
+                        sink_support_mesh,
+                        skeleton_mesh,
+                        thickness_mesh]:
+        transferred_fun_cartesian = transfer(interpolatator, source_mesh)
+        
+    # Different points on each MPI rank to add to the vertex-only mesh
+    vom = VertexOnlyMesh(cartesian_mesh, points, redundant = False)
+
     
     if save_h5:
         n_proc = COMM_WORLD.size
