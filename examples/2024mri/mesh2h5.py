@@ -345,7 +345,7 @@ def setup(mri_directory,
                         skeleton_mesh,
                         thickness_mesh]:
         transfer(interpolatator, source_mesh, target_on_cartesian)
-        transferred_np = i2d.firedrake2numpy(transferred_fun_cartesian,fill=1e30)
+        transferred_np = i2d.firedrake2numpy(target_on_cartesian,fill=1e30)
         # Save to nii.gz
         outfilename = os.path.join(out_directory,f"proj_{source_mesh.name()}.nii.gz")
         nibabel.save(nibabel.Nifti1Image(transferred_np, affine), outfilename)
