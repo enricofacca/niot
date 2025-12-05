@@ -478,15 +478,14 @@ def experiment(args):
             affine = afile.get_attr("/info/", "affine")
             PETSc.Sys.Print(f" affine ")
             offset = afile.get_attr("/info/", "offset")
-            PETSc.Sys.Print(f" offeset")
+            PETSc.Sys.Print(f" offeet")
             voxel_size = afile.get_attr("/info/", "voxel_size")
             PETSc.Sys.Print(f" voxel_size ")
             dimensions = afile.get_attr("/info/", "dimensions")
             PETSc.Sys.Print(f" dimensions ")
-            
-            
             external_network = Function(main_network.function_space(), name="external_network")
             external_network.assign(0.0)
+            cartesian_mesh = i2d.cartesian_grid_3d(dimensions, lengths, offset=offset, comm=comm)
         
         PETSc.Sys.Print(f"Checkpoint loaded")
         PETSc.Sys.Print(f"**** Inputs loaded ****")
@@ -552,6 +551,7 @@ def experiment(args):
         "main_network": main_network, 
         "external_network": external_network,
         "mesh": mesh,
+        "cartesian_mesh": cartesian_mesh,
         "skeleton" : skeleton,
         "thickness": thickness,        
         "affine": affine,
