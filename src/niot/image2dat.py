@@ -61,7 +61,9 @@ def cartesian_grid_3d(shape_xyz,
                       offset=[0.0,0.0,0.0], 
                       comm=COMM_WORLD):
    nx,ny,nz = shape_xyz
-   mesh2d = RectangleMesh(nx,ny,lengths[0],lengths[1],
+   mesh2d = RectangleMesh(nx,ny,
+                          lengths[0],
+                          lengths[1],
                           originX=offset[0],
                            originY=offset[1],
                           quadrilateral=True,comm=comm)
