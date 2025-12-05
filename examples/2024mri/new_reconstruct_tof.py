@@ -1390,7 +1390,8 @@ def experiment(args):
             # save solution
             pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
             
-            if spaces == "DG0DG0":
+            save_as_h5 = False
+            if not save_as_h5:
                 filename=f"{label_dir}/tdens_{file_label}.nii.gz"
                 save_as_nifti(tdens, affine, filename, interpolator, interpolate_fun)
             

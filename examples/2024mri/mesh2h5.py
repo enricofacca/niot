@@ -343,10 +343,10 @@ def setup(mri_directory,
         transferred_fun_cartesian = transfer(interpolatator, source_mesh)
         
     # Different points on each MPI rank to add to the vertex-only mesh
-    points = cartesian_mesh.coordinates.dat.data.copy()
-    point_evaluator = PointEvaluator(mesh, points)
-    main_network_centers = point_evaluator.evaluate(main_network_mesh)
-    vom = VertexOnlyMesh(mesh, points, redundant = False)
+    #points = cartesian_mesh.coordinates.dat.data.copy()
+    #point_evaluator = PointEvaluator(mesh, points)
+    #main_network_centers = point_evaluator.evaluate(main_network_mesh)
+    #vom = VertexOnlyMesh(mesh, points, redundant = False)
 
     
     if save_h5:
