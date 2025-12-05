@@ -1409,6 +1409,7 @@ def experiment(args):
                     comm.Barrier()
 
                 with CheckpointFile(h5_file, 'w',comm=comm) as afile:
+                    afile.save_mesh(mesh, "mesh")
                     afile.save_function(tdens, "tdens")
                     afile.save_function(pot, "pot")
                     if combination["map"]['type'] == 'pm':
