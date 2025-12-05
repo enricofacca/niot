@@ -590,7 +590,7 @@ def firedrake2numpy(function, shape_np=None, fill=0.0):
 
    return global_data
 
-def firedrake2numpy(function, shape_np, lengths_np=None, offset_np=None, fill=0.0):
+def anyfiredrake2numpy(function, shape_np, lengths_np=None, offset_np=None, fill=0.0):
    """
    Convert DG0firedrake function to numpy array (2d or 3d).
    It works only for meshes genereted with RectangleMesh or BoxMesh.
