@@ -1404,9 +1404,10 @@ def experiment(args):
                 h5_file = os.path.join(label_dir, f"solution_{file_label}.h5")
                 # if file exists, remove it
                 if os.path.exists(h5_file):
-                    if comm.rank == 0:
+                    try:
                         os.remove(h5_file)
-                    comm.Barrier()
+                    except:
+                        pass
 
                 with CheckpointFile(h5_file, 'w',comm=comm) as afile:
                     tic = time.time()
