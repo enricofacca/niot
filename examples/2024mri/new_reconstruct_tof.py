@@ -74,7 +74,7 @@ def save_as_nifti(function, affine, filename, shape=None):
                                                 lengths=lengths,
                                                 comm=function.function_space().mesh().comm)
         DG0_cartesian = FunctionSpace(cartesian_mesh, "DG", 0)
-        function_cartesian = Function(DG0_cartesian, name=function.name+"_cartesian")
+        function_cartesian = Function(DG0_cartesian, name=function.name()+"_cartesian")
         function_cartesian.interpolate(function)
         return
     else:
