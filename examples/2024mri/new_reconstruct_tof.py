@@ -1409,7 +1409,10 @@ def experiment(args):
                     comm.Barrier()
 
                 with CheckpointFile(h5_file, 'w',comm=comm) as afile:
+                    tic = time.time()
                     afile.save_function(tdens)
+                    cpu = time.time() - tic
+                    PETSc.Sys.Print(f"color {color_rank} - Saved tdens cpu {cpu:.1f} s - {label}",comm=comm)
                     afile.save_function(pot)
                     if combination["map"]['type'] == 'pm':
                         afile.save_function(niot_solver.reconstruction)
