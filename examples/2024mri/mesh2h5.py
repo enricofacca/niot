@@ -347,7 +347,7 @@ def setup(mri_directory,
         transferred_fun_cartesian = transfer(interpolatator, source_mesh)
         transferred_np = i2d.firedrake2numpy(transferred_fun_cartesian,fill=1e30)
         # Save to nii.gz
-        outfilename = os.path.join(out_directory,f"proj_{source_mesh.name}.nii.gz")
+        outfilename = os.path.join(out_directory,f"proj_{source_mesh.name()}.nii.gz")
         nibabel.save(nibabel.Nifti1Image(transferred_np, affine), outfilename)
         
     # Different points on each MPI rank to add to the vertex-only mesh
