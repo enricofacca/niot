@@ -328,23 +328,23 @@ def setup(mri_directory,
     DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
     interpolate_fun = Function(DG0, name="interpolate_fun")
     DG0_cartesian = FunctionSpace(cartesian_mesh, "DG", 0)
-    interpolatator = interpolate(interpolate_fun, DG0_cartesian, allow_missing_dofs=True,  default_missing_val=0)
+    target_on_cartesian = Function(DG0_cartesian, name="target_on_cartesian")
+    interpolatator = interpolate(interpolate_fun, DG0_cartesian, allow_missing_dofs=True,  default_missing_val=1e30)
 
-    def transfer(interpolator, source_on_mesh):
+    def transfer(interpolator, source_on_mesh, target_on_cartesian):
         PETSc.Sys.Print("Transferring function to cartesian mesh", end="")
         start = time.time()
         interpolate_fun.assign(source_on_mesh)    
-        transferred_fun_cartesian = assemble(interpolator)
+        assemble(interpolator, tensor=target_on_cartesian)
         PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
-        return transferred_fun_cartesian
-
+        
     for source_mesh in [tof_mesh,
                         brain_mask_mesh,
                         main_network_mesh,
                         sink_support_mesh,
                         skeleton_mesh,
                         thickness_mesh]:
-        transferred_fun_cartesian = transfer(interpolatator, source_mesh)
+        transfer(interpolatator, source_mesh, target_on_cartesian)
         transferred_np = i2d.firedrake2numpy(transferred_fun_cartesian,fill=1e30)
         # Save to nii.gz
         outfilename = os.path.join(out_directory,f"proj_{source_mesh.name()}.nii.gz")
