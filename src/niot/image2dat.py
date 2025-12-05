@@ -57,21 +57,28 @@ def bounding_box(mesh):
    return np.array(global_lower), np.array(global_upper)
 
 def cartesian_grid_3d(shape_xyz, 
-                      lengths=[1.0,1.0,1.0], 
+                      lengths=[1.0,1.0,1.0],
+                      offset=[0.0,0.0,0.0], 
                       comm=COMM_WORLD):
    nx,ny,nz = shape_xyz
-   mesh2d = RectangleMesh(nx,ny,lengths[0],lengths[1],quadrilateral=True,comm=comm)
+   mesh2d = RectangleMesh(nx,ny,lengths[0],lengths[1],
+                          originX=offset[0],
+                           originY=offset[1],
+                          quadrilateral=True,comm=comm)
    mesh = ExtrudedMesh(mesh2d,nz,lengths[2]/nz)
+   if offset[2] != 0.0:
+      mesh.coordinates.dat.data[:,2] += offset[2]
+   
    mesh.nx = nx
    mesh.ny = ny
    mesh.nz = nz
 
-   mesh.xmin = 0
-   mesh.xmax = lengths[0]
-   mesh.ymin = 0
-   mesh.ymax = lengths[1] 
-   mesh.zmin = 0
-   mesh.zmax = lengths[2]
+   mesh.xmin = offset[0]
+   mesh.xmax = offset[0] + lengths[0]
+   mesh.ymin = offset[1]
+   mesh.ymax = offset[1] + lengths[1] 
+   mesh.zmin = offset[2]
+   mesh.zmax = offset[2] + lengths[2]
 
    mesh.hx = lengths[0]/nx
    mesh.hy = lengths[1]/ny

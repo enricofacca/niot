@@ -1322,26 +1322,26 @@ def experiment(args):
         save_inputs = combination.get("save_inputs", 0) == 1
         if save_inputs:
             filename = f"{label_dir}/corrupted.nii.gz"
-            save_as_nifti(corrupted, affine, filename)
+            save_as_nifti(corrupted, affine, filename, shape=dimensions)
 
             filename = f"{label_dir}/sink.nii.gz"
-            save_as_nifti(sink, affine, filename)
+            save_as_nifti(sink, affine, filename, shape=dimensions)
 
             if combination["initial"] != "one":
                 filename = f"{label_dir}/initial.nii.gz"
-                save_as_nifti(initial, affine, filename)
+                save_as_nifti(initial, affine, filename, shape=dimensions)
 
 
             if combination["confidence"] != "one":
                 filename = f"{label_dir}/confidence.nii.gz"
-                save_as_nifti(confidence, affine, filename)
+                save_as_nifti(confidence, affine, filename, shape=dimensions)
 
             if combination["kappa"] != "one":
                 filename = f"{label_dir}/kappa.nii.gz"
-                save_as_nifti(kappa, affine, filename)
+                save_as_nifti(kappa, affine, filename, shape=dimensions)
             
             filaname = f"{label_dir}/main_network.nii.gz"
-            save_as_nifti(main_network, affine, filaname)
+            save_as_nifti(main_network, affine, filaname, shape=dimensions)
         
         
         #
@@ -1375,22 +1375,22 @@ def experiment(args):
             
             
             filename=f"{label_dir}/tdens_{file_label}.nii.gz"
-            save_as_nifti(tdens, affine, filename)
+            save_as_nifti(tdens, affine, filename,shape=dimensions)
             
             filename=f"{label_dir}/pot_{file_label}.nii.gz"
-            save_as_nifti(pot, affine, filename)
+            save_as_nifti(pot, affine, filename,shape=dimensions)
         
             tdens2image = combination["map"]
             if tdens2image['type'] == 'pm':
                 filename = f"{label_dir}/image_reconstruction_{file_label}.nii.gz"
-                save_as_nifti(niot_solver.reconstruction, affine, filename)
+                save_as_nifti(niot_solver.reconstruction, affine, filename, shape=dimensions)
                 
 
             save_intermediate = False
             if save_intermediate and combination["map"]["type"] != "identity":
                 for i, img in enumerate(niot_solver.tdens2image_map.intermediate_images):
                     filename = f"{label_dir}/image_intermediate_{file_label}_{i}.nii.gz"
-                    save_as_nifti(img, affine, filename)
+                    save_as_nifti(img, affine, filename, shape=dimensions)
                 
                 
             
