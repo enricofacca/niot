@@ -333,7 +333,7 @@ def setup(mri_directory,
     def transfer(interpolator, source_on_mesh):
         PETSc.Sys.Print("Transferring function to cartesian mesh", end="")
         start = time.time()
-        interpolate_fun.assign(source_mesh)    
+        interpolate_fun.assign(source_on_mesh)    
         transferred_fun_cartesian = assemble(interpolator)
         PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
         return transferred_fun_cartesian
