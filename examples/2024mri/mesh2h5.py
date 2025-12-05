@@ -321,6 +321,10 @@ def setup(mri_directory,
                 sink_support_mesh,
                 tof_smooth_mesh]
     
+
+    lower, upper = bounding_box(relabeled_mesh)
+    lengths = upper - lower
+    cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths, offset=lower)
     DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
     interpolate_fun = Function(DG0, name="interpolate_fun")
     DG0_cartesian = FunctionSpace(cartesian_mesh, "DG", 0)
@@ -341,6 +345,10 @@ def setup(mri_directory,
                         skeleton_mesh,
                         thickness_mesh]:
         transferred_fun_cartesian = transfer(interpolatator, source_mesh)
+        transferred_np = i2d.firedrake2numpy(transferred_fun_cartesian)
+        # Save to nii.gz
+        outfilename = os.path.join(out_directory,f"proj_{source_mesh.name}.nii.gz")
+        nibabel.save(nibabel.Nifti1Image(transferred_np, affine), outfilename)
         
     # Different points on each MPI rank to add to the vertex-only mesh
     #points = cartesian_mesh.coordinates.dat.data.copy()
