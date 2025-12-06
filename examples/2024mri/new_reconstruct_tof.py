@@ -1404,11 +1404,14 @@ def experiment(args):
             else:
                 h5_file = os.path.join(label_dir, f"solution_{file_label}.h5")
                 # if file exists, remove it
+                PETSc.Sys.Print(f"Start h5 - {label}",comm=comm)
                 with CheckpointFile(h5_file, 'w',comm=comm) as afile:
                     tic = time.time()
+                    PETSc.Sys.Print(f"Start tdens - {label}",comm=comm)
                     afile.save_function(tdens)
                     cpu = time.time() - tic
                     PETSc.Sys.Print(f"color {color_rank} - Saved tdens cpu {cpu:.1f} s - {label}",comm=comm)
+                    PETSc.Sys.Print(f"Start pot - {label}",comm=comm)
                     afile.save_function(pot)
                     if combination["map"]['type'] == 'pm':
                         afile.save_function(niot_solver.reconstruction)
