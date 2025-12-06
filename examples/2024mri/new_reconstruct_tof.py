@@ -75,10 +75,19 @@ def save_as_nifti(function, affine, filename, interpolator=None, interpolate_fun
     mesh = function.function_space().mesh()
     # We need to interpolate to a cartesian grid
     if mesh.ufl_cell().is_simplex():
+        name = function.name()
+        start = time.time()
+        PETSc.Sys.Print(f"interpolating {name}",end="")
         function_cartesian = transfer_to_cartesian(function, interpolator, interpolate_fun)
+        PETSc.Sys.Print(f" - done{time.time()-start}")
     else:
         function_cartesian = function
+    start = time.time()
+    PETSc.Sys.Print(f"interpolating to numpy {name}",end="")
     function_np = i2d.firedrake2numpy(function_cartesian)
+    PETSc.Sys.Print(f" - done{time.time()-start}")
+        
+    
     nibabel.save(nibabel.Nifti1Image(function_np, affine), filename)
     function_np = None
     gc.collect()
@@ -1386,11 +1395,13 @@ def experiment(args):
             n_iter = niot_solver.ctrl_get('max_iter')
             # solve
             ierr = niot_solver.solve()
+            PETSc.Sys.Print(f"Solved done")
 
             # save solution
             pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
-            
-            save_as_h5 = False
+            PETSc.Sys.Print(f"extract otp solution")
+
+            save_as_h5 = True
             if not save_as_h5:
                 filename=f"{label_dir}/tdens_{file_label}.nii.gz"
                 save_as_nifti(tdens, affine, filename, interpolator, interpolate_fun)
