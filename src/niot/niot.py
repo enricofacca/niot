@@ -696,7 +696,7 @@ class NiotSolver:
         petsc_controls ={
             #"snes_monitor": None,
             # krylov solver controls
-            'ksp_type': 'cg',
+            'ksp_type': 'minres',
             'pc_type': 'hypre',
             'ksp_atol': 1e-16,
             'ksp_rtol': self.ctrl_get('constraint_tol'),
@@ -711,7 +711,7 @@ class NiotSolver:
                             # tuning parameters for the multigrid
                             # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
                             "pc_hypre_type": "boomeramg",
-                            "pc_hypre_boomeramg_strong_threshold": 0.75,
+                            "pc_hypre_boomeramg_strong_threshold": 0.7,#0.75,
                             "pc_hypre_boomeramg_max_iter": 1,
                             "pc_hypre_boomeramg_agg_nl": 3,
                             "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
