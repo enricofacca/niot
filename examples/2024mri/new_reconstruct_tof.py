@@ -1431,6 +1431,17 @@ def experiment(args):
                     afile.save_function(pot)
                     if combination["map"]['type'] == 'pm':
                         afile.save_function(niot_solver.reconstruction)
+                    PETSc.Sys.Print(f" Include info ")
+                    afile.require_group("/info/")
+                    afile.set_attr("/info/", "affine", affine)
+                    PETSc.Sys.Print(f" affine ")
+                    afile.set_attr("/info/", "offset", offset)
+                    PETSc.Sys.Print(f" offeset")
+                    afile.set_attr("/info/", "voxel_size", voxel_size)
+                    PETSc.Sys.Print(f" voxel_size ")
+                    afile.set_attr("/info/", "dimensions", dimensions)
+                    PETSc.Sys.Print(f" dimensions ")
+                    PETSc.Sys.Print(f" - done")
 
             save_intermediate = False
             if save_intermediate and combination["map"]["type"] != "identity":
