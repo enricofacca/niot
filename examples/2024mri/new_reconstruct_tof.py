@@ -1169,7 +1169,7 @@ def experiment(args):
             strong_Dirichlet = None
         elif spaces == "CG1DG0" or spaces == "CR1DG0":
             weak_Dirichlet = None
-            strong_Dirichlet = [(0.0, 99)]
+            strong_Dirichlet = [(99, 0.0)]
         
         
         btp = ot.BranchedTransportProblem(source, sink, 
@@ -1448,6 +1448,8 @@ def experiment(args):
                 for i, img in enumerate(niot_solver.tdens2image_map.intermediate_images):
                     filename = f"{label_dir}/image_intermediate_{file_label}_{i}.nii.gz"
                     save_as_nifti(img, affine, filename, interpolator, interpolate_fun)
+
+            return ierr
                 
                 
             
@@ -1464,9 +1466,9 @@ def experiment(args):
         for i in range(total_iterations//buffer_saving):
             interval = [i*buffer_saving,(i+1)*buffer_saving]
             tic = time.time()
-            solve_and_save(niot_solver, label_dir, i+1)
+            ierr = solve_and_save(niot_solver, label_dir, i+1)
             cpu = time.time() - tic
-            if niot_solver.ierr != 0:
+            if ierr != 0:
                 PETSc.Sys.Print(f"color {color_rank} - Stopping at {interval[0]} iterations - {label}",comm=comm)
                 break
             PETSc.Sys.Print(f"color {color_rank} - Done {interval[1]/total_iterations*100:.1f}% of {total_iterations}- avg cpu {cpu/buffer_saving:.1f} s - {label}",comm=comm)
