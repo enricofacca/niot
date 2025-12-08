@@ -1267,6 +1267,9 @@ def experiment(args):
         niot_solver.ctrl_set('discrepancy_weight', wd)
         niot_solver.ctrl_set('regularization_weight', 0.0)
         
+        niot_solver.ctrl_set("min_tdens", 1e-7)
+
+
         tdens2image = combination["map"]
         niot_solver.ctrl_set(['tdens2image'], tdens2image)
 
