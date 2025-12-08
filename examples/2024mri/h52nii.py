@@ -77,7 +77,7 @@ def h52nii(h5_file, di_name="./"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert HDF5 mesh and functions to NIfTI format.")
     parser.add_argument("--h5", type=str, help="Path to the input HDF5 file.")
-    parser.add_argument("--outdir", type=str, default="./", help="Directory to save the output NIfTI files.")
+    parser.add_argument("--out", type=str, default="./", help="Directory to save the output NIfTI files.")
     args = parser.parse_args()
 
-    h52nii(args.h5_file, args.output_dir)
+    h52nii(args.h5, args.out)
