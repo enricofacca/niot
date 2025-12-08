@@ -34,7 +34,7 @@ def h52nii(h5_file, di_name="./"):
 
     # create cartesian mesh for interpolation
     cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,
-                                            lengths=lengths,
+                                            lengths=lenghts,
                                             offset=offset)
 
     DG0_cartesian = FunctionSpace(cartesian_mesh, "DG", 0)
