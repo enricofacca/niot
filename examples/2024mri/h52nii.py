@@ -31,41 +31,73 @@ class Firedrake2NumpyConverter:
             self.global_data = None
 
 
-        if comm.rank == 0:
-            nx, ny, nz = dimensions
-            print("dimensions", dimensions)
-            hx, hy, hz = voxel_size
-            x = np.linspace(offset[0]+hx/2.0, offset[0]+lenghts[0]-hx/2.0, nx)
-            y = np.linspace(offset[1]+hy/2.0, offset[1]+lenghts[1]-hy/2.0, ny)
-            z = np.linspace(offset[2]+hy/2.0, offset[2]+lenghts[2]-hz/2.0, nz)
-            xv, yv, zv = np.meshgrid(x, y, z, indexing='ij')            
-            print("xv shape", xv.shape)
-            print("yv shape", yv.shape)
-            print("zv shape", zv.shape)
+        one_processor_points = False
+        if one_processor_points:
 
-            
 
-            if mask is not None:
-                i,j,k = np.where(mask>0)
-                xv = xv[i,j,k]
-                yv = yv[i,j,k]
-                zv = zv[i,j,k]
-            points = np.vstack([xv.ravel(), yv.ravel(), zv.ravel()]).T
+            if comm.rank == 0:
+                nx, ny, nz = dimensions
+                print("dimensions", dimensions)
+                hx, hy, hz = voxel_size
+                x = np.linspace(offset[0]+hx/2.0, offset[0]+lenghts[0]-hx/2.0, nx)
+                y = np.linspace(offset[1]+hy/2.0, offset[1]+lenghts[1]-hy/2.0, ny)
+                z = np.linspace(offset[2]+hy/2.0, offset[2]+lenghts[2]-hz/2.0, nz)
+                xv, yv, zv = np.meshgrid(x, y, z, indexing='ij')            
+                print("xv shape", xv.shape)
+                print("yv shape", yv.shape)
+                print("zv shape", zv.shape)
+
+                
+
+                if mask is not None:
+                    i,j,k = np.where(mask>0)
+                    xv = xv[i,j,k]
+                    yv = yv[i,j,k]
+                    zv = zv[i,j,k]
+                points = np.vstack([xv.ravel(), yv.ravel(), zv.ravel()]).T
+            else:
+                points = np.zeros((0, 3), dtype=np.float64)
+
+            # create the vertex-only mesh for f evaluation
+            # vertices outside the mesh are ignored
+            start = time()
+            PETSc.Sys.Print(f" Creating vom",end="")
+            self.vom = VertexOnlyMesh(mesh, points, redundant=True, missing_points_behaviour="ignore")
+            PETSc.Sys.Print(f" created vom in {time()-start:.2f} seconds")
+
         else:
-            points = np.zeros((0, 3), dtype=np.float64)
+            local_lower = mesh.coordinates.dat.data.min(axis=0)
+            local_upper = mesh.coordinates.dat.data.max(axis=0)
 
-        # create the vertex-only mesh for f evaluation
-        # vertices outside the mesh are ignored
-        start = time()
-        PETSc.Sys.Print(f" Creating vom",end="")
-        self.vom = VertexOnlyMesh(mesh, points, redundant=True, missing_points_behaviour="ignore")
-        PETSc.Sys.Print(f" created vom in {time()-start:.2f} seconds")
+            lower_indices = np.fix((local_lower - offset) / voxel_size).astype(int)
+            upper_indices = np.fix((local_upper - offset) / voxel_size).astype(int)
+
+            local_mask = mask[
+                lower_indices[0]:upper_indices[0],
+                lower_indices[1]:upper_indices[1],
+                lower_indices[2]:upper_indices[2]]
+            i,j,k = np.where(local_mask>0)
+            x = offset[0] + (i + 0.5) * voxel_size[0]
+            y = offset[1] + (j + 0.5) * voxel_size[1]
+            z = offset[2] + (k + 0.5) * voxel_size[2]
+            points = np.vstack([x, y, z]).T
+            print("rank", mesh.comm.rank, " number of points ", points.shape[0])
+
+
+            # create the vertex-only mesh for f evaluation
+            start = time()
+            PETSc.Sys.Print(f" Creating vom",end="")
+            self.vom = VertexOnlyMesh(mesh, points, redundant=False, missing_points_behaviour="ignore")
+            PETSc.Sys.Print(f" created vom in {time()-start:.2f} seconds")
 
         start = time()
         PETSc.Sys.Print(f"Creating interpolating function on vom",end="")
         P0DG = FunctionSpace(self.vom, "DG", 0)
         self.f_at_input_points = Function(P0DG, name=f"f_at_point")
         PETSc.Sys.Print(f" -done in {time()-start:.2f} seconds")
+
+
+
 
 
         # get the coordinates of the saved points and the corresponding indices
@@ -153,13 +185,13 @@ def h52nii(h5_file, di_name="./", mask_file=""):
     # We interpolate the other way this time
     #f_at_input_points.interpolate(f_at_points)
     if mask_file!="":
-        if comm.rank == 0:
-            PETSc.Sys.Print(f" Loading mask from {mask_file}")
-            mask_nii = nibabel.load(mask_file)
-            mask_np = mask_nii.get_fdata().astype(np.int8)
-            print("mask shape", mask_np.shape)
-        else:
-            mask_np = None
+        #if comm.rank == 0:
+        PETSc.Sys.Print(f" Loading mask from {mask_file}")
+        mask_nii = nibabel.load(mask_file)
+        mask_np = mask_nii.get_fdata().astype(np.int8)
+        print("mask shape", mask_np.shape)
+        #else:
+        #    mask_np = None
 
 
     start = time()
