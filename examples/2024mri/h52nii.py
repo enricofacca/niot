@@ -15,7 +15,7 @@ comm = COMM_WORLD
 funs = []
 
 class Firedrake2NumpyConverter:
-    def __init__(self, mesh, dimensions, voxel_size, offset=[0.0,0.0,0.0]):
+    def __init__(self, mesh, dimensions, voxel_size, offset=[0.0,0.0,0.0],mask=None):
         self.mesh = mesh
         self.dimensions = dimensions
         self.voxel_size = voxel_size
@@ -33,11 +33,23 @@ class Firedrake2NumpyConverter:
 
         if comm.rank == 0:
             nx, ny, nz = dimensions
+            print("dimensions", dimensions)
             hx, hy, hz = voxel_size
             x = np.linspace(offset[0]+hx/2.0, offset[0]+lenghts[0]-hx/2.0, nx)
             y = np.linspace(offset[1]+hy/2.0, offset[1]+lenghts[1]-hy/2.0, ny)
             z = np.linspace(offset[2]+hy/2.0, offset[2]+lenghts[2]-hz/2.0, nz)
-            xv, yv, zv = np.meshgrid(x, y, z)
+            xv, yv, zv = np.meshgrid(x, y, z, indexing='ij')            
+            print("xv shape", xv.shape)
+            print("yv shape", yv.shape)
+            print("zv shape", zv.shape)
+
+            
+
+            if mask is not None:
+                i,j,k = np.where(mask>0)
+                xv = xv[i,j,k]
+                yv = yv[i,j,k]
+                zv = zv[i,j,k]
             points = np.vstack([xv.ravel(), yv.ravel(), zv.ravel()]).T
         else:
             points = np.zeros((0, 3), dtype=np.float64)
@@ -94,7 +106,7 @@ class Firedrake2NumpyConverter:
         return self.global_data
 
 
-def h52nii(h5_file, di_name="./"):
+def h52nii(h5_file, di_name="./", mask_file=""):
     # Load the mesh from the HDF5 file
     with CheckpointFile(h5_file, 'r',comm=comm) as afile:
         # get mesh 
@@ -140,10 +152,19 @@ def h52nii(h5_file, di_name="./"):
 
     # We interpolate the other way this time
     #f_at_input_points.interpolate(f_at_points)
+    if mask_file!="":
+        if comm.rank == 0:
+            PETSc.Sys.Print(f" Loading mask from {mask_file}")
+            mask_nii = nibabel.load(mask_file)
+            mask_np = mask_nii.get_fdata().astype(np.int8)
+            print("mask shape", mask_np.shape)
+        else:
+            mask_np = None
+
 
     start = time()
     PETSc.Sys.Print(f" Creating Firedrake2NumpyConverter",end="")
-    converter = Firedrake2NumpyConverter(mesh, dimensions, voxel_size, offset)
+    converter = Firedrake2NumpyConverter(mesh, dimensions, voxel_size, offset,mask=mask_np)
     PETSc.Sys.Print(f" Created Firedrake2NumpyConverter in {time()-start:.2f} seconds")
 
 
@@ -307,7 +328,8 @@ def h52nii(h5_file, di_name="./"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert HDF5 mesh and functions to NIfTI format.")
     parser.add_argument("--h5", type=str, help="Path to the input HDF5 file.")    
+    parser.add_argument("--mask", type=str, default="", help="Path to the nii .")    
     parser.add_argument("--out", type=str, default="./", help="Directory to save the output NIfTI files.")
     args = parser.parse_args()
 
-    h52nii(args.h5, args.out)
+    h52nii(args.h5, args.out, args.mask)
