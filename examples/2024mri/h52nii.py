@@ -136,40 +136,40 @@ def h52nii(h5_file, di_name="./"):
 
     converter = Firedrake2NumpyConverter(mesh, dimensions, voxel_size, offset)
     
-    if comm.rank == 0:
-        nx, ny, nz = dimensions
-        hx, hy, hz = voxel_size
-        x = np.linspace(offset[0]+hx/2.0, offset[0]+lenghts[0]-hx/2.0, nx)
-        y = np.linspace(offset[1]+hy/2.0, offset[1]+lenghts[1]-hy/2.0, ny)
-        z = np.linspace(offset[2]+hy/2.0, offset[2]+lenghts[2]-hz/2.0, nz)
-        xv, yv, zv = np.meshgrid(x, y, z)
-        points = np.vstack([xv.ravel(), yv.ravel(), zv.ravel()]).T
-    else:
-        points = np.zeros((0, 3), dtype=np.float64)
+    # if comm.rank == 0:
+    #     nx, ny, nz = dimensions
+    #     hx, hy, hz = voxel_size
+    #     x = np.linspace(offset[0]+hx/2.0, offset[0]+lenghts[0]-hx/2.0, nx)
+    #     y = np.linspace(offset[1]+hy/2.0, offset[1]+lenghts[1]-hy/2.0, ny)
+    #     z = np.linspace(offset[2]+hy/2.0, offset[2]+lenghts[2]-hz/2.0, nz)
+    #     xv, yv, zv = np.meshgrid(x, y, z)
+    #     points = np.vstack([xv.ravel(), yv.ravel(), zv.ravel()]).T
+    # else:
+    #     points = np.zeros((0, 3), dtype=np.float64)
 
-    # create the vertex-only mesh for f evaluation    
-    vom = VertexOnlyMesh(mesh, points, redundant=True, missing_points_behaviour="ignore")
-    P0DG = FunctionSpace(vom, "DG", 0)
-    f_at_input_points = Function(P0DG, name=f"f_at_point")
+    # # create the vertex-only mesh for f evaluation    
+    # vom = VertexOnlyMesh(mesh, points, redundant=True, missing_points_behaviour="ignore")
+    # P0DG = FunctionSpace(vom, "DG", 0)
+    # f_at_input_points = Function(P0DG, name=f"f_at_point")
 
-    coords = vom.coordinates.dat.data
-    print("rank",comm.rank, "shape", coords.shape)
+    # coords = vom.coordinates.dat.data
+    # print("rank",comm.rank, "shape", coords.shape)
 
     
 
-    def coord2index(x, y, z):
-        ix = np.fix((x - offset[0]) / voxel_size[0]).astype(int)
-        iy = np.fix((y - offset[1]) / voxel_size[1]).astype(int)    
-        iz = np.fix((z - offset[2]) / voxel_size[2]).astype(int)
-        return ix, iy, iz
+    # def coord2index(x, y, z):
+    #     ix = np.fix((x - offset[0]) / voxel_size[0]).astype(int)
+    #     iy = np.fix((y - offset[1]) / voxel_size[1]).astype(int)    
+    #     iz = np.fix((z - offset[2]) / voxel_size[2]).astype(int)
+    #     return ix, iy, iz
     
-    ix, iy, iz = coord2index(coords[:,0], coords[:,1], coords[:,2])
+    # ix, iy, iz = coord2index(coords[:,0], coords[:,1], coords[:,2])
     
-    for j in range(comm.size):
-        if comm.rank == j:
-            for i in range(2):  
-                print("rank", comm.rank, " point ", coords[i,:]," index ", ix[i], iy[i], iz[i])
-        comm.barrier()
+    # for j in range(comm.size):
+    #     if comm.rank == j:
+    #         for i in range(2):  
+    #             print("rank", comm.rank, " point ", coords[i,:]," index ", ix[i], iy[i], iz[i])
+    #     comm.barrier()
 
 
     # Create a P0DG function on the input ordering vertex-only mesh
@@ -190,18 +190,18 @@ def h52nii(h5_file, di_name="./"):
     # f_at_points = assemble(interpolate(f, P0DG))
 
 
-    function_np = np.zeros((dimensions[0], dimensions[1], dimensions[2]))
-    function_np[:] = -1e30
+    # function_np = np.zeros((dimensions[0], dimensions[1], dimensions[2]))
+    # function_np[:] = -1e30
     
-    # the 'totals' array will hold the sum of each 'data' array
-    if comm.rank==0:
-        # only processor 0 will actually get the data
-        global_data = np.zeros_like(function_np)
-    else:
-        global_data = None
+    # # the 'totals' array will hold the sum of each 'data' array
+    # if comm.rank==0:
+    #     # only processor 0 will actually get the data
+    #     global_data = np.zeros_like(function_np)
+    # else:
+    #     global_data = None
                            
 
-    funs = []
+    # funs = []
     with CheckpointFile(h5_file, 'r',comm=mesh.comm) as afile:
         # get all functions in the file
         scalar_functions_name = afile._get_function_name_function_space_name_map(afile._get_mesh_name_topology_name_map()[mesh.name], mesh.name)
@@ -232,39 +232,39 @@ def h52nii(h5_file, di_name="./"):
 
 
     
-    #for fun in funs:
+        #for fun in funs:
         #print(f_at_input_points.dat.data_ro)
         #print(dir(P0DG))
         # We interpolate the other way this time
         #f_at_input_points.interpolate(f_at_points)
 
 
-        f_at_input_points.dat.data_wo[:] = -1e30 
-        start = time()
-        PETSc.Sys.Print(f" Interpolation {fun.name()} to input points",end="")
-        f_at_input_points.interpolate(fun)
-        PETSc.Sys.Print(f" - done in {time()-start:.2f} seconds")
-        print("rank", comm.rank, " after interpolation ", f_at_input_points.dat.data_ro.max())
+        # f_at_input_points.dat.data_wo[:] = -1e30 
+        # start = time()
+        # PETSc.Sys.Print(f" Interpolation {fun.name()} to input points",end="")
+        # f_at_input_points.interpolate(fun)
+        # PETSc.Sys.Print(f" - done in {time()-start:.2f} seconds")
+        # print("rank", comm.rank, " after interpolation ", f_at_input_points.dat.data_ro.max())
 
 
-        start = time()
-        function_np[ix, iy, iz] = f_at_input_points.dat.data_ro
-        PETSc.Sys.Print(f" assigned numpy array for {fun.name() } in {time()-start:.2f} seconds")
-        print("rank", comm.rank, " after assignment ", function_np.max())
+        # start = time()
+        # function_np[ix, iy, iz] = f_at_input_points.dat.data_ro
+        # PETSc.Sys.Print(f" assigned numpy array for {fun.name() } in {time()-start:.2f} seconds")
+        # print("rank", comm.rank, " after assignment ", function_np.max())
 
 
-        start = time()
-        PETSc.Sys.Print(f" Creating numpy array for {fun.name() }",end="")
-        with temp_internal_comm(mesh.comm) as icomm:
-            #global_data = icomm.allreduce(function_np, op=MPI.MAX)#, root=0)
+        # start = time()
+        # PETSc.Sys.Print(f" Creating numpy array for {fun.name() }",end="")
+        # with temp_internal_comm(mesh.comm) as icomm:
+        #     #global_data = icomm.allreduce(function_np, op=MPI.MAX)#, root=0)
              
-            icomm.Reduce(
-                [function_np, MPI.DOUBLE],
-                [global_data, MPI.DOUBLE],
-                op = MPI.MAX,
-            root = 0
-             )
-        PETSc.Sys.Print(f" created numpy array for {fun.name() } in {time()-start:.2f} seconds")
+        #     icomm.Reduce(
+        #         [function_np, MPI.DOUBLE],
+        #         [global_data, MPI.DOUBLE],
+        #         op = MPI.MAX,
+        #     root = 0
+        #      )
+        # PETSc.Sys.Print(f" created numpy array for {fun.name() } in {time()-start:.2f} seconds")
         
         global_data = converter.convert(fun)
 
