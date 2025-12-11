@@ -15,7 +15,7 @@ comm = COMM_WORLD
 funs = []
 
 class Firedrake2NumpyConverter:
-    def init(self, mesh, dimensions, voxel_size, offset=[0.0,0.0,0.0]):
+    def __init__(self, mesh, dimensions, voxel_size, offset=[0.0,0.0,0.0]):
         self.mesh = mesh
         self.dimensions = dimensions
         self.voxel_size = voxel_size
@@ -84,10 +84,6 @@ class Firedrake2NumpyConverter:
         PETSc.Sys.Print(f" created numpy array for {fun.name() } in {time()-start:.2f} seconds")
         
         return self.global_data
-
-
-
-def build_function2numpy_converter(mesh, fun, dimensions, voxel_size, offset):
 
 
 def h52nii(h5_file, di_name="./"):
