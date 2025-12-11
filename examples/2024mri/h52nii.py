@@ -44,17 +44,25 @@ class Firedrake2NumpyConverter:
 
         # create the vertex-only mesh for f evaluation
         # vertices outside the mesh are ignored
+        start = time()
+        PETSc.Sys.Print(f" Creating vom",end="")
         self.vom = VertexOnlyMesh(mesh, points, redundant=True, missing_points_behaviour="ignore")
+        PETSc.Sys.Print(f" created vom in {time()-start:.2f} seconds")
+
+        start = time()
+        PETSc.Sys.Print(f"Creating interpolating function on vom",end="")
         P0DG = FunctionSpace(self.vom, "DG", 0)
         self.f_at_input_points = Function(P0DG, name=f"f_at_point")
+        PETSc.Sys.Print(f" -done in {time()-start:.2f} seconds")
 
 
         # get the coordinates of the saved points and the corresponding indices
+        start = time()
         coords = self.vom.coordinates.dat.data
         self.ix = np.fix((coords[:,0] - offset[0]) / voxel_size[0]).astype(int)
         self.iy = np.fix((coords[:,1] - offset[1]) / voxel_size[1]).astype(int)    
         self.iz = np.fix((coords[:,2] - offset[2]) / voxel_size[2]).astype(int)
-        
+        PETSc.Sys.Print(f" computed indices in {time()-start:.2f} seconds")
         
     def convert(self, fun):
         self.function_np[:] = -1e30
@@ -103,20 +111,19 @@ def h52nii(h5_file, di_name="./"):
         PETSc.Sys.Print(f" voxel_size ")
         dimensions = afile.get_attr("/info/", "dimensions")
         PETSc.Sys.Print(f" dimensions ")
-        lenghts = voxel_size*dimensions
+        
 
+    # # create cartesian mesh for interpolation
+    # cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,
+    #                                         lengths=lenghts,
+    #                                         offset=offset)
 
-    # create cartesian mesh for interpolation
-    cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,
-                                            lengths=lenghts,
-                                            offset=offset)
-
-    DG0_cartesian = FunctionSpace(cartesian_mesh, "DG", 0)
-    DG0 = FunctionSpace(mesh, "DG", 0)
-    interpolate_fun = Function(DG0, name="interpolatator_fun")
-    interpolator = interpolate(interpolate_fun, DG0_cartesian, 
-                                allow_missing_dofs=True,  
-                                default_missing_val=1e30)
+    # DG0_cartesian = FunctionSpace(cartesian_mesh, "DG", 0)
+    # DG0 = FunctionSpace(mesh, "DG", 0)
+    # interpolate_fun = Function(DG0, name="interpolatator_fun")
+    # interpolator = interpolate(interpolate_fun, DG0_cartesian, 
+    #                             allow_missing_dofs=True,  
+    #                             default_missing_val=1e30)
 
     # We have a set of points with corresponding data from elsewhere which vary
     # from rank to rank
@@ -134,8 +141,12 @@ def h52nii(h5_file, di_name="./"):
     # We interpolate the other way this time
     #f_at_input_points.interpolate(f_at_points)
 
+    start = time()
+    PETSc.Sys.Print(f" Creating Firedrake2NumpyConverter",end="")
     converter = Firedrake2NumpyConverter(mesh, dimensions, voxel_size, offset)
-    
+    PETSc.Sys.Print(f" Created Firedrake2NumpyConverter in {time()-start:.2f} seconds")
+
+
     # if comm.rank == 0:
     #     nx, ny, nz = dimensions
     #     hx, hy, hz = voxel_size
