@@ -14,6 +14,82 @@ from pyop2.mpi import (
 comm = COMM_WORLD
 funs = []
 
+class Firedrake2NumpyConverter:
+    def init(self, mesh, dimensions, voxel_size, offset=[0.0,0.0,0.0]):
+        self.mesh = mesh
+        self.dimensions = dimensions
+        self.voxel_size = voxel_size
+        self.offset = offset
+        lenghts = voxel_size*dimensions
+
+        # create local and globals numpy array where to store the data
+        self.function_np = np.zeros((dimensions[0], dimensions[1], dimensions[2]))
+        if mesh.comm.rank==0:
+            # only processor 0 will actually get the data
+            self.global_data = np.zeros_like(self.function_np)
+        else:
+            self.global_data = None
+
+
+        if comm.rank == 0:
+            nx, ny, nz = dimensions
+            hx, hy, hz = voxel_size
+            x = np.linspace(offset[0]+hx/2.0, offset[0]+lenghts[0]-hx/2.0, nx)
+            y = np.linspace(offset[1]+hy/2.0, offset[1]+lenghts[1]-hy/2.0, ny)
+            z = np.linspace(offset[2]+hy/2.0, offset[2]+lenghts[2]-hz/2.0, nz)
+            xv, yv, zv = np.meshgrid(x, y, z)
+            points = np.vstack([xv.ravel(), yv.ravel(), zv.ravel()]).T
+        else:
+            points = np.zeros((0, 3), dtype=np.float64)
+
+        # create the vertex-only mesh for f evaluation
+        # vertices outside the mesh are ignored
+        self.vom = VertexOnlyMesh(mesh, points, redundant=True, missing_points_behaviour="ignore")
+        P0DG = FunctionSpace(self.vom, "DG", 0)
+        self.f_at_input_points = Function(P0DG, name=f"f_at_point")
+
+
+        # get the coordinates of the saved points and the corresponding indices
+        coords = self.vom.coordinates.dat.data
+        self.ix = np.fix((coords[:,0] - offset[0]) / voxel_size[0]).astype(int)
+        self.iy = np.fix((coords[:,1] - offset[1]) / voxel_size[1]).astype(int)    
+        self.iz = np.fix((coords[:,2] - offset[2]) / voxel_size[2]).astype(int)
+        
+        
+    def convert(self, fun):
+        self.function_np[:] = -1e30
+        self.f_at_input_points.dat.data_wo[:] = -1e30 
+        start = time()
+        PETSc.Sys.Print(f" Interpolation {fun.name()} to input points",end="")
+        self.f_at_input_points.interpolate(fun)
+        PETSc.Sys.Print(f" - done in {time()-start:.2f} seconds")
+        
+
+        start = time()
+        self.function_np[self.ix, self.iy, self.iz] = self.f_at_input_points.dat.data_ro
+        PETSc.Sys.Print(f" assigned numpy array for {fun.name() } in {time()-start:.2f} seconds")
+        
+
+        start = time()
+        PETSc.Sys.Print(f" Creating numpy array for {fun.name() }",end="")
+        with temp_internal_comm(self.mesh.comm) as icomm:
+            #global_data = icomm.allreduce(function_np, op=MPI.MAX)#, root=0)
+             
+            icomm.Reduce(
+                [self.function_np, MPI.DOUBLE],
+                [self.global_data, MPI.DOUBLE],
+                op = MPI.MAX,
+            root = 0
+             )
+        PETSc.Sys.Print(f" created numpy array for {fun.name() } in {time()-start:.2f} seconds")
+        
+        return self.global_data
+
+
+
+def build_function2numpy_converter(mesh, fun, dimensions, voxel_size, offset):
+
+
 def h52nii(h5_file, di_name="./"):
     # Load the mesh from the HDF5 file
     with CheckpointFile(h5_file, 'r',comm=comm) as afile:
@@ -62,7 +138,7 @@ def h52nii(h5_file, di_name="./"):
     # We interpolate the other way this time
     #f_at_input_points.interpolate(f_at_points)
 
-
+    converter = Firedrake2NumpyConverter(mesh, dimensions, voxel_size, offset)
     
     if comm.rank == 0:
         nx, ny, nz = dimensions
@@ -194,6 +270,9 @@ def h52nii(h5_file, di_name="./"):
              )
         PETSc.Sys.Print(f" created numpy array for {fun.name() } in {time()-start:.2f} seconds")
         
+        global_data = converter.convert(fun)
+
+
         # # use MPI to get the totals 
         # mesh.comm.Reduce(
         #     [function_np, MPI.DOUBLE],
