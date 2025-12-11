@@ -18,7 +18,10 @@ from firedrake.__future__ import interpolate
 
 from firedrake import RectangleMesh, ExtrudedMesh,VTKFile
 
-from mpi4py.MPI import SUM,MAX,MIN
+from pyop2.mpi import (
+    MPI, COMM_WORLD, temp_internal_comm
+)
+
 
 
 from pyevtk.hl import gridToVTK, imageToVTK
@@ -51,8 +54,8 @@ def bounding_box(mesh):
    global_lower = []
    global_upper = []
    for i in range(mesh.geometric_dimension()):
-      global_lower.append(mesh.comm.allreduce(lower[i], op=MIN))
-      global_upper.append(mesh.comm.allreduce(upper[i], op=MAX))
+      global_lower.append(mesh.comm.allreduce(lower[i], op=MPI.MIN))
+      global_upper.append(mesh.comm.allreduce(upper[i], op=MPI.MAX))
    
    return np.array(global_lower), np.array(global_upper)
 
@@ -588,11 +591,11 @@ def firedrake2numpy(function, shape_np=None, fill=0.0):
 
 
    # with the following we create an array in all processes 
-   global_data = mesh.comm.allreduce(np_data, op=SUM)
+   global_data = mesh.comm.allreduce(np_data, op=MPI.SUM)
 
    return global_data
 
-def anyfiredrake2numpy(function, shape_np, lengths_np=None, offset_np=None, fill=0.0):
+def anyfiredrake2numpy(function, shape_np, lengths, offset, fill=0.0):
    """
    Convert DG0firedrake function to numpy array (2d or 3d).
    It works only for meshes genereted with RectangleMesh or BoxMesh.
@@ -605,59 +608,56 @@ def anyfiredrake2numpy(function, shape_np, lengths_np=None, offset_np=None, fill
    #   raise ValueError('Only serial meshes are supported')
 
    lower, upper = bounding_box(mesh)
-   lengths_mesh = upper - lower
-   if lengths_np is None:
-      lengths_np = lengths_mesh
-   if offset_np is None:
-      offset_np = lower
-
-   
    def get_local_to_grid_indices_map(mesh):
       """
       build a map list of indices from the local
       index cell to the correspondence ij(k) index in the numpy array
       """
       # Get the centroid coordinates
-      DQ0 = fd.FunctionSpace(mesh, 'DQ', 0)
+      DQ0 = fd.FunctionSpace(mesh, 'DG', 0)
       W = fd.VectorFunctionSpace(DQ0.ufl_domain(), DQ0.ufl_element())
       centroid_coordinates = fd.assemble(interpolate(DQ0.ufl_domain().coordinates, W))
       # Get the lengths of the box
-      lengths = get_lengths(mesh)
-      shape = get_box_division(mesh)
-      indices = (centroid_coordinates.dat.data/lengths*shape).astype(int)
+      xyz = centroid_coordinates.dat.data
+      xyz[:,0] -= offset[0]
+      xyz[:,1] -= offset[1]
+      if mesh.geometric_dimension() == 3:
+         xyz[:,2] -= offset[2]
+      
+      indices = ( xyz / lengths * shape_np).astype(int)
       return indices
    
    # Get current coordinates
    indices = get_local_to_grid_indices_map(mesh)
    
    
-   
-   if mesh.invert_rows_columns:
-      out_shape = [shape[1], shape[0]]
+   out_shape = shape_np
+   np_data = np.zeros(out_shape)
+   if mesh.comm.rank == 0:
+      global_data = np.zeros(out_shape)
    else:
-      out_shape = [shape[0], shape[1]]
+      global_data = None
 
-   if mesh.geometric_dimension() == 3:
-      out_shape.append(shape[2])
-   np_data = np.zeros(shape)
+   DG0 = fd.FunctionSpace(mesh,'DG',0)
+   fun_dg0 = fd.Function(DG0)
+   fun_dg0.interpolate(function)
+
    np_data[:] = fill
-   if mesh.geometric_dimension() == 3:
-      # TODO: check if this is this the most efficient way to do this
-      np_data[indices[:,0], indices[:,1], indices[:,2]] = function.dat.data_ro[:]
-      if mesh.invert_rows_columns:
-         np_data = np.transpose(np_data, (1,0,2))
+   # TODO: check if this is this the most efficient way to do this
+   np_data[indices[:,0], indices[:,1], indices[:,2]] = fun_dg0.dat.data_ro[:]
+   
 
-   elif mesh.geometric_dimension() == 2:
-      if mesh.invert_rows_columns:
-         np_data[tuple(np.transpose(indices)[:])] = function.dat.data_ro[:]
-         np_data = np.transpose(np_data)
-      else:
-         np_data[indices[:,0],indices[:,1]] = function.dat.data_ro[:]
-      
-
-
+   with temp_internal_comm(mesh.comm) as icomm:
+      #global_data = icomm.allreduce(function_np, op=MPI.MAX)#, root=0)
+         
+      icomm.Reduce(
+            [np_data, MPI.DOUBLE],
+            [global_data, MPI.DOUBLE],
+            op = MPI.MAX,
+            root = 0
+         )
    # with the following we create an array in all processes 
-   global_data = mesh.comm.allreduce(np_data, op=SUM)
+   #global_data = mesh.comm.allreduce(np_data, op=MPI.SUM)
 
    return global_data
 
