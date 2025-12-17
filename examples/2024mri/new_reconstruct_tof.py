@@ -71,26 +71,18 @@ def transfer_to_cartesian(f, interpolator, interpolate_fun):
 
 
 
-def save_as_nifti(function, affine, filename, interpolator=None, interpolate_fun=None):
+def save_as_nifti(function, filename, affine, dimensions, lenghts, offset):
     mesh = function.function_space().mesh()
     # We need to interpolate to a cartesian grid
     if mesh.ufl_cell().is_simplex():
-        name = function.name()
-        start = time.time()
-        PETSc.Sys.Print(f"interpolating {name}",end="")
-        function_cartesian = transfer_to_cartesian(function, interpolator, interpolate_fun)
-        PETSc.Sys.Print(f" - done{time.time()-start}")
+        function_np = i2d.anyfiredrake2numpy(function, dimensions, lenghts, offset, fill=-1e30)
     else:
-        function_cartesian = function
-    start = time.time()
-    PETSc.Sys.Print(f"interpolating to numpy {name}",end="")
-    function_np = i2d.firedrake2numpy(function_cartesian)
-    PETSc.Sys.Print(f" - done{time.time()-start}")
-        
-    
-    nibabel.save(nibabel.Nifti1Image(function_np, affine), filename)
-    function_np = None
-    gc.collect()
+        function_np = i2d.firedrake2numpy(function)
+    if mesh.comm.rank == 0:    
+        nibabel.save(nibabel.Nifti1Image(function_np, affine), filename)
+        function_np = None
+        gc.collect()
+    mesh.comm.barrier()
     return
 
 
@@ -1339,26 +1331,26 @@ def experiment(args):
         if save_inputs:
             if spaces == "DG0DG0":
                 filename = f"{label_dir}/corrupted.nii.gz"
-                save_as_nifti(corrupted, affine, filename, interpolator, interpolate_fun)
+                save_as_nifti(corrupted, filename,  affine, dimensions, lengths, offset)
 
                 filename = f"{label_dir}/sink.nii.gz"
-                save_as_nifti(sink, affine, filename, interpolator, interpolate_fun)
+                save_as_nifti(sink,  filename,  affine, dimensions, lengths, offset)
 
                 if combination["initial"] != "one":
                     filename = f"{label_dir}/initial.nii.gz"
-                    save_as_nifti(initial, affine, filename, interpolator, interpolate_fun)
+                    save_as_nifti(initial, filename,  affine, dimensions, lengths, offset)
 
 
                 if combination["confidence"] != "one":
                     filename = f"{label_dir}/confidence.nii.gz"
-                    save_as_nifti(confidence, affine, filename, interpolator, interpolate_fun)
+                    save_as_nifti(confidence, filename,  affine, dimensions, lengths, offset)
 
                 if combination["kappa"] != "one":
                     filename = f"{label_dir}/kappa.nii.gz"
-                    save_as_nifti(kappa, affine, filename, interpolator, interpolate_fun)
+                    save_as_nifti(kappa, filename,  affine, dimensions, lengths, offset)
                 
                 filaname = f"{label_dir}/main_network.nii.gz"
-                save_as_nifti(main_network, affine, filaname, interpolator, interpolate_fun)
+                save_as_nifti(main_network, filename,  affine, dimensions, lengths, offset)
             else:
                 h5_file_inputs = os.path.join(label_dir, "inputs.h5")
                 with CheckpointFile(h5_file_inputs, 'w',comm=comm) as afile:
@@ -1399,24 +1391,25 @@ def experiment(args):
             # solve
             ierr = niot_solver.solve()
             PETSc.Sys.Print(f"Solved done {ierr=}",comm=comm)
-            if ierr != 0:
+            if ierr < 0:
                 return
 
             # save solution
             pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
             PETSc.Sys.Print(f"extract otp solution")
 
-            save_as_h5 = True
+            save_as_h5 = False
             if not save_as_h5:
                 filename=f"{label_dir}/tdens_{file_label}.nii.gz"
-                save_as_nifti(tdens, affine, filename, interpolator, interpolate_fun)
+                save_as_nifti(tdens, filename,  affine, dimensions, lengths, offset)
             
                 filename=f"{label_dir}/pot_{file_label}.nii.gz"
-                save_as_nifti(pot, affine, filename, interpolator, interpolate_fun)
+                save_as_nifti(pot, filename,  affine, dimensions, lengths, offset)
         
                 if combination["map"]['type'] == 'pm':
                     filename = f"{label_dir}/image_reconstruction_{file_label}.nii.gz"
-                    save_as_nifti(niot_solver.reconstruction, affine, filename, interpolator, interpolate_fun)
+                    save_as_nifti(niot_solver.reconstruction, 
+                                  filename,  affine, dimensions, lengths, offset)
             else:
                 h5_file = os.path.join(label_dir, f"solution_{file_label}.h5")
                 # if file exists, remove it
