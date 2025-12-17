@@ -1279,7 +1279,7 @@ def experiment(args):
 
         # optimization
         niot_solver.ctrl_set('optimization_tol', 1e-5)
-        niot_solver.ctrl_set('constraint_tol', 1e-6)
+        niot_solver.ctrl_set('constraint_tol', 1e-7)
         try: 
             max_iter = combination["max_iter"]
         except:
