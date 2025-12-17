@@ -1,0 +1,52 @@
+{
+    "save_inputs" : [0],
+    "mask_mesh":[1],
+    "blur": [0.0],
+    "threshold":[450],
+    "wd": [1e-3],
+    "discrepancy_norm": ["dual_h1"],
+    "discrepancy_dual_h1_sigma" : [1e0],
+    "initial": [
+        {
+            "type" : "corrupted",
+            "lift": 1e0,
+            "sigma_heat" : 1e-3
+        }
+    ],
+    "corrupted": [
+        {
+            "type":"tof",
+            "threshold_tof": 175,
+            "blur": 1.5
+        }
+        ],
+    "confidence": [
+	{
+	    "type":"main_tof_eps",
+	    "scale_tof": 0.1,
+	    "eps": 1e-1,
+            "main_confidence": 1000
+	}
+	],
+    "map": [
+	{"type": "pm",
+	 "exponent_p" : 4,     
+         "cond_zero" : 100,
+	 "scaling" : 1e-3,      
+         "nsteps" : 2,          
+         "dt0": 1e-2,
+	 "corection": 0.5,
+	 "store_images": 1
+        }
+    ],
+    "kappa": [
+	{
+	    "type":"t1",
+	    "kappa1": 1.5,
+	    "kappa2": 1.5
+	}
+	],
+    "absorption": [1.00e-3],
+    "max_iter": [2000],
+    "buffer" : [200]
+}
