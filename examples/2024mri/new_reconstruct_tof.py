@@ -1392,7 +1392,7 @@ def experiment(args):
             ierr = niot_solver.solve()
             PETSc.Sys.Print(f"Solved done {ierr=}",comm=comm)
             if ierr < 0:
-                return
+                return ierr
 
             # save solution
             pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
