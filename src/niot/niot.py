@@ -1037,7 +1037,7 @@ class NiotSolver:
         self.rhs_norm = assemble((self.btp.source - self.btp.sink)**2 * dx)
 
         # the minus sign is to get -\div(\tdens \grad \pot)-f = 0
-        self.pot_PDE = derivative(self.joule(self.pot_h,self.tdens_h)/self.rhs_norm,self.pot_h)
+        self.pot_PDE = derivative(self.joule(self.pot_h,self.tdens_h/self.rhs_norm),self.pot_h)
         self.weighted_Laplacian = derivative(-self.pot_PDE,self.pot_h)
 
         # the forcing term
