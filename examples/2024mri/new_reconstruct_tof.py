@@ -1398,10 +1398,10 @@ def experiment(args):
             pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
             PETSc.Sys.Print(f"extract otp solution")
 
-            save_as_h5 = True
-            save_as_nifti = True
-            save_as_pvd = True
-            if save_as_nifti:
+            save_h5 = True
+            save_nifti = True
+            save_pvd = True
+            if save_nifti:
                 filename=f"{label_dir}/tdens_{file_label}.nii.gz"
                 save_as_nifti(tdens, filename,  affine, dimensions, lengths, offset)
             
@@ -1412,7 +1412,7 @@ def experiment(args):
                     filename = f"{label_dir}/image_reconstruction_{file_label}.nii.gz"
                     save_as_nifti(niot_solver.reconstruction, 
                                   filename,  affine, dimensions, lengths, offset)
-            if save_as_h5:
+            if save_h5:
                 h5_file = os.path.join(label_dir, f"solution_{file_label}.h5")
                 # if file exists, remove it
                 PETSc.Sys.Print(f"Start h5 - {label}",comm=comm)
@@ -1437,7 +1437,7 @@ def experiment(args):
                     afile.set_attr("/info/", "dimensions", dimensions)
                     PETSc.Sys.Print(f" dimensions ")
                     PETSc.Sys.Print(f" - done")
-            if save_as_pvd:
+            if save_pvd:
                 filename=f"{label_dir}/solution_{file_label}.pvd"
                 data = [tdens, pot]
                 start = time.time() 
