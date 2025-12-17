@@ -694,12 +694,12 @@ class NiotSolver:
 
         # solver of poisson equation
         petsc_controls ={
-            #"snes_monitor": None,
+            "snes_monitor": None,
             # krylov solver controls
             'ksp_type': 'minres',
             'pc_type': 'hypre',
-            'ksp_atol': 1e-16,
-            'ksp_rtol': self.ctrl_get('constraint_tol'),
+            'ksp_atol': self.ctrl_get('constraint_tol'),#1e-16,
+            'ksp_rtol': 1e-16,#self.ctrl_get('constraint_tol'),
             'ksp_dtol': 1e5,
             'ksp_max_it' : 1000,
             #'ksp_initial_guess_nonzero': True, 
@@ -711,7 +711,7 @@ class NiotSolver:
                             # tuning parameters for the multigrid
                             # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
                             "pc_hypre_type": "boomeramg",
-                            "pc_hypre_boomeramg_strong_threshold": 0.65,#0.75,
+                            "pc_hypre_boomeramg_strong_threshold": 0.6,#0.75,
                             "pc_hypre_boomeramg_max_iter": 1,
                             "pc_hypre_boomeramg_agg_nl": 0,
                             "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
@@ -1034,12 +1034,15 @@ class NiotSolver:
         self.pot_h.assign(0.0)
 
 
+        self.rhs_norm = assemble((self.btp.source - self.btp.sink)**2 * dx)
+
         # the minus sign is to get -\div(\tdens \grad \pot)-f = 0
-        self.pot_PDE = derivative(self.joule(self.pot_h,self.tdens_h),self.pot_h)
+        self.pot_PDE = derivative(self.joule(self.pot_h,self.tdens_h)/self.rhs_norm,self.pot_h)
         self.weighted_Laplacian = derivative(-self.pot_PDE,self.pot_h)
 
         # the forcing term
-        self.rhs = (self.btp.source - self.btp.sink) * self.fems.pot_test * dx
+        self.rhs = (self.btp.source - self.btp.sink) /self.rhs_norm * self.fems.pot_test * dx
+        
         
         # Set Weighted Laplacian
         #self.weighted_Laplacian = self.fems.Laplacian_form(self.fems.pot_space, weight=self.tdens_h, cell2face=self.fems.cell2face)
