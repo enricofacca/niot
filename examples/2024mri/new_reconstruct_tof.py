@@ -1461,7 +1461,7 @@ def experiment(args):
             tic = time.time()
             ierr = solve_and_save(niot_solver, label_dir, i+1)
             cpu = time.time() - tic
-            if ierr != 0:
+            if ierr < 0:
                 PETSc.Sys.Print(f"color {color_rank} - Stopping at {interval[0]} iterations - {label}",comm=comm)
                 break
             PETSc.Sys.Print(f"color {color_rank} - Done {interval[1]/total_iterations*100:.1f}% of {total_iterations}- avg cpu {cpu/buffer_saving:.1f} s - {label}",comm=comm)
