@@ -1279,7 +1279,7 @@ def experiment(args):
 
         # optimization
         niot_solver.ctrl_set('optimization_tol', 1e-5)
-        niot_solver.ctrl_set('constraint_tol', 1e-7)
+        niot_solver.ctrl_set('constraint_tol', 1e-6)
         try: 
             max_iter = combination["max_iter"]
         except:
@@ -1398,8 +1398,10 @@ def experiment(args):
             pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
             PETSc.Sys.Print(f"extract otp solution")
 
-            save_as_h5 = False
-            if not save_as_h5:
+            save_as_h5 = True
+            save_as_nifti = True
+            save_as_pvd = True
+            if save_as_nifti:
                 filename=f"{label_dir}/tdens_{file_label}.nii.gz"
                 save_as_nifti(tdens, filename,  affine, dimensions, lengths, offset)
             
@@ -1410,7 +1412,7 @@ def experiment(args):
                     filename = f"{label_dir}/image_reconstruction_{file_label}.nii.gz"
                     save_as_nifti(niot_solver.reconstruction, 
                                   filename,  affine, dimensions, lengths, offset)
-            else:
+            if save_as_h5:
                 h5_file = os.path.join(label_dir, f"solution_{file_label}.h5")
                 # if file exists, remove it
                 PETSc.Sys.Print(f"Start h5 - {label}",comm=comm)
@@ -1435,6 +1437,15 @@ def experiment(args):
                     afile.set_attr("/info/", "dimensions", dimensions)
                     PETSc.Sys.Print(f" dimensions ")
                     PETSc.Sys.Print(f" - done")
+            if save_as_pvd:
+                filename=f"{label_dir}/solution_{file_label}.pvd"
+                data = [tdens, pot]
+                start = time.time() 
+                    
+                if combination["map"]['type'] == 'pm':
+                    data.append(niot_solver.reconstruction)
+                VTKFile(filename).write(*data)
+                PETSc.Sys.Print(f"color {color_rank} - Saved as pvd {time.time()-start:.1f} s - {label}",comm=comm)
 
             save_intermediate = False
             if save_intermediate and combination["map"]["type"] != "identity":
