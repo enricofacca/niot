@@ -702,7 +702,7 @@ class NiotSolver:
             'ksp_rtol': self.ctrl_get('constraint_tol'),
             'ksp_dtol': 1e5,
             'ksp_max_it' : 1000,
-            'ksp_initial_guess_nonzero': True, 
+            #'ksp_initial_guess_nonzero': True, 
             #'ksp_norm_type': 'unpreconditioned',
             #'ksp_monitor_true_residual' : None, 
         }
@@ -712,8 +712,8 @@ class NiotSolver:
                             # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
                             "pc_hypre_type": "boomeramg",
                             "pc_hypre_boomeramg_strong_threshold": 0.65,#0.75,
-                            "pc_hypre_boomeramg_max_iter": 0,
-                            "pc_hypre_boomeramg_agg_nl": 3,
+                            "pc_hypre_boomeramg_max_iter": 1,
+                            "pc_hypre_boomeramg_agg_nl": 0,
                             "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
                         }
             petsc_controls.update(hypre_ctrl_3d)
