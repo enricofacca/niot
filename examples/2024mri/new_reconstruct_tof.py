@@ -69,7 +69,52 @@ def transfer_to_cartesian(f, interpolator, interpolate_fun):
     f_cartesian = assemble(interpolator)
     return f_cartesian
 
+class BluringOperator:
+    def __init__(self, mesh):
+        self.mesh = mesh
+        self.sigma = FunctionSpace(mesh, "R", 0)
+        if mesh.ufl_cell().is_simplex():
+            cg1 = FunctionSpace(mesh, "CG", 1)
+            self.blurred = Function(cg1, name="blurred")
+            self.rhs_function = Function(cg1, name="rhs_blur")
+            test = TestFunction(cg1)  
+            trial = TrialFunction(cg1)
+            
+            # setup heat equation solver
+            self.lhs_form =  inner(test, trial) * dx # mass matrix
+            self.lhs_form += self.sigma * inner(grad(test), grad(trial)) * dx # stiffness matrix
 
+            # 1-form for the heat equation
+            self.rhs_form = self.rhs_function * test * dx
+            self.heat_problem = LinearVariationalProblem(self.lhs_form, 
+                                                    self.rhs_form,
+                                                    self.blurred)
+                    
+            self.heat_solver = LinearVariationalSolver(
+                self.heat_problem,
+                solver_parameters={
+                    'ksp_type': 'cg',
+                    'ksp_rtol': 1e-10,
+                    #'ksp_initial_guess_nonzero': True,
+                    #'ksp_monitor_true_residual': None,
+                    'pc_type': 'hypre',
+                    },
+                options_prefix='blur_solver_')
+    def __call__(self, function, sigma):
+        if sigma <= 0:
+            return function
+        mesh = function.function_space().mesh()
+        if mesh.ufl_cell().is_simplex():
+            self.sigma.assign(sigma)
+            self.rhs_function.interpolate(function)
+            self.heat_solver.solve()
+            return interpolate(self.blurred, function.function_space())
+
+        else:
+            function_np = i2d.firedrake2numpy(function)
+            function_np_blurred = gaussian_filter(function_np, sigma)
+            function_blurred = i2d.numpy2firedrake(mesh, function_np_blurred, name=function.name()+"_blurred")
+            return function_blurred
 
 def save_as_nifti(function, filename, affine, dimensions, lenghts, offset):
     mesh = function.function_space().mesh()
@@ -256,12 +301,8 @@ def set_corrupted_network(**kwargs):
             blur = 0.0
         
         if blur > 0:
-            tof_np = i2d.firedrake2numpy(tof)
-            mesh = kwargs["cartesian_mesh"]
-            hx = mesh.hx
-            tof_np = gaussian_filter(tof_np, sigma=blur*hx)
-            name += f"_blur{blur:.2e}"
-            tof4corrupted = i2d.numpy2firedrake(mesh, tof_np, name=name)
+            blurer = kwargs["bluer"]
+            tof4corrupted = blurer(tof, sigma=blur*hx)
         else:
             tof4corrupted = tof
 
@@ -291,12 +332,9 @@ def set_corrupted_network(**kwargs):
             blur = 0.0
         
         if blur > 0:
-            tof_np = i2d.firedrake2numpy(tof)
-            mesh = kwargs["cartesian_mesh"]
-            hx = mesh.hx
-            tof_np = gaussian_filter(tof_np, sigma=blur*hx)
-            name += f"_blur{blur:.2e}"
-            tof4corrupted = i2d.numpy2firedrake(mesh, tof_np, name="tof_blurred")
+            bluer = kwargs["bluer"]
+            hx = kwargs["voxel_size"][0]
+            tof4corrupted = bluer(tof, sigma=blur*hx)
         else:
             tof4corrupted = tof
 
@@ -558,8 +596,10 @@ def experiment(args):
         "affine": affine,
         "offset": offset,
         "voxel_size": voxel_size,
-        "dimensions": dimensions
+        "dimensions": dimensions,
+        "bluer": BluringOperator(mesh)
     }
+
 
 
     
@@ -897,9 +937,8 @@ def experiment(args):
             except:
                 raise ValueError("map not provided")
             
-            corrupted_np = i2d.firedrake2numpy(corrupted)/scaling
-            low_np = gaussian_filter(corrupted_np, sigma=4, truncate=1e0)
-            low = i2d.numpy2firedrake(cartesian_mesh, low_np, name=common_name+"low_gaussian")
+            blurer = kwargs["bluer"]
+            low = blurer(corrupted, sigma=4)/scaling
             low += 1e-2
             return low
         
@@ -910,12 +949,11 @@ def experiment(args):
                 raise ValueError("corrupted not provided")
             
             low = set_initial_guess("low_gaussian", **kwargs)
-            low_np = i2d.firedrake2numpy(low)
-            medium_np = gaussian_filter(low_np, sigma=4, truncate=1e0)
-            medium = i2d.numpy2firedrake(cartesian_mesh, medium_np, name=common_name+"medium_gaussian")
+            blurer = kwargs["bluer"]
+            medium = bluer(low, sigma=4)
             medium += 1e-4
             return medium
-        
+         
         if option_type == "high_gaussian":
             try:
                 corrupted = kwargs['corrupted']
@@ -923,9 +961,8 @@ def experiment(args):
                 raise ValueError("corrupted not provided")
             
             medium = set_initial_guess("medium_gaussian", corrupted=corrupted)
-            medium_np = i2d.firedrake2numpy(medium)
-            high_np = gaussian_filter(medium_np, sigma=4, truncate=1e0)
-            high = i2d.numpy2firedrake(cartesian_mesh, high_np, name=common_name+"high_gaussian")
+            blurer = kwargs["bluer"]
+            high = blurer(medium, sigma=4)
             high += 1e-4
             return high
         
@@ -1398,9 +1435,9 @@ def experiment(args):
             pot, tdens, vel = niot_solver.get_otp_solution(niot_solver.sol)
             PETSc.Sys.Print(f"extract otp solution")
 
-            save_h5 = True
-            save_nifti = True
-            save_pvd = True
+            save_h5 = combination.get("save_h5", 0) == 1
+            save_nifti = combination.get("save_nifit", 0) == 1
+            save_pvd = combination.get("save_pvd", 0) == 1
             if save_nifti:
                 filename=f"{label_dir}/tdens_{file_label}.nii.gz"
                 save_as_nifti(tdens, filename,  affine, dimensions, lengths, offset)
@@ -1410,7 +1447,7 @@ def experiment(args):
         
                 if combination["map"]['type'] == 'pm':
                     filename = f"{label_dir}/image_reconstruction_{file_label}.nii.gz"
-                    save_as_nifti(niot_solver.reconstruction, 
+                    save_as_nifti(niot_solver.image_h, 
                                   filename,  affine, dimensions, lengths, offset)
             if save_h5:
                 h5_file = os.path.join(label_dir, f"solution_{file_label}.h5")
