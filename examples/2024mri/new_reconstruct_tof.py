@@ -301,7 +301,7 @@ def set_corrupted_network(**kwargs):
             blur = 0.0
         
         if blur > 0:
-            blurer = kwargs["bluer"]
+            blurer = kwargs["blurer"]
             tof4corrupted = blurer(tof, sigma=blur*hx)
         else:
             tof4corrupted = tof
@@ -332,9 +332,9 @@ def set_corrupted_network(**kwargs):
             blur = 0.0
         
         if blur > 0:
-            bluer = kwargs["bluer"]
+            blurer = kwargs["blurer"]
             hx = kwargs["voxel_size"][0]
-            tof4corrupted = bluer(tof, sigma=blur*hx)
+            tof4corrupted = blurer(tof, sigma=blur*hx)
         else:
             tof4corrupted = tof
 
@@ -597,7 +597,7 @@ def experiment(args):
         "offset": offset,
         "voxel_size": voxel_size,
         "dimensions": dimensions,
-        "bluer": BluringOperator(mesh)
+        "blurer": BluringOperator(mesh)
     }
 
 
@@ -937,7 +937,7 @@ def experiment(args):
             except:
                 raise ValueError("map not provided")
             
-            blurer = kwargs["bluer"]
+            blurer = kwargs["blurer"]
             low = blurer(corrupted, sigma=4)/scaling
             low += 1e-2
             return low
@@ -949,8 +949,8 @@ def experiment(args):
                 raise ValueError("corrupted not provided")
             
             low = set_initial_guess("low_gaussian", **kwargs)
-            blurer = kwargs["bluer"]
-            medium = bluer(low, sigma=4)
+            blurer = kwargs["blurer"]
+            medium = blurer(low, sigma=4)
             medium += 1e-4
             return medium
          
@@ -961,7 +961,7 @@ def experiment(args):
                 raise ValueError("corrupted not provided")
             
             medium = set_initial_guess("medium_gaussian", corrupted=corrupted)
-            blurer = kwargs["bluer"]
+            blurer = kwargs["blurer"]
             high = blurer(medium, sigma=4)
             high += 1e-4
             return high
