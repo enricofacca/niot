@@ -23,6 +23,7 @@ def setup(mri_directory,
             build=True,
           save_h5=False,
             firedrake_conversion=True,
+            build_tof_mesh=False
           ):
 
     def load_data(mri_directory):
@@ -189,7 +190,7 @@ def setup(mri_directory,
     #
     # Build mesh
     #
-    def build_mesh(voxel_size, brain_mask_np, sink_support_np, tof_support_np, main_network_np):
+    def build_mesh(voxel_size, brain_mask_np, sink_support_np, tof_support_np, main_network_np, include_sink=True):
         # We need to preprocess the data
 
         # dilate sink support to avoid small features
@@ -214,7 +215,10 @@ def setup(mri_directory,
     
     
         mask = brain_mask_np.copy()
-        label_sink = 4
+        if include_sink:
+            label_sink = 4
+        else:
+            label_sink = 0
         mask[sink_support_mesh_np > 0 ] = label_sink
         
         # blur tof
@@ -283,6 +287,47 @@ def setup(mri_directory,
                                f"mask_mesher.nii.gz")
         print(f"Saving mask mesher {outfilename}")
         nibabel.save(nibabel.Nifti1Image(mask_np, affine), outfilename)
+
+    if build_tof_mesh:
+        mesh_tof_pygal, mask_tof_np = build_mesh(voxel_size,
+                                         brain_mask_np,
+                                         sink_support_np,
+                                         tof_clean_np,
+                                         main_network_np,
+                                            include_sink=False)
+        # recenter mesh
+        coordinate = mesh_tof_pygal.points
+
+        # move the coordinate where they exceed the domain [0, lengths[0]], [0, lengths[1]], [0, lengths[2]]
+        coordinate[:,0] = np.clip(coordinate[:,0], 0.0, lengths[0])
+        coordinate[:,1] = np.clip(coordinate[:,1], 0.0, lengths[1])
+        coordinate[:,2] = np.clip(coordinate[:,2], 0.0, lengths[2])
+
+        xmin, ymin, zmin = coordinate.min(axis=0)
+        xmax, ymax, zmax = coordinate.max(axis=0)
+        print(f"lengths: {lengths}")
+        print(f"Mesh bounds after recentering: \n x[{xmin:.2f}, {xmax:.2f}],\n y[{ymin:.2f}, {ymax:.2f}],\n z[{zmin:.2f}, {zmax:.2f}]")
+        
+
+        offset = affine[:3, 3]
+        print("Offset:", offset)
+        coordinate[:, 0] += offset[0]
+        coordinate[:, 1] += offset[1]
+        coordinate[:, 2] += offset[2]
+        print("Mesh info:")
+        print(f"coordinate_shape: {coordinate.shape}")
+        print(f"Mesh has {len(coordinate)} points and {len(mesh_pygal.cells_dict['tetra'])} tetrahedra")
+
+        # save mesh as vtu and msh
+        mesh_tof_pygal.write(os.path.join(out_directory,"tof_main.vtu"))
+        writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)
+        writer(os.path.join(out_directory,"tof_main.msh"), mesh_pygal)
+
+        outfilename = os.path.join(out_directory,
+                               f"mask_mesher.nii.gz")
+        print(f"Saving mask mesher {outfilename}")
+        nibabel.save(nibabel.Nifti1Image(mask_tof_np, affine), outfilename)
+
     
     if firedrake_conversion:
         start = time.time()
@@ -409,11 +454,12 @@ if __name__ == '__main__':
                         help="Blur for connected components. If 0, no blur is applied.")
     parser.add_argument('--blur_mesh', type=float, default=0.0, 
                         help="Blur for connected components. If 0, no blur is applied.")
+    parser.add_argument('--tof_only', action='store_true', help="Build only the tof mesh.")
     parser.add_argument('--read', action='store_true')
     parser.add_argument('--meshonly', action='store_true')
 
     args = parser.parse_args()
 
-    setup(args.mri, args.out, args.threshold, args.blur_main, args.blur_mesh, not args.read, not args.meshonly)
+    setup(args.mri, args.out, args.threshold, args.blur_main, args.blur_mesh, not args.read, not args.meshonly, args.tof_only)
     
     
