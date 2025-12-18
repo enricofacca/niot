@@ -911,8 +911,8 @@ class NiotSolver:
         self.image_h = Function(self.fems.tdens_space)
         self.image_h.rename('image_h') # used by tdens2image map
 
-        self.reconstruction = Function(self.fems.tdens_space)
-        self.reconstruction.rename('reconstruction') 
+        #self.reconstruction = Function(self.fems.tdens_space)
+        #self.reconstruction.rename('reconstruction') 
 
 
         self.tdens4transform = Function(self.fems.tdens_space)
@@ -999,7 +999,7 @@ class NiotSolver:
                 solver_parameters.update(hypre_ctrl_3d)
 
             self.tdens2image_map = PorousMediaMap(
-                self.fems.tdens_space,
+                self.fems.pot_space,
                 scaling=self.ctrl_get(['tdens2image', 'pm','scaling']),
                 sigma=sigma,
                 exponent_m=exponent_m,
@@ -1261,6 +1261,10 @@ class NiotSolver:
                             verbose=adjoint_verbose
                             )
                         fire_adj.pause_annotation()
+
+                        tape = fire_adj.get_working_tape()
+                        tape.visualise("tape_discrepancy.pdf")
+                    
                     else:
                         self.adj_discrepancy_fun = self.adj_discrepancy_fun_reduced(self.tdens_h)
                         self.print_info(
@@ -1269,6 +1273,7 @@ class NiotSolver:
                             where=['stdout','log'],
                             verbose=adjoint_verbose
                             )
+                        
                         
                     # the following is required since the ouptut of the adjoint is stored as function
                     # while is a co-function (is integrated over the mesh)
@@ -1658,9 +1663,9 @@ class NiotSolver:
         # store image
         self.image_h = self.tdens2image_map(tdens)
 
-        with self.image_h.dat.vec as img_vec, self.reconstruction.dat.vec as img_rec_vec:
-            img_vec.copy(img_rec_vec)
-            #PETSc.Sys.Print(utilities.msg_bounds(img_rec_vec,'IMG recosntruction'))
+        #with self.image_h.dat.vec as img_vec, self.reconstruction.dat.vec as img_rec_vec:
+        #    img_vec.copy(img_rec_vec)
+        #    #PETSc.Sys.Print(utilities.msg_bounds(img_rec_vec,'IMG recosntruction'))
 
         discrepancy_norm = self.ctrl_get('discrepancy_norm')
         if discrepancy_norm == "l2":
@@ -1668,7 +1673,7 @@ class NiotSolver:
         elif discrepancy_norm == "dual_h1":
             # this should be stored by adjoint
             #assemble(interpolate(self.image_h - self.img_observed,self.fems.tdens_space), tensor=self.difference_dual_h1)
-            self.difference_dual_h1.assign(self.image_h - self.img_observed)
+            self.difference_dual_h1.interpolate(self.image_h - self.img_observed)
             # this A u = b should be
             self.dual_h1_solver.solve()
             #self.h1_dual_pde_solver.solve()
