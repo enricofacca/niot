@@ -72,7 +72,8 @@ def transfer_to_cartesian(f, interpolator, interpolate_fun):
 class BluringOperator:
     def __init__(self, mesh):
         self.mesh = mesh
-        self.sigma = FunctionSpace(mesh, "R", 0)
+        self.R = FunctionSpace(mesh, "R", 0)
+        self.sigma = Function(self.R, name="sigma_blur")
         if mesh.ufl_cell().is_simplex():
             cg1 = FunctionSpace(mesh, "CG", 1)
             self.blurred = Function(cg1, name="blurred")
@@ -108,7 +109,8 @@ class BluringOperator:
             self.sigma.assign(sigma)
             self.rhs_function.interpolate(function)
             self.heat_solver.solve()
-            return interpolate(self.blurred, function.function_space())
+            out = assemble(interpolate(self.blurred, function.function_space()))
+            return out
 
         else:
             function_np = i2d.firedrake2numpy(function)
@@ -302,6 +304,7 @@ def set_corrupted_network(**kwargs):
         
         if blur > 0:
             blurer = kwargs["blurer"]
+            hx = kwargs["voxel_size"][0]
             tof4corrupted = blurer(tof, sigma=blur*hx)
         else:
             tof4corrupted = tof
@@ -599,7 +602,7 @@ def experiment(args):
         "offset": offset,
         "voxel_size": voxel_size,
         "dimensions": dimensions,
-        "blurer": "blurer"
+        "blurer": blurer
     }
 
 
@@ -1464,7 +1467,7 @@ def experiment(args):
                     PETSc.Sys.Print(f"Start pot - {label}",comm=comm)
                     afile.save_function(pot)
                     if combination["map"]['type'] == 'pm':
-                        afile.save_function(niot_solver.reconstruction)
+                        afile.save_function(niot_solver.image_h)
                     PETSc.Sys.Print(f" Include info ")
                     afile.require_group("/info/")
                     afile.set_attr("/info/", "affine", affine)
@@ -1482,7 +1485,7 @@ def experiment(args):
                 start = time.time() 
                     
                 if combination["map"]['type'] == 'pm':
-                    data.append(niot_solver.reconstruction)
+                    data.append(niot_solver.image_h)
                 VTKFile(filename).write(*data)
                 PETSc.Sys.Print(f"color {color_rank} - Saved as pvd {time.time()-start:.1f} s - {label}",comm=comm)
 
