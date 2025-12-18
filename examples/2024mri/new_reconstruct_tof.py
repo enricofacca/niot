@@ -580,6 +580,8 @@ def experiment(args):
     # mesh.hy = hy
     # mesh.hz = hz
     
+    blurer = BluringOperator(mesh)
+
     input_data = { 
         "tof": tof, 
         "aseg": aseg, 
@@ -597,7 +599,7 @@ def experiment(args):
         "offset": offset,
         "voxel_size": voxel_size,
         "dimensions": dimensions,
-        "blurer": BluringOperator(mesh)
+        "blurer": "blurer"
     }
 
 
