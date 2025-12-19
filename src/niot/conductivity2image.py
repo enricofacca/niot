@@ -472,7 +472,7 @@ class PorousMediaMap(Conductivity2ImageMap):
                 raise ValueError('Negative conductivity')
             _, max_cond = cond_vec.max()
             PETSc.Sys.Print(f'cond min={min_cond}, max={max_cond}')
-        assemble(interpolate(conductivity,self.space), tensor=self.tdens4transform)
+        #assemble(interpolate(conductivity,self.space), tensor=self.tdens4transform)
 
         # estimate for initial time step
         with conductivity.dat.vec as cond_vec:
@@ -511,7 +511,9 @@ class PorousMediaMap(Conductivity2ImageMap):
             self.steps_done = 0
             PETSc.Sys.Print(f"Using stored images as initial guess {self.stored_images=}")
             for i in range(self.nsteps):
-                if i > 0:                    
+                if i == 0:
+                    self.tdens4transform.assign(conductivity)
+                else:
                     # the the u^{k}=u^{k-1}
                     self.tdens4transform.assign(self.image_h)
 
@@ -551,15 +553,11 @@ class PorousMediaMap(Conductivity2ImageMap):
             self.steps_done = 0            
             for i in range(self.nsteps):
                 if i == 0:
-                    # this is this use the conductivity as initial guess
-                    # it needs to be stored in the adjoint computation
-                    if self.first_time:
-                        self.image_h.assign(conductivity)
-                        self.first_time = False
-                    
+                    # u^{0} = conductivity
+                    self.image_h.interpolate(conductivity)
                 else:
-                    # the the u^{k}=u^{k-1}
-                    self.tdens4transform.assign(self.image_h)
+                    # update u^{k} with u^{k-1}
+                    self.tdens4transform.interpolate(self.image_h)
 
          
                 # assign self.dt, change the expression in the PDE
@@ -575,6 +573,11 @@ class PorousMediaMap(Conductivity2ImageMap):
                     with self.image_h.dat.vec as img_vec:
                         PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
                                     + utilities.msg_bounds(img_vec,'IMG'))
+                        
+                # store images
+                if self.store_images:
+                    PETSc.Sys.Print(f"Storing image {i=}")
+                    self.intermediate_images[i].assign(self.image_h, annotate=True)
 
                 self.steps_done += 1
         
