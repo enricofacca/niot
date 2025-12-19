@@ -1017,6 +1017,7 @@ class NiotSolver:
                 self.tdens2image_map.use_stored_images_as_initial_guess = reuse_images
                 self.tdens2image_map.store_images = reuse_images
             except:
+                self.tdens2image_map.use_stored_images_as_initial_guess = False
                 self.tdens2image_map.store_images = False
             """ Store the images at each time step"""
 
@@ -1565,13 +1566,15 @@ class NiotSolver:
         if map_type == 'pm':
             # if we want to use the intermidate images as initial guess we first compute the
             # images so we can record their assignment during the setup of the reduced functional
-            if self.tdens2image_map.store_images and not self.tdens2image_map.stored_images:
+            if self.tdens2image_map.use_stored_images_as_initial_guess and not self.tdens2image_map.stored_images:
                 self.print_info(
                     msg=f'Computing initial images for porous media map', 
                     priority=1, 
                     where=['stdout','log'], 
                     color='green')
+                self.tdens2image_map.use_stored_images_as_initial_guess = False
                 self.image_h = self.tdens2image_map(self.tdens_h)
+                self.tdens2image_map.use_stored_images_as_initial_guess = True
 
             
         # udpack main controls and start main loop
