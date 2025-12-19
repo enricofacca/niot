@@ -972,7 +972,40 @@ class NiotSolver:
             
                 label_pm = f'pm_{exponent_p:.1f}_{cond_zero:.2e}_{scaling:.2e}'
 
-            solver_parameters={
+
+            if self.mesh.ufl_cell().is_simplex():
+                solver_parameters={
+                    "snes_type": 'vinewtonrsls',
+                    "snes_linesearch_type": 'basic',
+                    'snes_rtol': 1e-6,
+                    'snes_atol': 1e-6,
+                    'snes_stol': 1e-6,
+                    'snes_max_it': 100,
+                    'snes_linesearch_type':'bt',
+                    'ksp_type': 'gmres',
+                    'ksp_rtol': 1e-6,
+                    'ksp_atol': 1e-6,
+                    'ksp_max_it': 500,
+                    'pc_type': 'hypre',
+                    'snes_monitor': None,
+                    #'snes_linesearch_monitor': None,
+                    'ksp_monitor': None,
+                    }
+                if self.mesh.geometric_dimension() == 3:
+                    hypre_ctrl_3d = {
+                                # tuning parameters for the multigrid
+                                # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
+                                "pc_hypre_type": "boomeramg",
+                                "pc_hypre_boomeramg_strong_threshold": 0.75,
+                                "pc_hypre_boomeramg_max_iter": 1,
+                                "pc_hypre_boomeramg_agg_nl": 3,
+                                "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
+                            }
+                    solver_parameters.update(hypre_ctrl_3d)
+
+
+            else:
+                solver_parameters={
                     'snes_type': 'newtonls',
                     'snes_rtol': 1e-6,
                     'snes_atol': 1e-6,
@@ -989,17 +1022,17 @@ class NiotSolver:
                     'ksp_monitor': None,
                     }
 
-            if self.mesh.geometric_dimension() == 3:
-                hypre_ctrl_3d = {
-                            # tuning parameters for the multigrid
-                            # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
-                            "pc_hypre_type": "boomeramg",
-                            "pc_hypre_boomeramg_strong_threshold": 0.75,
-                            "pc_hypre_boomeramg_max_iter": 1,
-                            "pc_hypre_boomeramg_agg_nl": 3,
-                            "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
-                        }
-                solver_parameters.update(hypre_ctrl_3d)
+                if self.mesh.geometric_dimension() == 3:
+                    hypre_ctrl_3d = {
+                                # tuning parameters for the multigrid
+                                # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
+                                "pc_hypre_type": "boomeramg",
+                                "pc_hypre_boomeramg_strong_threshold": 0.75,
+                                "pc_hypre_boomeramg_max_iter": 1,
+                                "pc_hypre_boomeramg_agg_nl": 3,
+                                "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
+                            }
+                    solver_parameters.update(hypre_ctrl_3d)
 
             self.tdens2image_map = PorousMediaMap(
                 self.fems.pot_space,
