@@ -524,10 +524,10 @@ class PorousMediaMap(Conductivity2ImageMap):
             PETSc.Sys.Print(f"Using stored images as initial guess {self.stored_images=}")
             for i in range(self.nsteps):
                 if i == 0:
-                    self.tdens4transform.assign(conductivity)
+                    self.tdens4transform.interpolate(conductivity)
                 else:
                     # the the u^{k}=u^{k-1}
-                    self.tdens4transform.assign(self.image_h)
+                    self.tdens4transform.interpolate(self.image_h)
 
                 #
                 # at the first round used stored solution as initial guess
