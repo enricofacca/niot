@@ -1370,6 +1370,10 @@ def experiment(args):
         
 
         save_inputs = combination.get("save_inputs", 0) == 1
+
+        save_h5 = combination.get("save_h5", 0) == 1
+        save_nifti = combination.get("save_nifti", 0) == 1
+        save_pvd = combination.get("save_pvd", 0) == 1
         if save_inputs:
             if spaces == "DG0DG0":
                 filename = f"{label_dir}/corrupted.nii.gz"
@@ -1394,17 +1398,29 @@ def experiment(args):
                 filaname = f"{label_dir}/main_network.nii.gz"
                 save_as_nifti(main_network, filename,  affine, dimensions, lengths, offset)
             else:
-                h5_file_inputs = os.path.join(label_dir, "inputs.h5")
-                with CheckpointFile(h5_file_inputs, 'w',comm=comm) as afile:
-                    afile.save_function(corrupted, "corrupted")
-                    afile.save_function(sink, "sink")
+                if save_h5:
+                    h5_file_inputs = os.path.join(label_dir, "inputs.h5")
+                    with CheckpointFile(h5_file_inputs, 'w',comm=comm) as afile:
+                        afile.save_function(corrupted, "corrupted")
+                        afile.save_function(sink, "sink")
+                        if combination["initial"] != "one":
+                            afile.save_function(initial, "initial")
+                        if combination["confidence"] != "one":
+                            afile.save_function(confidence, "confidence")
+                        if combination["kappa"] != "one":
+                            afile.save_function(kappa, "kappa")
+                        afile.save_function(main_network, "main_network")
+                if save_pvd:
+                    filename = f"{label_dir}/inputs.pvd"
+                    data = [corrupted, sink]
                     if combination["initial"] != "one":
-                        afile.save_function(initial, "initial")
+                        data.append(initial)
                     if combination["confidence"] != "one":
-                        afile.save_function(confidence, "confidence")
+                        data.append(confidence)
                     if combination["kappa"] != "one":
-                        afile.save_function(kappa, "kappa")
-                    afile.save_function(main_network, "main_network")
+                        data.append(kappa)
+                    data.append(main_network)
+                    VTKFile(filename).write(*data)
 
         
         #
@@ -1441,7 +1457,7 @@ def experiment(args):
             PETSc.Sys.Print(f"extract otp solution")
 
             save_h5 = combination.get("save_h5", 0) == 1
-            save_nifti = combination.get("save_nifit", 0) == 1
+            save_nifti = combination.get("save_nifti", 0) == 1
             save_pvd = combination.get("save_pvd", 0) == 1
             if save_nifti:
                 filename=f"{label_dir}/tdens_{file_label}.nii.gz"
