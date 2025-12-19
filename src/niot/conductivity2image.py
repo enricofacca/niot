@@ -393,7 +393,7 @@ class PorousMediaMap(Conductivity2ImageMap):
 
         self.first_time = True
 
-        self.mode = "direct"
+        self.mode = mode
         if self.mode == "direct":
             if degree > 0:
                 PETSc.Sys.Print('Porous media with continuous elements')
