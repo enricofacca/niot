@@ -976,7 +976,10 @@ class NiotSolver:
             if self.mesh.ufl_cell().is_simplex():
                 solver_parameters={
                     "snes_type": 'newtonls',
-                    "snes_linesearch_type": 'bt',
+                    "snes_linesearch_type": "l2",
+                    "snes_linesearch_maxstep": 1.0,
+                    "snes_linesearch_damping": 1.0,
+                    "snes_linesearch_monitor": None,
                     'snes_rtol': 1e-12,
                     'snes_atol': 1e-10,
                     'snes_stol': 1e-6,
