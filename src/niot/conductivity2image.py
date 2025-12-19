@@ -657,6 +657,16 @@ class PorousMediaMap(Conductivity2ImageMap):
                     # need to annotate this assigment for pyadjoint to track dependencies
                     self.log_image_h.assign(self.intermediate_images[i], annotate=True)
 
+
+
+                # assign self.dt, change the expression in the PDE
+                dt = dt0*rate**(i)
+                total_time += dt
+                self.dt.assign(dt)
+            
+
+
+
                 with self.log_image_h.dat.vec as img_vec:
                     PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
                                 + utilities.msg_bounds(img_vec,'LOG IMG'))
@@ -664,11 +674,7 @@ class PorousMediaMap(Conductivity2ImageMap):
                     PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
                                 + utilities.msg_bounds(img_vec,'LOG IMG^{n-1}'))
 
-                # assign self.dt, change the expression in the PDE
-                dt = dt0*rate**(i)
-                total_time += dt
-                self.dt.assign(dt)
-            
+             
                 # invoke the solver to get u^{k+1}
                 self.pm_solver.solve()#bounds=(self.lower_bound, self.upper_bound))
 
