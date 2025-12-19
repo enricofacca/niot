@@ -462,7 +462,6 @@ class PorousMediaMap(Conductivity2ImageMap):
             post_function_callback=img_bounds
             )
         self.lower_bound = Function(space, name='lower_bound')
-        self.lower_bound.assign(0.0)
         self.upper_bound = Function(space, name='upper_bound')
         self.upper_bound.assign(1e20)
     
@@ -537,6 +536,11 @@ class PorousMediaMap(Conductivity2ImageMap):
                 # need to annotate this assigment for pyadjoint to track dependencies
                 self.image_h.assign(self.intermediate_images[i], annotate=True)
                 
+                with self.tdens4transform.dat.vec as uk_vec:
+                    lower_bound_value = uk_vec.min()[1]
+                    self.lower_bound.assign(lower_bound_value)
+                    upper_bound_value = uk_vec.max()[1]
+                    self.upper_bound.assign(upper_bound_value)
 
          
                 # assign self.dt, change the expression in the PDE
