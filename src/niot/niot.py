@@ -1559,6 +1559,15 @@ class NiotSolver:
                 where=['stdout','log'], 
                 color='green')
             self.iteration = 0
+
+
+        map_type = self.ctrl_get(["tdens2image", "type"])
+        if map_type == 'pm':
+            # if we want to use the intermidate images as initial guess we first compute the
+            # images so we can record their assignment during the setup of the reduced functional
+            if self.tdens2image_map.store_images and not self.tdens2image_map.stored_images:
+                self.image_h = self.tdens2image_map(self.tdens_h)
+
             
         # udpack main controls and start main loop
         max_iter = self.ctrl_get('max_iter')
