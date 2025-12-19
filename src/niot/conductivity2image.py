@@ -335,7 +335,9 @@ class PorousMediaMap(Conductivity2ImageMap):
                  nsteps=1,
                  dt0=1e-6,
                  solver_parameters=None,
-                 name=None) -> None:
+                 name=None,
+                 mode="direct"
+                 ) -> None:
         self.space = space
         self.scaling = scaling
         self.sigma = sigma
@@ -391,82 +393,102 @@ class PorousMediaMap(Conductivity2ImageMap):
 
         self.first_time = True
 
-        
-        
-        if degree > 0:
-            PETSc.Sys.Print('Porous media with continuous elements')
-            pm_Laplacian_PDE = exp(ln(permeability)) * inner(grad(self.image_h) ,grad(test)) * dx  
-        else:
-            if space.mesh().ufl_cell().is_simplex():
-                raise NotImplementedError('Laplacian with DG0 simplices is not implemented')
-            facet_image = utilities.cell2face_map(permeability, approach='arithmetic_mean') # harmonic mean does not work
-            # delta_h is an expression, is light
-            delta_h = utilities.delta_h(space)
-            pm_Laplacian_PDE = facet_image * jump(self.image_h) * jump(test) / delta_h * d_inter
-        self.pm_PDE = ( 
-            (self.image_h - self.tdens4transform) / self.dt * test * dx 
-            + pm_Laplacian_PDE )
-
-        # relaxed Jacobian
-        relaxed_permeability = self.exponent_m * (self.image_h + 1e-8) ** (self.exponent_m - 1) + 1e-8
-        if degree > 0:
-            relaxed_pm = exp(ln(relaxed_permeability)) * inner(grad(self.image_h) ,grad(test)) * dx  
-        else:
-            if space.mesh().ufl_cell().is_simplex():
-                raise NotImplementedError('Laplacian with DG0 simplices is not implemented')
-            relaxed_facet = utilities.cell2face_map(relaxed_permeability, approach='arithmetic_mean') # harmonic mean does not work
-            # delta_h is an expression, is light
-            delta_h = utilities.delta_h(space)
-            relaxed_pm = relaxed_facet * jump(self.image_h) * jump(test) / delta_h * d_inter
-          
-        relaxed_pm_PDE = ( 
+        self.mode = "direct"
+        if self.mode == "direct":
+            if degree > 0:
+                PETSc.Sys.Print('Porous media with continuous elements')
+                pm_Laplacian_PDE = exp(ln(permeability)) * inner(grad(self.image_h) ,grad(test)) * dx  
+            else:
+                if space.mesh().ufl_cell().is_simplex():
+                    raise NotImplementedError('Laplacian with DG0 simplices is not implemented')
+                facet_image = utilities.cell2face_map(permeability, approach='arithmetic_mean') # harmonic mean does not work
+                # delta_h is an expression, is light
+                delta_h = utilities.delta_h(space)
+                pm_Laplacian_PDE = facet_image * jump(self.image_h) * jump(test) / delta_h * d_inter
+            self.pm_PDE = ( 
                 (self.image_h - self.tdens4transform) / self.dt * test * dx 
-                + relaxed_pm)
-        Jac = derivative(relaxed_pm_PDE, self.image_h)
-        
-        # set dt0 media problem
-        self.pm_problem = NonlinearVariationalProblem(
-            self.pm_PDE, self.image_h, J=Jac)
+                + pm_Laplacian_PDE )
 
-        if solver_parameters is None:
-            solver_parameters={
-                'snes_type': 'newtonls',
-                'snes_rtol': 1e-10,
-                'snes_atol': 1e-10,
-                'snes_stol': 1e-10,
-                'snes_linesearch_type':'bt',
-                #'snes_monitor': None,
-                'ksp_type': 'gmres',
-                'ksp_rtol': 1e-6,
-                'ksp_atol': 1e-6,
-                #'ksp_monitor': None,
-                'pc_type': 'hypre',
-                }
+            # relaxed Jacobian
+            relaxed_permeability = self.exponent_m * (self.image_h + 1e-8) ** (self.exponent_m - 1) + 1e-8
+            if degree > 0:
+                relaxed_pm = exp(ln(relaxed_permeability)) * inner(grad(self.image_h) ,grad(test)) * dx  
+            else:
+                if space.mesh().ufl_cell().is_simplex():
+                    raise NotImplementedError('Laplacian with DG0 simplices is not implemented')
+                relaxed_facet = utilities.cell2face_map(relaxed_permeability, approach='arithmetic_mean') # harmonic mean does not work
+                # delta_h is an expression, is light
+                delta_h = utilities.delta_h(space)
+                relaxed_pm = relaxed_facet * jump(self.image_h) * jump(test) / delta_h * d_inter
             
-        PETSc.Sys.Print(solver_parameters)
+            relaxed_pm_PDE = ( 
+                    (self.image_h - self.tdens4transform) / self.dt * test * dx 
+                    + relaxed_pm)
+            Jac = derivative(relaxed_pm_PDE, self.image_h)
+            
+            # set dt0 media problem
+            self.pm_problem = NonlinearVariationalProblem(
+                self.pm_PDE, self.image_h, J=Jac)
 
-        self.images =[]
-        
-        def img_bounds(X,F):
-            min_v = X.min()[1]
-            max_v = X.max()[1]
-            msg = "".join([f'{min_v:2.1e}','<=PM IMG <=',f'{max_v:2.1e}'])
-            PETSc.Sys.Print(msg)
-            
+            if solver_parameters is None:
+                solver_parameters={
+                    'snes_type': 'newtonls',
+                    'snes_rtol': 1e-10,
+                    'snes_atol': 1e-10,
+                    'snes_stol': 1e-10,
+                    'snes_linesearch_type':'bt',
+                    #'snes_monitor': None,
+                    'ksp_type': 'gmres',
+                    'ksp_rtol': 1e-6,
+                    'ksp_atol': 1e-6,
+                    #'ksp_monitor': None,
+                    'pc_type': 'hypre',
+                    }
                 
+            PETSc.Sys.Print(solver_parameters)
 
-        
-        self.pm_solver = NonlinearVariationalSolver(
-            self.pm_problem,
-            solver_parameters=solver_parameters,
-            options_prefix='porous_solver_',
-            post_function_callback=img_bounds
-            )
-        self.lower_bound = Function(space, name='lower_bound')
-        self.upper_bound = Function(space, name='upper_bound')
-        self.upper_bound.assign(1e20)
-    
-    
+            self.images =[]
+            
+            def img_bounds(X,F):
+                min_v = X.min()[1]
+                max_v = X.max()[1]
+                msg = "".join([f'{min_v:2.1e}','<=PM IMG <=',f'{max_v:2.1e}'])
+                PETSc.Sys.Print(msg)
+                
+                    
+
+            
+            self.pm_solver = NonlinearVariationalSolver(
+                self.pm_problem,
+                solver_parameters=solver_parameters,
+                options_prefix='porous_solver_',
+                post_function_callback=img_bounds
+                )
+            self.lower_bound = Function(space, name='lower_bound')
+            self.upper_bound = Function(space, name='upper_bound')
+            self.upper_bound.assign(1e20)
+        elif self.mode == "exponential":
+            self.log_tdens4transform = Function(space, name='log_tdens4transform')
+            self.log_image_h = Function(space, name='log_image_h')
+            test = TestFunction(space)
+            trial = TrialFunction(space)
+
+
+            self.pm_PDE = ( 
+                (exp(self.log_image_h) - exp(self.log_tdens4transform)) / self.dt * test * dx 
+                + self.exponent_m * exp( (self.exponent_m - 1) * exp(self.log_tdens4transform) ) 
+                * inner(grad(self.log_image_h) ,grad(test)) * dx 
+                )
+            self.Jac_relaxed = derivative(self.pm_PDE, self.log_image_h)
+            self.pm_problem = NonlinearVariationalProblem(
+                self.pm_PDE, self.log_image_h, J=self.Jac_relaxed)
+            self.pm_solver = NonlinearVariationalSolver(
+                self.pm_problem,
+                solver_parameters=solver_parameters,
+                options_prefix='porous_solver_')
+
+
+
     def __call__(self, conductivity):
         """
         Apply the porous media map to the conductivity
@@ -518,55 +540,56 @@ class PorousMediaMap(Conductivity2ImageMap):
             rate = 1.0
             dt0 = self.sigma
 
-        PETSc.Sys.Print(f"Using stored images as initial guess {self.use_stored_images_as_initial_guess=}")
-        if self.use_stored_images_as_initial_guess:
-            total_time = 0.0
-            self.steps_done = 0
-            PETSc.Sys.Print(f"Using stored images as initial guess {self.stored_images=}")
-            for i in range(self.nsteps):
-                if i == 0:
-                    self.tdens4transform.interpolate(conductivity)
-                else:
-                    # the the u^{k}=u^{k-1}
-                    self.tdens4transform.interpolate(self.image_h)
+        # PETSc.Sys.Print(f"Using stored images as initial guess {self.use_stored_images_as_initial_guess=}")
+        # if self.use_stored_images_as_initial_guess:
+        #     total_time = 0.0
+        #     self.steps_done = 0
+        #     PETSc.Sys.Print(f"Using stored images as initial guess {self.stored_images=}")
+        #     for i in range(self.nsteps):
+        #         if i == 0:
+        #             self.tdens4transform.interpolate(conductivity)
+        #         else:
+        #             # the the u^{k}=u^{k-1}
+        #             self.tdens4transform.interpolate(self.image_h)
 
-                #
-                # at the first round used stored solution as initial guess
-                # 
-                PETSc.Sys.Print(f"Assign initial guess from stored image {i=}")
-                # need to annotate this assigment for pyadjoint to track dependencies
-                self.image_h.assign(self.intermediate_images[i], annotate=True)
+        #         #
+        #         # at the first round used stored solution as initial guess
+        #         # 
+        #         PETSc.Sys.Print(f"Assign initial guess from stored image {i=}")
+        #         # need to annotate this assigment for pyadjoint to track dependencies
+        #         self.image_h.assign(self.intermediate_images[i], annotate=True)
                 
-                with self.tdens4transform.dat.vec as uk_vec:
-                    lower_bound_value = uk_vec.min()[1]
-                    self.lower_bound.assign(lower_bound_value)
-                    upper_bound_value = uk_vec.max()[1]
-                    self.upper_bound.assign(upper_bound_value)
+        #         with self.tdens4transform.dat.vec as uk_vec:
+        #             lower_bound_value = uk_vec.min()[1]
+        #             self.lower_bound.assign(lower_bound_value)
+        #             upper_bound_value = uk_vec.max()[1]
+        #             self.upper_bound.assign(upper_bound_value)
 
          
-                # assign self.dt, change the expression in the PDE
-                dt = dt0*rate**(i)
-                total_time += dt
-                self.dt.assign(dt)
+        #         # assign self.dt, change the expression in the PDE
+        #         dt = dt0*rate**(i)
+        #         total_time += dt
+        #         self.dt.assign(dt)
             
-                # invoke the solver to get u^{k+1}
-                self.pm_solver.solve()#bounds=(self.lower_bound, self.upper_bound))
+        #         # invoke the solver to get u^{k+1}
+        #         self.pm_solver.solve()#bounds=(self.lower_bound, self.upper_bound))
 
-                # print info
-                if self.verbose > 0:
-                    with self.image_h.dat.vec as img_vec:
-                        PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.2e} sigma={self.sigma:.2e} '
-                                    + utilities.msg_bounds(img_vec,'IMG'))
+        #         # print info
+        #         if self.verbose > 0:
+        #             with self.image_h.dat.vec as img_vec:
+        #                 PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.2e} sigma={self.sigma:.2e} '
+        #                             + utilities.msg_bounds(img_vec,'IMG'))
 
-                # store images
-                if self.store_images:
-                    PETSc.Sys.Print(f"Storing image {i=}")
-                    self.intermediate_images[i].assign(self.image_h, annotate=True)
+        #         # store images
+        #         if self.store_images:
+        #             PETSc.Sys.Print(f"Storing image {i=}")
+        #             self.intermediate_images[i].assign(self.image_h, annotate=True)
                 
-                self.steps_done += 1
+        #         self.steps_done += 1
 
-        else:
-            self.images = []
+        # else:
+        
+        if self.mode == "direct":
             total_time = 0.0
             self.steps_done = 0            
             for i in range(self.nsteps):
@@ -579,6 +602,11 @@ class PorousMediaMap(Conductivity2ImageMap):
                     # update u^{k} with u^{k-1}
                     self.tdens4transform.interpolate(self.image_h)
 
+                if self.use_stored_images_as_initial_guess and self.stored_images:
+                    PETSc.Sys.Print(f"Assign initial guess from stored image {i=}")
+                    # need to annotate this assigment for pyadjoint to track dependencies
+                    self.image_h.assign(self.intermediate_images[i], annotate=True)
+
 
                 with self.tdens4transform.dat.vec as uk_vec:
                     lower_bound_value = uk_vec.min()[1]
@@ -587,7 +615,7 @@ class PorousMediaMap(Conductivity2ImageMap):
                     self.upper_bound.assign(upper_bound_value)
 
 
-         
+            
                 # assign self.dt, change the expression in the PDE
                 dt = dt0*rate**(i)
                 total_time += dt
@@ -609,7 +637,55 @@ class PorousMediaMap(Conductivity2ImageMap):
                     self.intermediate_images[i].assign(self.image_h, annotate=True)
 
                 self.steps_done += 1
-        
+        elif self.mode == "exponential":
+            self.log_tdens4transform.interpolate(ln(conductivity + 1e-20))
+            if not self.use_stored_images_as_initial_guess:
+                # good initial guess is the conductivity itself
+                self.log_image_h.assign(self.log_tdens4transform)
+            total_time = 0.0
+            self.steps_done = 0            
+            for i in range(self.nsteps):
+                if i == 0:
+                    # log_u^{0} = conductivity
+                    pass
+                else:
+                    # update log_u^{k} with log_u^{k-1}
+                    self.log_tdens4transform.interpolate(self.log_image_h)
+
+                if self.use_stored_images_as_initial_guess and self.stored_images:
+                    PETSc.Sys.Print(f"Assign initial guess from stored image {i=}")
+                    # need to annotate this assigment for pyadjoint to track dependencies
+                    self.log_image_h.assign(self.intermediate_images[i], annotate=True)
+
+
+                # assign self.dt, change the expression in the PDE
+                dt = dt0*rate**(i)
+                total_time += dt
+                self.dt.assign(dt)
+            
+                # invoke the solver to get u^{k+1}
+                self.pm_solver.solve()#bounds=(self.lower_bound, self.upper_bound))
+
+
+                # print info
+                if self.verbose > 0:
+                    with self.log_image_h.dat.vec as img_vec:
+                        PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
+                                    + utilities.msg_bounds(img_vec,'LOG IMG'))
+                        
+                # store images
+                if self.store_images:
+                    PETSc.Sys.Print(f"Storing image {i=}")
+                    self.intermediate_images[i].assign(self.log_image_h, annotate=True)
+
+                self.steps_done += 1
+
+            self.image_h.interpolate(exp(self.log_image_h))
+
+
+
+
+
         # set the flag equal to true
         if self.store_images:
             self.stored_images = True
