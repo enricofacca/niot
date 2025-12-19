@@ -571,7 +571,7 @@ class PorousMediaMap(Conductivity2ImageMap):
             for i in range(self.nsteps):
                 if i == 0:
                     # u^{0} = conductivity
-                    self.self.tdens4transform.interpolate(conductivity)
+                    self.tdens4transform.interpolate(conductivity)
                 else:
                     # update u^{k} with u^{k-1}
                     self.tdens4transform.interpolate(self.image_h)
