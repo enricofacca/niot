@@ -576,6 +576,14 @@ class PorousMediaMap(Conductivity2ImageMap):
                     # update u^{k} with u^{k-1}
                     self.tdens4transform.interpolate(self.image_h)
 
+
+                with self.tdens4transform.dat.vec as uk_vec:
+                    lower_bound_value = uk_vec.min()[1]
+                    self.lower_bound.assign(lower_bound_value)
+                    upper_bound_value = uk_vec.max()[1]
+                    self.upper_bound.assign(upper_bound_value)
+
+
          
                 # assign self.dt, change the expression in the PDE
                 dt = dt0*rate**(i)
