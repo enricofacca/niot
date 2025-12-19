@@ -471,7 +471,7 @@ class PorousMediaMap(Conductivity2ImageMap):
             self.log_tdens4transform = Function(space, name='log_tdens4transform')
             self.log_image_h = Function(space, name='log_image_h')
             test = TestFunction(space)
-            trial = TrialFunction(space)
+            trail = TrialFunction(space)
 
 
             self.pm_PDE = ( 
@@ -657,6 +657,12 @@ class PorousMediaMap(Conductivity2ImageMap):
                     # need to annotate this assigment for pyadjoint to track dependencies
                     self.log_image_h.assign(self.intermediate_images[i], annotate=True)
 
+                with self.log_image_h.dat.vec as img_vec:
+                    PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
+                                + utilities.msg_bounds(img_vec,'LOG IMG'))
+                with self.log_tdens4transform.dat.vec as img_vec:
+                    PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
+                                + utilities.msg_bounds(img_vec,'LOG IMG^{n-1}'))
 
                 # assign self.dt, change the expression in the PDE
                 dt = dt0*rate**(i)
