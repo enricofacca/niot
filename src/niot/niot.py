@@ -980,6 +980,8 @@ class NiotSolver:
                     "snes_linesearch_maxstep": 0.1,
                     "snes_linesearch_damping": 1.0,
                     "snes_linesearch_monitor": None,
+                    "snes_linesearch_maxlambda" : 0.1,
+                    "snes_linesearch_max_it": 4,
                     'snes_rtol': 1e-12,
                     'snes_atol': 1e-10,
                     'snes_stol': 1e-6,
