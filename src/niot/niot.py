@@ -974,14 +974,15 @@ class NiotSolver:
 
 
             if self.mesh.ufl_cell().is_simplex():
+                mode = "exponential"
                 solver_parameters={
                     "snes_type": 'newtonls',
-                    "snes_linesearch_type": "basic",
-                    "snes_linesearch_maxstep": 0.1,
-                    "snes_linesearch_damping": 1.0,
-                    "snes_linesearch_monitor": None,
-                    "snes_linesearch_maxlambda" : 0.1,
-                    "snes_linesearch_max_it": 4,
+                    #"snes_linesearch_type": "basic",
+                    #"snes_linesearch_maxstep": 0.1,
+                    #"snes_linesearch_damping": 1.0,
+                    #"snes_linesearch_monitor": None,
+                    #"snes_linesearch_maxlambda" : 0.1,
+                    #"snes_linesearch_max_it": 4,
                     'snes_rtol': 1e-12,
                     'snes_atol': 1e-10,
                     'snes_stol': 1e-6,
@@ -1009,6 +1010,7 @@ class NiotSolver:
 
 
             else:
+                mode = "direct"
                 solver_parameters={
                     'snes_type': 'newtonls',
                     'snes_rtol': 1e-6,
@@ -1046,7 +1048,8 @@ class NiotSolver:
                 nsteps=self.ctrl_get(['tdens2image', 'pm','nsteps']),
                 dt0=self.ctrl_get(['tdens2image', 'pm','dt0']),
                 solver_parameters=solver_parameters,
-                name=label_pm)
+                name=label_pm,
+                mode=mode)
             self.tdens2image = lambda x: self.tdens2image_map(x)
 
             try:
