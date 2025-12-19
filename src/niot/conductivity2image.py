@@ -682,6 +682,7 @@ class PorousMediaMap(Conductivity2ImageMap):
 
                 if self.verbose > 0:
                     self.image_h.interpolate(exp(self.log_image_h))#, annotate=False)
+                    mass = assemble(self.image_h*dx)
                     with self.image_h.dat.vec as img_vec, self.log_image_h.dat.vec as log_img_vec:
                         PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
                                 + utilities.msg_bounds(log_img_vec,'LOG IMG')
