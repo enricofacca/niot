@@ -467,25 +467,37 @@ class PorousMediaMap(Conductivity2ImageMap):
             self.lower_bound = Function(space, name='lower_bound')
             self.upper_bound = Function(space, name='upper_bound')
             self.upper_bound.assign(1e20)
+        
         elif self.mode == "exponential":
+            PETSc.Sys.Print("Porous media with exponential transform")
+
             self.log_tdens4transform = Function(space, name='log_tdens4transform')
             self.log_image_h = Function(space, name='log_image_h')
             test = TestFunction(space)
-            trail = TrialFunction(space)
 
 
             self.pm_PDE = ( 
                 (exp(self.log_image_h) - exp(self.log_tdens4transform)) / self.dt * test * dx 
-                + self.exponent_m * exp( (self.exponent_m - 1) * exp(self.log_tdens4transform) ) 
+                + self.exponent_m * exp( self.exponent_m * self.log_tdens4transform) 
                 * inner(grad(self.log_image_h) ,grad(test)) * dx 
                 )
             self.Jac_relaxed = derivative(self.pm_PDE, self.log_image_h)
             self.pm_problem = NonlinearVariationalProblem(
                 self.pm_PDE, self.log_image_h, J=self.Jac_relaxed)
+            
+            def img_bounds(X,F):
+                min_v = X.min()[1]
+                max_v = X.max()[1]
+                msg = "".join([f'{min_v:2.1e}','<=LOG IMG <=',f'{max_v:2.1e}'])
+                PETSc.Sys.Print(msg)
+
+
             self.pm_solver = NonlinearVariationalSolver(
                 self.pm_problem,
                 solver_parameters=solver_parameters,
-                options_prefix='porous_solver_')
+                options_prefix='porous_solver_',
+                post_function_callback=img_bounds
+                )
 
 
 
