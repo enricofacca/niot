@@ -978,7 +978,7 @@ class NiotSolver:
                     "snes_type": 'newtonls',
                     "snes_linesearch_type": "l2",
                     "snes_linesearch_maxstep": 1.0,
-                    "snes_linesearch_damping": 1.0,
+                    "snes_linesearch_damping": 0.2,
                     "snes_linesearch_monitor": None,
                     'snes_rtol': 1e-12,
                     'snes_atol': 1e-10,

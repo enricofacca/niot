@@ -410,7 +410,7 @@ class PorousMediaMap(Conductivity2ImageMap):
         # relaxed Jacobian
         relaxed_permeability = self.exponent_m * (self.image_h + 1e-8) ** (self.exponent_m - 1) + 1e-8
         if degree > 0:
-            relaxed_pm = relaxed_permeability * inner(grad(self.image_h) ,grad(test)) * dx  
+            relaxed_pm = exp(ln(relaxed_permeability)) * inner(grad(self.image_h) ,grad(test)) * dx  
         else:
             if space.mesh().ufl_cell().is_simplex():
                 raise NotImplementedError('Laplacian with DG0 simplices is not implemented')
