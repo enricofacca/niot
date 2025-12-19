@@ -975,7 +975,7 @@ class NiotSolver:
 
             if self.mesh.ufl_cell().is_simplex():
                 solver_parameters={
-                    "snes_type": 'vinewtonrsls',
+                    "snes_type": 'newtontr',
                     "snes_linesearch_type": 'basic',
                     'snes_rtol': 1e-6,
                     'snes_atol': 1e-6,

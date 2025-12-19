@@ -549,7 +549,7 @@ class PorousMediaMap(Conductivity2ImageMap):
                 self.dt.assign(dt)
             
                 # invoke the solver to get u^{k+1}
-                self.pm_solver.solve(bounds=(self.lower_bound, self.upper_bound))
+                self.pm_solver.solve()#bounds=(self.lower_bound, self.upper_bound))
 
                 # print info
                 if self.verbose > 0:
@@ -591,7 +591,7 @@ class PorousMediaMap(Conductivity2ImageMap):
                 self.dt.assign(dt)
             
                 # invoke the solver to get u^{k+1}
-                self.pm_solver.solve(bounds=(self.lower_bound, self.upper_bound))
+                self.pm_solver.solve()#bounds=(self.lower_bound, self.upper_bound))
 
 
                 # print info
