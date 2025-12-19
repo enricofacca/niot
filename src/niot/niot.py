@@ -985,7 +985,7 @@ class NiotSolver:
                     #"snes_linesearch_max_it": 4,
                     'snes_rtol': 1e-12,
                     'snes_atol': 1e-10,
-                    'snes_stol': 1e-6,
+                    'snes_stol': 1e-10,
                     'snes_max_it': 100,
                     'ksp_type': 'gmres',
                     'ksp_rtol': 1e-8,

@@ -639,9 +639,11 @@ class PorousMediaMap(Conductivity2ImageMap):
 
                 # print info
                 if self.verbose > 0:
+                    mass = assemble(self.image_h*dx)
                     with self.image_h.dat.vec as img_vec:
                         PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
-                                    + utilities.msg_bounds(img_vec,'IMG'))
+                                    + utilities.msg_bounds(img_vec,'IMG')
+                                    + f' mass={mass:.2e}')
                         
                 # store images
                 if self.store_images:
@@ -678,25 +680,20 @@ class PorousMediaMap(Conductivity2ImageMap):
             
 
 
-
-                with self.log_image_h.dat.vec as img_vec:
-                    PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
-                                + utilities.msg_bounds(img_vec,'LOG IMG'))
-                with self.log_tdens4transform.dat.vec as img_vec:
-                    PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
-                                + utilities.msg_bounds(img_vec,'LOG IMG^{n-1}'))
-
+                if self.verbose > 0:
+                    self.image_h.assign(exp(self.log_image_h), annotate=False)
+                    with self.image_h.dat.vec as img_vec, self.log_image_h.dat.vec as log_img_vec:
+                        PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
+                                + utilities.msg_bounds(log_img_vec,'LOG IMG')
+                                + utilities.msg_bounds(img_vec,'IMG')
+                                + f' mass={mass:.2e}')
+                    
+                
              
                 # invoke the solver to get u^{k+1}
                 self.pm_solver.solve()#bounds=(self.lower_bound, self.upper_bound))
 
 
-                # print info
-                if self.verbose > 0:
-                    with self.log_image_h.dat.vec as img_vec:
-                        PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
-                                    + utilities.msg_bounds(img_vec,'LOG IMG'))
-                        
                 # store images
                 if self.store_images:
                     PETSc.Sys.Print(f"Storing image {i=}")
@@ -705,7 +702,12 @@ class PorousMediaMap(Conductivity2ImageMap):
                 self.steps_done += 1
 
             self.image_h.interpolate(exp(self.log_image_h))
-
+            if self.verbose > 0:
+                mass = assemble(self.image_h*dx)
+                with self.image_h.dat.vec as img_vec:
+                    PETSc.Sys.Print(f'Final IMG after exp transform '
+                                + utilities.msg_bounds(img_vec,'IMG')
+                                + f' mass={mass:.2e}')
 
 
 
