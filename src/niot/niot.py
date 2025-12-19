@@ -738,6 +738,7 @@ class NiotSolver:
         # we need to initialize the increment solver
         self.shift_semi_implicit = Function(self.ConstansSpace)
         self.shift_semi_implicit.assign(0.1)
+        
         test = TestFunction(self.fems.tdens_space)  
         trial = TrialFunction(self.fems.tdens_space)
         self.increment_form =  inner(test, trial)*dx
@@ -746,42 +747,27 @@ class NiotSolver:
         self.increment_h.rename('increment_h')
 
         # # function for h^{-1} norm
-        self.pot_dual_h1 = Function(self.fems.tdens_space)
+        test = TestFunction(self.fems.pot_space)  
+        trial = TrialFunction(self.fems.pot_space)
+        self.pot_dual_h1 = Function(self.fems.pot_space)
         self.pot_dual_h1.rename('pot_dual_h1')
 
-        self.difference_dual_h1 = Function(self.fems.tdens_space)
-        self.difference_dual_h1.rename('difference_dual_h1')
-        self.rhs_form_dual_h1 = self.difference_dual_h1 * test * dx
-    
-        
         self.dual_h1_sigma =  Function(self.ConstansSpace, name="discrepancy_dual_h1_sigma")
         self.dual_h1_sigma.assign(self.ctrl_get('discrepancy_dual_h1_sigma'))
         PETSc.Sys.Print("sigma = scaling of l^2 term", self.ctrl_get('discrepancy_dual_h1_sigma'))
         
-        #
-        # Define the form 
-        # int (1/2 |\nabla u|^2 + 1/2 sigma u^2) confidence - rhs u
-        #
-        
-        
-        # self.dual_h1_Lagrangian = (
-        #     self.fems.Laplacian_Lagrangian(self.pot_dual_h1, self.confidence, cell2face="arithmetic_mean")
-        #     +  # 0.5 because also Laplacain Lagrangian has this factor
-        #     0.5 * self.dual_h1_sigma * self.pot_dual_h1**2 * dx
-        #     - self.difference_dual_h1 * self.pot_dual_h1 * dx
-        # )
         self.dual_h1_form = self.dual_h1_sigma * self.fems.Laplacian_form(self.fems.pot_space, self.confidence, cell2face="arithmetic_mean")
         test = TestFunction(self.fems.pot_space)
         trial = TrialFunction(self.fems.pot_space)
         self.dual_h1_form += test * trial * self.confidence * dx 
-        self.dual_h1_rhs = self.difference_dual_h1 * test * dx
+        self.dual_h1_rhs = ( self.image_h - self.img_observed ) * test * dx
         
 
         #t = assemble(self.dual_h1_Lagrangian)
         
         # Define the problem
         #self.h1_dual_PDE = derivative(self.dual_h1_Lagrangian, self.pot_dual_h1)
-        self.dual_h1_problem = LinearVariationalProblem(self.dual_h1_form,self.dual_h1_rhs, self.pot_dual_h1)
+        self.dual_h1_problem = LinearVariationalProblem(self.dual_h1_form, self.dual_h1_rhs, self.pot_dual_h1)
         #self.h1_dual_pde_problem = NonlinearVariationalProblem(self.h1_dual_PDE, self.pot_dual_h1)        
         
         
@@ -1733,15 +1719,14 @@ class NiotSolver:
         elif discrepancy_norm == "dual_h1":
             # this should be stored by adjoint
             #assemble(interpolate(self.image_h - self.img_observed,self.fems.tdens_space), tensor=self.difference_dual_h1)
-            self.difference_dual_h1.interpolate(self.image_h - self.img_observed)
-            # this A u = b should be
+            #self.difference_dual_h1.interpolate(self.image_h - self.img_observed)
+            
+            # dual norm is 
+            # $ \int u (I(\mu) - Img_obs) dx
+            # with
+            # this -\Delta u = I(\mu) - Img_obs  should be
             self.dual_h1_solver.solve()
-            #self.h1_dual_pde_solver.solve()
-            #dis = (
-            #    self.fems.Laplacian_Lagrangian(self.pot_dual_h1,  self.confidence, cell2face="arithmetic_mean") 
-            #    + 0.5 * self.confidence * self.dual_h1_sigma * self.pot_dual_h1 **2 *dx
-            #    ) 
-            dis = self.pot_dual_h1 * self.difference_dual_h1 * dx
+            dis = self.pot_dual_h1 * (self.image_h - self.img_observed) * dx
         else:
             raise ValueError(f'Wrong discrepancy norm {discrepancy_norm=}')
 
