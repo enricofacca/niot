@@ -394,7 +394,7 @@ class PorousMediaMap(Conductivity2ImageMap):
         
         
         if degree > 0:
-            pm_Laplacian_PDE = permeability * inner(grad(self.image_h) ,grad(test)) * dx  
+            pm_Laplacian_PDE = exp(ln(permeability)) * inner(grad(self.image_h) ,grad(test)) * dx  
         else:
             if space.mesh().ufl_cell().is_simplex():
                 raise NotImplementedError('Laplacian with DG0 simplices is not implemented')
