@@ -770,9 +770,9 @@ class NiotSolver:
         #     0.5 * self.dual_h1_sigma * self.pot_dual_h1**2 * dx
         #     - self.difference_dual_h1 * self.pot_dual_h1 * dx
         # )
-        self.dual_h1_form = self.dual_h1_sigma * self.fems.Laplacian_form(self.fems.tdens_space, self.confidence, cell2face="arithmetic_mean")
-        test = TestFunction(self.fems.tdens_space)
-        trial = TrialFunction(self.fems.tdens_space)
+        self.dual_h1_form = self.dual_h1_sigma * self.fems.Laplacian_form(self.fems.pot_space, self.confidence, cell2face="arithmetic_mean")
+        test = TestFunction(self.fems.pot_space)
+        trial = TrialFunction(self.fems.pot_space)
         self.dual_h1_form += test * trial * self.confidence * dx 
         self.dual_h1_rhs = self.difference_dual_h1 * test * dx
         
@@ -789,7 +789,7 @@ class NiotSolver:
         solver_parameters={
                 #'snes_type': 'ksponly',
                 'ksp_type': 'minres',
-                'ksp_rtol': 1e-12,
+                'ksp_rtol': 1e-10,
                 'ksp_atol': 1e-8,
                 'ksp_max_it': 500,
                 'pc_type': 'hypre',
@@ -803,7 +803,18 @@ class NiotSolver:
             solver_parameters.update({"ksp_monitor": None})
         
         if self.mesh.geometric_dimension() == 3:
-            hypre_ctrl_3d = {
+            if self.mesh.ufl_cell().is_simplex():
+                hypre_ctrl_3d = {
+                        # tuning parameters for the multigrid
+                        # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
+                        "pc_hypre_type": "boomeramg",
+                        "pc_hypre_boomeramg_strong_threshold": 0.65,
+                        "pc_hypre_boomeramg_max_iter": 1,
+                        "pc_hypre_boomeramg_agg_nl": 0,
+                        "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
+                    }
+            else:   
+                hypre_ctrl_3d = {
                         # tuning parameters for the multigrid
                         # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
                         "pc_hypre_type": "boomeramg",
@@ -816,15 +827,7 @@ class NiotSolver:
         self.dual_h1_solver = LinearVariationalSolver(self.dual_h1_problem,
                                                         solver_parameters=solver_parameters,
                                                         options_prefix='dual_h1_solver_')
-        #self.h1_dual_pde_solver = NonlinearVariationalSolver(self.h1_dual_pde_problem,
-        #                                                     solver_parameters=solver_parameters,
-        #                                                     options_prefix='h1_dual_pde_solver_')
-
-
-
-
-
-
+        
 
         # self.rhs_semi_implicit = Function(self.fems.tdens_space)
         # self.increment_problem = LinearVariationalProblem(
