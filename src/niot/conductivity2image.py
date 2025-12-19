@@ -448,11 +448,11 @@ class PorousMediaMap(Conductivity2ImageMap):
         
         def img_bounds(current_solution):
             PETSc.Sys.Print("Porous Media Image bounds: ")
-            with current_solution.dat.vec_ro as v:
-                min_v = v.min()[1]
-                max_v = v.max()[1]
-                msg = "".join([f'{min_v:2.1e}','<=PM IMG <=',f'{max_v:2.1e}'])
-                PETSc.Sys.Print(msg)
+            # with current_solution.dat.vec_ro as v:
+            #     min_v = v.min()[1]
+            #     max_v = v.max()[1]
+            #     msg = "".join([f'{min_v:2.1e}','<=PM IMG <=',f'{max_v:2.1e}'])
+            #     PETSc.Sys.Print(msg)
                 
 
         
