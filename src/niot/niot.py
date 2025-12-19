@@ -1566,6 +1566,11 @@ class NiotSolver:
             # if we want to use the intermidate images as initial guess we first compute the
             # images so we can record their assignment during the setup of the reduced functional
             if self.tdens2image_map.store_images and not self.tdens2image_map.stored_images:
+                self.print_info(
+                    msg=f'Computing initial images for porous media map', 
+                    priority=1, 
+                    where=['stdout','log'], 
+                    color='green')
                 self.image_h = self.tdens2image_map(self.tdens_h)
 
             
