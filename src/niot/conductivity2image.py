@@ -394,6 +394,7 @@ class PorousMediaMap(Conductivity2ImageMap):
         
         
         if degree > 0:
+            PETSc.Sys.Print('Porous media with continuous elements')
             pm_Laplacian_PDE = exp(ln(permeability)) * inner(grad(self.image_h) ,grad(test)) * dx  
         else:
             if space.mesh().ufl_cell().is_simplex():
