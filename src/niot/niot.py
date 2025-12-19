@@ -1714,7 +1714,7 @@ class NiotSolver:
         Measure the discrepancy between I(tdens) and the observed data.
         '''
         # store image
-        self.image_h = self.tdens2image_map(tdens)
+        self.image_h.interpolate(self.tdens2image_map(tdens))
 
         #with self.image_h.dat.vec as img_vec, self.reconstruction.dat.vec as img_rec_vec:
         #    img_vec.copy(img_rec_vec)
