@@ -484,9 +484,9 @@ class PorousMediaMap(Conductivity2ImageMap):
                 )
             min_image = 1e-14 # a minimim value for the image
             self.Jac_relaxed = (
-                    max(exp(self.log_image_h),min_image) / self.dt * trail * test * dx
-                    + self.exponent_m * max(exp( self.exponent_m * self.log_tdens4transform),min_image) 
-                    * inner(grad(trial) ,grad(test)) * dx 
+                    max_value(exp(self.log_image_h),min_image) / self.dt * trail * test * dx
+                    + self.exponent_m * max_value(exp( self.exponent_m * self.log_tdens4transform), min_image) 
+                    * inner(grad(trail) ,grad(test)) * dx 
                 )
 
 
