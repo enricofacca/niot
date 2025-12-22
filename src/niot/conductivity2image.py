@@ -474,6 +474,7 @@ class PorousMediaMap(Conductivity2ImageMap):
             self.log_tdens4transform = Function(space, name='log_tdens4transform')
             self.log_image_h = Function(space, name='log_image_h')
             test = TestFunction(space)
+            trail = TrialFunction(space)
 
 
             self.pm_PDE = ( 
@@ -481,7 +482,17 @@ class PorousMediaMap(Conductivity2ImageMap):
                 + self.exponent_m * exp( self.exponent_m * self.log_tdens4transform) 
                 * inner(grad(self.log_image_h) ,grad(test)) * dx 
                 )
-            self.Jac_relaxed = derivative(self.pm_PDE, self.log_image_h)
+            min_image = 1e-14 # a minimim value for the image
+            self.Jac_relaxed = (
+                    max(exp(self.log_image_h),min_image) / self.dt * trail * test * dx
+                    + self.exponent_m * max(exp( self.exponent_m * self.log_tdens4transform),min_image) 
+                    * inner(grad(trial) ,grad(test)) * dx 
+                )
+
+
+            
+
+            
             self.pm_problem = NonlinearVariationalProblem(
                 self.pm_PDE, self.log_image_h, J=self.Jac_relaxed)
             

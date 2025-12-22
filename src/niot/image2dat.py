@@ -1254,6 +1254,63 @@ def mesh_from_2d_mask(mask2d, lengths,
    
    return selected_mesh2d
 
+def voxel_mesh_from_3d_mask(mask3d, 
+                      lengths, 
+                      offset=[0.0,0.0,0.0],
+                      comm=COMM_WORLD):
+   """
+   Create a 2d mesh from a 2D mask.
+   """
+   
+   Lx, Ly, Lz = lengths
+   # 1. Create topology and coordinates from the 2D mask
+   output = topol_coords_edges_from_mask_3d(mask3d, Lx=Lx, Ly=Ly, Lz=Lz)
+   topol, xyz_coords, new_edges, active_cells, inverse_cells = output
+   
+   
+   
+   name = mesh.DEFAULT_MESH_NAME
+   dim = xyz_coords.shape[1]
+   plex = mesh.plex_from_cell_list(
+         dim, topol, xyz_coords, comm, mesh._generate_default_mesh_topology_name(name)
+      )
+   
+
+   selected_mesh3d = mesh.Mesh(
+      plex,
+      reorder=False,
+      name=name,
+      comm=comm,
+   )
+   selected_mesh3d.coordinates.dat.data[:,0] += offset[0]
+   selected_mesh3d.coordinates.dat.data[:,1] += offset[1]
+   selected_mesh3d.coordinates.dat.data[:,2] += offset[2]
+
+   nx, ny, nz = mask3d.shape
+
+   
+   selected_mesh3d.nx = nx
+   selected_mesh3d.ny = ny
+
+   selected_mesh3d.xmin = offset[0]
+   selected_mesh3d.ymin = offset[1]
+   selected_mesh3d.zmin = offset[2]
+   selected_mesh3d.xmax = offset[0] + Lx
+   selected_mesh3d.ymax = offset[1] + Ly
+   selected_mesh3d.zmax = offset[2] + Lz
+   selected_mesh3d.hx = Lx/nx
+   selected_mesh3d.hy = Ly/ny
+   selected_mesh3d.hz = Lz/nz
+   
+   selected_mesh3d.invert_rows_columns = False
+   selected_mesh3d.flip_up_down = False
+   selected_mesh3d.ncells = len(new_edges)
+   selected_mesh3d.new_edges = new_edges
+   selected_mesh3d.active_cells = active_cells
+   selected_mesh3d.inverse_cells = inverse_cells
+   
+   return selected_mesh3d
+
 
 def set_distribution_parameters(edges, height2, ncells, comm):
    """
