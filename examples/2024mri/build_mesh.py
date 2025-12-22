@@ -374,7 +374,7 @@ def setup(mri_directory,
 
         # estimate used voxel size
         volume = 100 * np.sum(mask_np > 0) / ( mask_np.shape[0] * mask_np.shape[1] * mask_np.shape[2])
-        print(f"Volume fraction of hexa mesh: {volume:.2f}%")
+        print(f"Volume fraction of hexa mesh: {volume:.2f}% | new={np.sum(mask_np > 0)} old={mask_np.shape[0] * mask_np.shape[1] * mask_np.shape[2]}")
 
 
         mesh_hexa = export_voxel_to_gmsh(mask_np, 
