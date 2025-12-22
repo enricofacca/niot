@@ -15,6 +15,85 @@ from skimage.morphology import skeletonize
 from scipy.ndimage import binary_dilation
 import time
 
+
+def export_voxel_to_gmsh(array_3d, voxel_size=1.0):
+    """
+    Converts a 3D binary numpy array into a Gmsh (.msh) file using hexahedral elements.
+    Only cells where array_3d == 1 are converted into mesh elements.
+    
+    Parameters:
+    -----------
+    array_3d : np.ndarray
+        3D array of 0s and 1s.
+    filename : str
+        Output path for the .msh file.
+    voxel_size : float
+        The physical side length of each cube.
+    """
+    
+    # 1. Identify active voxel indices (where value is 1)
+    # Using np.argwhere returns an (N, 3) array of [z, y, x]
+    z_idx, y_idx, x_idx = np.where(array_3d == 1)
+    num_cubes = len(z_idx)
+    
+    if num_cubes == 0:
+        print("Warning: The provided array is empty (all zeros). No mesh generated.")
+        return
+
+    # 2. Generate unique nodes
+    # A cube at (i, j, k) has 8 vertices. 
+    # To avoid duplicate nodes at shared corners, we define the global grid of possible nodes.
+    nz, ny, nx = array_3d.shape
+    
+    # The coordinate grid for nodes (vertices) has dimensions (N+1)
+    # We only want to export nodes that are actually part of an active cube.
+    # However, for simplicity and performance in smaller/medium grids, 
+    # we can map cube indices to a global node indexing system.
+    
+    def get_node_idx(iz, iy, ix):
+        return iz * (ny + 1) * (nx + 1) + iy * (nx + 1) + ix
+
+    # Define the 8 relative offsets for a hexahedron in Gmsh ordering (Type 5)
+    # Gmsh Hexahedron node ordering:
+    # 0: (0,0,0), 1: (1,0,0), 2: (1,1,0), 3: (0,1,0)  <- Bottom face
+    # 4: (0,0,1), 5: (1,0,1), 6: (1,1,1), 7: (0,1,1)  <- Top face
+    offsets = np.array([
+        [0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0],
+        [1, 0, 0], [1, 0, 1], [1, 1, 1], [1, 1, 0]
+    ])
+    
+    # Construct elements array (num_cubes, 8)
+    # We add the offsets to our base (z, y, x) indices
+    cells_nodes = []
+    for dz, dy, dx in offsets:
+        cells_nodes.append(get_node_idx(z_idx + dz, y_idx + dy, x_idx + dx))
+    
+    # Stack to get (num_cubes, 8)
+    hexa_cells = np.stack(cells_nodes, axis=1)
+    
+    # 3. Collect unique nodes and remap
+    unique_node_indices, inverse_map = np.unique(hexa_cells, return_inverse=True)
+    hexa_cells_remapped = inverse_map.reshape(hexa_cells.shape)
+    
+    # 4. Calculate physical coordinates for unique nodes
+    # Reconstruct (z, y, x) from the flat unique_node_indices
+    u_iz = unique_node_indices // ((ny + 1) * (nx + 1))
+    remainder = unique_node_indices % ((ny + 1) * (nx + 1))
+    u_iy = remainder // (nx + 1)
+    u_ix = remainder % (nx + 1)
+    
+    points = np.stack([u_ix, u_iy, u_iz], axis=1).astype(float) * voxel_size
+    
+    # 5. Create meshio object and write
+    # 'hexahedron' is the meshio key for 8-node bricks
+    cells = [("hexahedron", hexa_cells_remapped)]
+    
+    
+    mesh = meshio.Mesh(points=points, cells=cells)
+
+    return mesh
+
+
 def setup(mri_directory, 
           out_directory,
         threshold_tof_4_main_network,
@@ -23,7 +102,8 @@ def setup(mri_directory,
             build=True,
           save_h5=False,
             firedrake_conversion=True,
-            build_tof_mesh=False
+            build_tof_mesh=False,
+            cell_type="tetrahedron"
           ):
 
     def load_data(mri_directory):
@@ -249,7 +329,7 @@ def setup(mri_directory,
             )
         return mesh_pygal, mask
         
-    if build:
+    if build and cell_type == "tetrahedron":
         mesh_pygal, mask_np = build_mesh(voxel_size,
                                          brain_mask_np,
                                          sink_support_np,
@@ -288,6 +368,23 @@ def setup(mri_directory,
         print(f"Saving mask mesher {outfilename}")
         nibabel.save(nibabel.Nifti1Image(mask_np, affine), outfilename)
 
+    if build and cell_type == "hexahedron":
+        mesh_hexa = export_voxel_to_gmsh(mask_np, 
+                                        voxel_size=hx)
+        
+        coordinate = mesh_hexa.points
+        offset = affine[:3, 3]
+        print("Offset:", offset)
+        coordinate[:, 0] += offset[0]
+        coordinate[:, 1] += offset[1]
+        coordinate[:, 2] += offset[2]
+
+        # save mesh as vtu and msh
+        mesh_hexa.write(os.path.join(out_directory,"brain_hexa_main.vtu"))
+        writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)
+        writer(os.path.join(out_directory,"brain_hexa_main.msh"), mesh_pygal)
+
+        
     if build_tof_mesh:
         mesh_tof_pygal, mask_tof_np = build_mesh(voxel_size,
                                          brain_mask_np,
@@ -454,12 +551,13 @@ if __name__ == '__main__':
                         help="Blur for connected components. If 0, no blur is applied.")
     parser.add_argument('--blur_mesh', type=float, default=0.0, 
                         help="Blur for connected components. If 0, no blur is applied.")
+    parser.add_argument('--type', type=str, default="tetrahedron", help="tetrahedron or hexahedron")
     parser.add_argument('--tof_only', action='store_true', help="Build only the tof mesh.")
     parser.add_argument('--read', action='store_true')
     parser.add_argument('--meshonly', action='store_true')
 
     args = parser.parse_args()
 
-    setup(args.mri, args.out, args.threshold, args.blur_main, args.blur_mesh, not args.read, not args.meshonly, args.tof_only)
+    setup(args.mri, args.out, args.threshold, args.blur_main, args.blur_mesh, not args.read, not args.meshonly, args.tof_only, cell_type=args.type)
     
     
