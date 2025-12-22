@@ -386,7 +386,7 @@ def setup(mri_directory,
         # save mesh as vtu and msh
         mesh_hexa.write(os.path.join(out_directory,"brain_hexa_main.vtu"))
         writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)
-        writer(os.path.join(out_directory,"brain_hexa_main.msh"), mesh_pygal)
+        writer(os.path.join(out_directory,"brain_hexa_main.msh"), mesh_hexa)
 
         
     if build_tof_mesh:
