@@ -1270,7 +1270,7 @@ def voxel_mesh_from_3d_mask(mask3d,
    
    
    name = mesh.DEFAULT_MESH_NAME
-   dim = xyz_coords.shape[1]
+   dim = 3
    plex = mesh.plex_from_cell_list(
          dim, topol, xyz_coords, comm, mesh._generate_default_mesh_topology_name(name)
       )
@@ -1291,6 +1291,7 @@ def voxel_mesh_from_3d_mask(mask3d,
    
    selected_mesh3d.nx = nx
    selected_mesh3d.ny = ny
+   selected_mesh3d.nz = nz
 
    selected_mesh3d.xmin = offset[0]
    selected_mesh3d.ymin = offset[1]
@@ -1495,14 +1496,14 @@ def cell_index_from_ijk(i, j, k, ny, nz):
 
 def node_index_from_ijk(i, j, k, nny, nnz):
     """Calculates 1D node index from 3D (i, j, k) indices."""
-    return i * (nny * nnz) + j * nnz + k
+    return i + j * nnz + k  * (nny * nnz)
 
 def node_ijk_from_index(index, nny, nnz):
     """Calculates 3D (i, j, k) node indices from 1D index."""
     # Can be arrays
-    i = index // (nny * nnz)
+    i = index % nnz
     j = (index % (nny * nnz)) // nnz
-    k = index % nnz
+    k = index // (nny * nnz)
     return i, j, k
 
 def coord_from_ijk(i, j, k, hx, hy, hz):
@@ -1514,139 +1515,153 @@ def coord_from_ijk(i, j, k, hx, hy, hz):
    return np.stack([x, y, z], axis=1) # shape (n, 3)
    
 def topol_coords_edges_from_mask_3d(mask, Lx=1.0, Ly=1.0, Lz=1.0):
-    """
-    Given an input array of shape (nx, ny, nz) with 0/1 values, return the topology and coordinates of a mesh
-    describing the 1 values (hexahedra).
-    It also returns the connectivity of the active cells.
-    """
+   """
+   Given an input array of shape (nx, ny, nz) with 0/1 values, return the topology and coordinates of a mesh
+   describing the 1 values (hexahedra).
+   It also returns the connectivity of the active cells.
+   """
 
-    input_array = mask
-    if input_array.ndim != 3:
-        raise ValueError(f"Input mask must be 3-dimensional, but got {input_array.ndim} dimensions.")
-        
-    nx, ny, nz = input_array.shape
-    hx, hy, hz = Lx / nx, Ly / ny, Lz / nz
+   input_array = mask
+   if input_array.ndim != 3:
+      raise ValueError(f"Input mask must be 3-dimensional, but got {input_array.ndim} dimensions.")
+      
+   nx, ny, nz = input_array.shape
+   hx, hy, hz = Lx / nx, Ly / ny, Lz / nz
 
-    # print(f"Creating 3D mesh from mask")
-    # print(f"(nx,ny,nz) = ({nx},{ny},{nz}) {Lx=} {Ly=} {Lz=} {hx=} {hy=} {hz=}")
-    
-    active_cells_ijk = np.where(input_array > 0)
-    i_cells, j_cells, k_cells = active_cells_ijk
-    ncell = i_cells.size
+   # print(f"Creating 3D mesh from mask")
+   # print(f"(nx,ny,nz) = ({nx},{ny},{nz}) {Lx=} {Ly=} {Lz=} {hx=} {hy=} {hz=}")
+   
+   active_cells_ijk = np.where(input_array > 0)
+   i_cells, j_cells, k_cells = active_cells_ijk
+   print(f"Active cells found: {i_cells.size} out of {nx*ny*nz} ({(i_cells.size/(nx*ny*nz))*100.0:.2f}%)")
+   ncell = i_cells.size
 
-    if ncell == 0:
-        print("Warning: No active cells in 3D mask.")
-        return np.empty((0, 8), dtype=int), np.empty((0, 3)), np.empty((0, 2), dtype=int), np.empty(0, dtype=int), np.empty(0, dtype=int)
+   if ncell == 0:
+      print("Warning: No active cells in 3D mask.")
+      return np.empty((0, 8), dtype=int), np.empty((0, 3)), np.empty((0, 2), dtype=int), np.empty(0, dtype=int), np.empty(0, dtype=int)
 
-    #
-    # Define the connectivity list (edges) of active cells
-    #
-    
-    # Create inverse mapping for *all* active cells
-    # This map goes from original 1D index -> new 0-to-ncell-1 index
-    inverse_cells = np.zeros(nx * ny * nz, dtype=int) - 1
-    original_cell_indices = np.zeros(ncell, dtype=int)
-    
-    for k_new in range(ncell):
-        i, j, k = i_cells[k_new], j_cells[k_new], k_cells[k_new]
-        orig_idx = cell_index_from_ijk(i, j, k, ny, nz)
-        inverse_cells[orig_idx] = k_new
-        original_cell_indices[k_new] = orig_idx
+   #
+   # Define the connectivity list (edges) of active cells
+   #
+   
+   # Create inverse mapping for *all* active cells
+   # This map goes from original 1D index -> new 0-to-ncell-1 index
+   inverse_cells = np.zeros(nx * ny * nz, dtype=int) - 1
+   original_cell_indices = np.zeros(ncell, dtype=int)
+   
+   for k_new in range(ncell):
+      i, j, k = i_cells[k_new], j_cells[k_new], k_cells[k_new]
+      orig_idx = cell_index_from_ijk(i, j, k, ny, nz)
+      inverse_cells[orig_idx] = k_new
+      original_cell_indices[k_new] = orig_idx
 
-    edges = []
-    for k_new in range(ncell):
-        i, j, k = i_cells[k_new], j_cells[k_new], k_cells[k_new]
-        # current_new_idx = k_new
+   edges = []
+   for k_new in range(ncell):
+      i, j, k = i_cells[k_new], j_cells[k_new], k_cells[k_new]
+      # current_new_idx = k_new
 
-        # Check neighbor in +i (x-direction)
-        if i < nx - 1 and input_array[i + 1, j, k] > 0:
-            neighbor_orig_idx = cell_index_from_ijk(i + 1, j, k, ny, nz)
-            neighbor_new_idx = inverse_cells[neighbor_orig_idx]
-            edges.append([k_new, neighbor_new_idx])
+      # Check neighbor in +i (x-direction)
+      if i < nx - 1 and input_array[i + 1, j, k] > 0:
+         neighbor_orig_idx = cell_index_from_ijk(i + 1, j, k, ny, nz)
+         neighbor_new_idx = inverse_cells[neighbor_orig_idx]
+         edges.append([k_new, neighbor_new_idx])
 
-        # Check neighbor in +j (y-direction)
-        if j < ny - 1 and input_array[i, j + 1, k] > 0:
-            neighbor_orig_idx = cell_index_from_ijk(i, j + 1, k, ny, nz)
-            neighbor_new_idx = inverse_cells[neighbor_orig_idx]
-            edges.append([k_new, neighbor_new_idx])
+      # Check neighbor in +j (y-direction)
+      if j < ny - 1 and input_array[i, j + 1, k] > 0:
+         neighbor_orig_idx = cell_index_from_ijk(i, j + 1, k, ny, nz)
+         neighbor_new_idx = inverse_cells[neighbor_orig_idx]
+         edges.append([k_new, neighbor_new_idx])
 
-        # Check neighbor in +k (z-direction)
-        if k < nz - 1 and input_array[i, j, k + 1] > 0:
-            neighbor_orig_idx = cell_index_from_ijk(i, j, k + 1, ny, nz)
-            neighbor_new_idx = inverse_cells[neighbor_orig_idx]
-            edges.append([k_new, neighbor_new_idx])
+      # Check neighbor in +k (z-direction)
+      if k < nz - 1 and input_array[i, j, k + 1] > 0:
+         neighbor_orig_idx = cell_index_from_ijk(i, j, k + 1, ny, nz)
+         neighbor_new_idx = inverse_cells[neighbor_orig_idx]
+         edges.append([k_new, neighbor_new_idx])
 
-    new_edges = np.array(edges)
-    active_cells = original_cell_indices # Return the original 1D indices
+   new_edges = np.array(edges)
+   active_cells = original_cell_indices # Return the original 1D indices
 
-    #
-    # topology (hexahedra)
-    #
-    # Node indexing: (nx+1, ny+1, nz+1)
-    #
-    #   (i,j+1,k+1) 7-------6 (i+1,j+1,k+1)
-    #             /|      /|
-    # (i,j,k+1) 4-------5 | (i+1,j,k+1)
-    #           |  |    | |
-    # (i,j+1,k) | 3----|--2 (i+1,j+1,k)
-    #           | /     | /
-    #   (i,j,k) 0-------1 (i+1,j,k)
-    #
-    
-    nny = ny + 1
-    nnz = nz + 1
+   #
+   # topology (hexahedra)
+   #
+   # Node indexing: (nx+1, ny+1, nz+1)
+   #
+   #  (i,j+1,k+1)6-----7 (i+1,j+1,k+1)
+   #            /|    /|
+   # (i,j,k+1) 4-----5 | (i+1,j,k+1)
+   #           | |   | |
+   # (i,j+1,k) | 2---|-3 (i+1,j+1,k)
+   #           |/    |/
+   #   (i,j,k) 0-----1 (i+1,j,k)
+   #
+   
+   nny = ny + 1
+   nnz = nz + 1
 
-    # Get 1D node indices for all 8 nodes of each active cell
-    n0 = node_index_from_ijk(i_cells,     j_cells,     k_cells,     nny, nnz)
-    n1 = node_index_from_ijk(i_cells + 1, j_cells,     k_cells,     nny, nnz)
-    n2 = node_index_from_ijk(i_cells + 1, j_cells + 1, k_cells,     nny, nnz)
-    n3 = node_index_from_ijk(i_cells,     j_cells + 1, k_cells,     nny, nnz)
-    n4 = node_index_from_ijk(i_cells,     j_cells,     k_cells + 1, nny, nnz)
-    n5 = node_index_from_ijk(i_cells + 1, j_cells,     k_cells + 1, nny, nnz)
-    n6 = node_index_from_ijk(i_cells + 1, j_cells + 1, k_cells + 1, nny, nnz)
-    n7 = node_index_from_ijk(i_cells,     j_cells + 1, k_cells + 1, nny, nnz)
+   # Get 1D node indices for all 8 nodes of each active cell
+   n0 = node_index_from_ijk(i_cells,     j_cells,     k_cells,     nny, nnz)
+   n1 = node_index_from_ijk(i_cells + 1, j_cells,     k_cells,     nny, nnz)
+   n2 = node_index_from_ijk(i_cells,     j_cells + 1, k_cells,     nny, nnz)
+   n3 = node_index_from_ijk(i_cells + 1, j_cells + 1, k_cells,     nny, nnz)
+   
+   n4 = node_index_from_ijk(i_cells,     j_cells,     k_cells + 1, nny, nnz)
+   n5 = node_index_from_ijk(i_cells + 1, j_cells,     k_cells + 1, nny, nnz)
+   n6 = node_index_from_ijk(i_cells,     j_cells + 1, k_cells + 1, nny, nnz)
+   n7 = node_index_from_ijk(i_cells + 1, j_cells + 1, k_cells + 1, nny, nnz)
+   
 
-    # Stack them into an (ncell, 8) array
-    nodes_in_cells = np.stack([n0, n1, n2, n3, n4, n5, n6, n7], axis=1)
+   
 
-    # Find all unique nodes used by the active cells
-    active_nodes = np.unique(nodes_in_cells.flatten())
-    nnode = active_nodes.size
+   # Stack them into an (ncell, 8) array
+   nodes_in_cells = np.stack([n0, n1, n2, n3, n4, n5, n6, n7], axis=1)
 
-    # Define the new numbering and the inverse of the active nodes
-    # This maps from original 1D node index -> new 0-to-nnode-1 index
-    inverse_nodes = np.zeros((nx + 1) * (ny + 1) * (nz + 1), dtype=int) - 1
-    inverse_nodes[active_nodes] = np.arange(nnode)
-    
-    # Map from original node indices to new, compressed node indices
-    new_nodes_in_cells = inverse_nodes[nodes_in_cells]
+   print(nodes_in_cells)
+   print(node_ijk_from_index(nodes_in_cells.flatten(), nny, nnz))
 
-    # Validation
-    if len(new_nodes_in_cells) != ncell:
-        raise ValueError('Error in the 3D cell connectivity')
-    if nnode > 0:
-        if min(new_nodes_in_cells.flatten()) != 0:
-            raise ValueError('Error in the 3D cell connectivity (min index != 0)')
-        if max(new_nodes_in_cells.flatten()) != nnode - 1:
-            raise ValueError('Error in the 3D cell connectivity (max index != nnode-1)')
 
-    #
-    # Define the coordinates of the (active) nodes
-    #
-    
-    # Get (i, j, k) indices for all active nodes
-    i_coord, j_coord, k_coord = node_ijk_from_index(active_nodes, nny, nnz)
-    
-    # Convert (i, j, k) indices to (x, y, z) coordinates
-    xyz_coord = coord_from_ijk(i_coord, j_coord, k_coord, hx, hy, hz)
-    
-    debug = False
-    if debug:
-        print(f"Found {ncell} active cells and {nnode} active nodes.")
-        for i in range(ncell):
-            print(f"Cell {i:4d}: {new_nodes_in_cells[i, :]}")
 
-    return new_nodes_in_cells, xyz_coord, new_edges, active_cells, inverse_cells
+   # Find all unique nodes used by the active cells
+   active_nodes = np.unique(nodes_in_cells.flatten())
+   nnode = active_nodes.size
+
+   # Define the new numbering and the inverse of the active nodes
+   # This maps from original 1D node index -> new 0-to-nnode-1 index
+   inverse_nodes = np.zeros((nx + 1) * (ny + 1) * (nz + 1), dtype=int) - 1
+   inverse_nodes[active_nodes] = np.arange(nnode)
+   
+   # Map from original node indices to new, compressed node indices
+   new_nodes_in_cells = inverse_nodes[nodes_in_cells]
+
+   # Validation
+   if len(new_nodes_in_cells) != ncell:
+      raise ValueError('Error in the 3D cell connectivity')
+   if nnode > 0:
+      if min(new_nodes_in_cells.flatten()) != 0:
+         raise ValueError('Error in the 3D cell connectivity (min index != 0)')
+      if max(new_nodes_in_cells.flatten()) != nnode - 1:
+         raise ValueError('Error in the 3D cell connectivity (max index != nnode-1)')
+
+   #
+   # Define the coordinates of the (active) nodes
+   #
+   
+   # Get (i, j, k) indices for all active nodes
+   i_coord, j_coord, k_coord = node_ijk_from_index(active_nodes, nny, nnz)
+
+   print(i_coord, j_coord, k_coord)
+   
+   # Convert (i, j, k) indices to (x, y, z) coordinates
+   xyz_coord = coord_from_ijk(i_coord, j_coord, k_coord, hx, hy, hz)
+
+   print(xyz_coord)
+   
+   debug = False
+   if debug:
+      print(f"Found {ncell} active cells and {nnode} active nodes.")
+      for i in range(ncell):
+         print(f"Cell {i:4d}: {new_nodes_in_cells[i, :]}")
+
+   return new_nodes_in_cells, xyz_coord, new_edges, active_cells, inverse_cells
 
 def save_slice(array, output_dir = "support_slices"):
    # Slice the data vertically and print all slices as png files in the output directory
