@@ -369,6 +369,10 @@ def setup(mri_directory,
         nibabel.save(nibabel.Nifti1Image(mask_np, affine), outfilename)
 
     if build and cell_type == "hexahedron":
+        mask_np = brain_mask_np.copy()
+        mask_np[main_network_np > 0 ] = 1
+
+
         mesh_hexa = export_voxel_to_gmsh(mask_np, 
                                         voxel_size=hx)
         
