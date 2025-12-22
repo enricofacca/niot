@@ -372,6 +372,10 @@ def setup(mri_directory,
         mask_np = brain_mask_np.copy()
         mask_np[main_network_np > 0 ] = 1
 
+        # estimate used voxel size
+        volume = 100 * np.sum(mask_np > 0) / ( mask_np.shape[0] * mask_np.shape[1] * mask_np.shape[2])
+        print(f"Volume fraction of hexa mesh: {volume:.2f}%")
+
 
         mesh_hexa = export_voxel_to_gmsh(mask_np, 
                                         voxel_size=hx)
