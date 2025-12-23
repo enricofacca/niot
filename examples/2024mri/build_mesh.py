@@ -364,7 +364,7 @@ def setup(mri_directory,
         writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)        
         writer(os.path.join(out_directory,"brain_main.msh"), mesh_pygal)
 
-        writer = partial(meshio.exodus.write, binary=True)
+        writer = partial(meshio.exodus.write)
         writer(os.path.join(out_directory,"brain_main.e"), mesh_pygal)
 
         outfilename = os.path.join(out_directory,
@@ -424,8 +424,8 @@ def setup(mri_directory,
         writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)
         writer(os.path.join(out_directory,"brain_hexa_main.msh"), mesh_hexa)
 
-        writer = partial(meshio.exodus.write, binary=True)
-        writer(os.path.join(out_directory,"brain_main.e"), mesh_hexa)
+        writer = partial(meshio.exodus.write)
+        writer(os.path.join(out_directory,"brain_hexa_main.e"), mesh_hexa)
 
         
     if build_tof_mesh:

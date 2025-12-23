@@ -143,6 +143,16 @@ def setup(mri_directory,
             mesh = afile.load_mesh("mesh")
         PETSc.Sys.Print(f"Mesh loaded in {time.time()-start:.2e} s")
     except:
+        PETSc.Sys.Print("Not found .h5 file")
+        
+    try:
+        filename = os.path.join(out_directory,f"{mesh_name}.e")
+        PETSc.Sys.Print(f" reading {filename} file")
+        start = time.time() 
+        mesh = Mesh(filename)
+        PETSc.Sys.Print(f"completed in {time.time()-start:.2e} s")
+    except:
+        PETSc.Sys.Print("Not found .e file")
         PETSc.Sys.Print("reading mesh from .msh file")
         start = time.time() 
         mesh = Mesh(os.path.join(out_directory,f"{mesh_name}.msh"))
