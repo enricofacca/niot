@@ -327,8 +327,12 @@ def setup(mri_directory,
     
     if save_h5:
         n_proc = COMM_WORLD.size
-        h5_filename = os.path.join(mri_directory,
+        if mesh_tpye == "simplex":
+            h5_filename = os.path.join(mri_directory,
                                 f"inputs_nproc{n_proc}.h5")
+        else:
+            h5_filename = os.path.join(mri_directory,
+                                f"inputs_hexa_nproc{n_proc}.h5")
         PETSc.Sys.Print(f"Saving to {h5_filename}", end="")
         print("name",relabeled_mesh.name)
         with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
