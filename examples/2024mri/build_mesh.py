@@ -4,7 +4,6 @@ import numpy as np
 from connected_components_tof import connected_components, main_network_equal_one, find_external_network
 import os
 from scipy.ndimage import gaussian_filter
-import pygalmesh
 from firedrake import *
 from niot import image2dat as i2d
 from mwe import MyRelabeledMesh
@@ -43,7 +42,7 @@ def export_voxel_to_gmsh(array_3d, voxel_size=1.0):
     # 2. Generate unique nodes
     # A cube at (i, j, k) has 8 vertices. 
     # To avoid duplicate nodes at shared corners, we define the global grid of possible nodes.
-    nz, ny, nx = array_3d.shape
+    nx, ny, nz = array_3d.shape
     
     # The coordinate grid for nodes (vertices) has dimensions (N+1)
     # We only want to export nodes that are actually part of an active cube.
@@ -65,8 +64,8 @@ def export_voxel_to_gmsh(array_3d, voxel_size=1.0):
     # Construct elements array (num_cubes, 8)
     # We add the offsets to our base (z, y, x) indices
     cells_nodes = []
-    for dz, dy, dx in offsets:
-        cells_nodes.append(get_node_idx(z_idx + dz, y_idx + dy, x_idx + dx))
+    for dx, dy, dz in offsets:
+        cells_nodes.append(get_node_idx(x_idx + dx, y_idx + dy, z_idx + dz))
     
     # Stack to get (num_cubes, 8)
     hexa_cells = np.stack(cells_nodes, axis=1)
@@ -76,7 +75,7 @@ def export_voxel_to_gmsh(array_3d, voxel_size=1.0):
     hexa_cells_remapped = inverse_map.reshape(hexa_cells.shape)
     
     # 4. Calculate physical coordinates for unique nodes
-    # Reconstruct (z, y, x) from the flat unique_node_indices
+    # Reconstruct (x, y, z) from the flat unique_node_indices
     u_iz = unique_node_indices // ((ny + 1) * (nx + 1))
     remainder = unique_node_indices % ((ny + 1) * (nx + 1))
     u_iy = remainder // (nx + 1)
@@ -115,9 +114,7 @@ def setup(mri_directory,
 
         print(f"Data shape: {dimensions=}")
         hx, hy, hz = tof_data.header['pixdim'][1:4]
-        lengths = np.array([float(dimensions[0]*hx), 
-                            float(dimensions[1]*hy), 
-                            float(dimensions[2]*hz)])
+        lengths = np.array([hx,hy,hz]) * np.array(dimensions)
         voxel_size = (hx, hy, hz)
 
         # get brain mask
@@ -151,10 +148,12 @@ def setup(mri_directory,
     hx, hy, hz = voxel_size
 
     dimensions = tof_np.shape
-    lengths = np.array([float(dimensions[0]*hx), 
-                            float(dimensions[1]*hy), 
-                            float(dimensions[2]*hz)])
-
+    lengths = np.array([hx,hy,hz]) * np.array(dimensions)
+    
+    print(f"{hx=:.10e} {hy=:.10e} {hz=:.10e}")
+    print(f"voxel_size: {voxel_size}, lengths: {lengths}")
+    h_new = lengths/np.array(dimensions)
+    print(f"New voxel size: {h_new[0]=:.10e}, {h_new[1]=:.10e}, {h_new[2]=:.10e}")
 
     def set_main_network(tof_np, threshold_tof, blur_tof, hx):
         """
@@ -312,7 +311,9 @@ def setup(mri_directory,
         # restore main_network
         mask[main_network_np > 0 ] = label_main 
         mask = mask.astype(np.uint8)
-                
+
+
+        import pygalmesh        
         PETSc.Sys.Print("volex size:", hx, hy, hz)
         scale = 1
         mesh_pygal = pygalmesh.generate_from_array(
@@ -349,8 +350,8 @@ def setup(mri_directory,
         print(f"Mesh bounds after recentering: \n x[{xmin:.2f}, {xmax:.2f}],\n y[{ymin:.2f}, {ymax:.2f}],\n z[{zmin:.2f}, {zmax:.2f}]")
         
 
-        offset = affine[:3, 3]
-        print("Offset:", offset)
+        offset = np.array(affine[:3, 3])
+        print(f"Offset: x {offset[0]:.10e}, y {offset[1]:.10e}, z {offset[2]:.10e}")
         coordinate[:, 0] += offset[0]
         coordinate[:, 1] += offset[1]
         coordinate[:, 2] += offset[2]
@@ -360,8 +361,11 @@ def setup(mri_directory,
 
         # save mesh as vtu and msh
         mesh_pygal.write(os.path.join(out_directory,"brain_main.vtu"))
-        writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)
+        writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)        
         writer(os.path.join(out_directory,"brain_main.msh"), mesh_pygal)
+
+        writer = partial(meshio.exodus.write, binary=True)
+        writer(os.path.join(out_directory,"brain_main.e"), mesh_pygal)
 
         outfilename = os.path.join(out_directory,
                                f"mask_mesher.nii.gz")
@@ -376,21 +380,52 @@ def setup(mri_directory,
         volume = 100 * np.sum(mask_np > 0) / ( mask_np.shape[0] * mask_np.shape[1] * mask_np.shape[2])
         print(f"Volume fraction of hexa mesh: {volume:.2f}% | new={np.sum(mask_np > 0)} old={mask_np.shape[0] * mask_np.shape[1] * mask_np.shape[2]}")
 
-
-        mesh_hexa = export_voxel_to_gmsh(mask_np, 
-                                        voxel_size=hx)
-        
+        print(f" mask shape: {mask_np.shape}, unique: {np.unique(mask_np)}")
+        print(f" hx: {hx}, hy: {hy}, hz: {hz}")
+        mesh_hexa = export_voxel_to_gmsh(mask_np)
         coordinate = mesh_hexa.points
-        offset = affine[:3, 3]
+        print("bounds before scaling:")
+        xmin, ymin, zmin = coordinate.min(axis=0)
+        xmax, ymax, zmax = coordinate.max(axis=0)
+        print(f"{xmin:.10e}<= x <= {xmax:.10e}")
+        print(f"{ymin:.10e}<= y <= {ymax:.10e}")
+        print(f"{zmin:.10e}<= z <= {zmax:.10e}")
+
+
+
+        coordinate *= voxel_size[0]  # assuming isotropic voxel size for simplicity
+
+        print("bounds before recentering:")
+        xmin, ymin, zmin = coordinate.min(axis=0)
+        xmax, ymax, zmax = coordinate.max(axis=0)
+        print(f"{xmin:.10e}<= x <= {xmax:.10e}")
+        print(f"{ymin:.10e}<= y <= {ymax:.10e}")
+        print(f"{zmin:.10e}<= z <= {zmax:.10e}")
+
+
+        offset = np.array(affine[:3, 3])
         print("Offset:", offset)
         coordinate[:, 0] += offset[0]
         coordinate[:, 1] += offset[1]
         coordinate[:, 2] += offset[2]
 
+
+        print("bounds after recentering:")    
+        xmin, ymin, zmin = coordinate.min(axis=0)
+        xmax, ymax, zmax = coordinate.max(axis=0)
+        print(f"{xmin:.10e}<= x <= {xmax:.10e} lx={xmax - xmin:.10e} lengths[0]={lengths[0]:.10e} diff={abs((xmax - xmin) - lengths[0]):.10e}")
+        print(f"{ymin:.10e}<= y <= {ymax:.10e} ly={ymax - ymin:.10e} lengths[1]={lengths[1]:.10e} diff={abs((ymax - ymin) - lengths[1]):.10e}")
+        print(f"{zmin:.10e}<= z <= {zmax:.10e} lz={zmax - zmin:.10e} lengths[2]={lengths[2]:.10e} diff={abs((zmax - zmin) - lengths[2]):.10e}")
+
+        
+
         # save mesh as vtu and msh
         mesh_hexa.write(os.path.join(out_directory,"brain_hexa_main.vtu"))
         writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)
         writer(os.path.join(out_directory,"brain_hexa_main.msh"), mesh_hexa)
+
+        writer = partial(meshio.exodus.write, binary=True)
+        writer(os.path.join(out_directory,"brain_main.e"), mesh_hexa)
 
         
     if build_tof_mesh:
