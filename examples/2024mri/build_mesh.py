@@ -246,6 +246,10 @@ def setup(mri_directory,
                                                                   threshold_tof_4_main_network, 
                                                                   blur_tof_4_main_network, hx)
     sink_support_np = set_sink_support(aseg_np, main_network_np)
+
+    # set inlet marker. Bottom slice of main network
+    inlets_np = main_network_np.copy()
+    inlets_np[1:,:,:] = 0
     
     # in tof there are small isolated components that we do not want to fit
     # so we apply a slight gaussian blur to remove them
@@ -260,6 +264,7 @@ def setup(mri_directory,
         (sink_support_np, "sink_support"),
         (tof_clean_np, "tof_clean"),
         (external_network_np, "external_network"),
+        (inlets_np, "inlets"),
     ]
     for var, name in data:
         outfilename = os.path.join(out_directory,f"{name}.nii.gz")
