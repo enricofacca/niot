@@ -963,6 +963,7 @@ class NiotSolver:
                 mode = "exponential"
                 solver_parameters={
                     "snes_type": 'newtonls',
+                    'snes_linesearch_type':'bt',
                     #"snes_linesearch_type": "basic",
                     #"snes_linesearch_maxstep": 0.1,
                     #"snes_linesearch_damping": 1.0,
