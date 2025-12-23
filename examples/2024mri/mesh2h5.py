@@ -30,6 +30,7 @@ def bounding_box(mesh):
 
 def setup(mri_directory, 
           out_directory,
+            mesh_tpye="simplex",
             save_h5=False,
             save_pvd=False,
             test_dirichlet_bc = False
@@ -127,9 +128,13 @@ def setup(mri_directory,
     main_network_np, sink_support_np, skeleton_np, thickness_np, tof_clean_np, external_network_np = load_preprocessed(out_directory)
     
     # reload the mesh from file
+    if mesh_tpye == "simplex":
+        mesh_name = "brain_main"
+    else:
+        mesh_name = "brain_hexa_main"
     nproc = PETSc.COMM_WORLD.getSize()
     try:
-        meshfile = os.path.join(out_directory, f"brain_main_{nproc:04d}.h5")
+        meshfile = os.path.join(out_directory, f"{mesh_name}_{nproc:04d}.h5")
         PETSc.Sys.Print(f"Loading mesh from {meshfile}")
         if not os.path.exists(meshfile):
             PETSc.Sys.Print(f"Mesh in {meshfile} not found")
@@ -141,7 +146,7 @@ def setup(mri_directory,
     except:
         PETSc.Sys.Print("reading mesh from .msh file")
         start = time.time() 
-        mesh = Mesh(os.path.join(out_directory,"brain_main.msh"))
+        mesh = Mesh(os.path.join(out_directory,f"{mesh_name}.msh"))
         PETSc.Sys.Print(f"completed in {time.time()-start:.2e} s")
     
     PETSc.Sys.Print("Bounding box mesh")
@@ -398,12 +403,13 @@ def setup(mri_directory,
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--mri', type=str)
+    parser.add_argument('--mesh', type=str, default="simplex", help="type of mesh: [simplex], cartesian")
     parser.add_argument('--out', type=str)
     parser.add_argument('--h5', action='store_true')
     parser.add_argument('--pvd', action='store_true')
     parser.add_argument('--test', action='store_true')
     args = parser.parse_args()
 
-    setup(args.mri, args.out, args.h5, args.pvd, args.test)
+    setup(args.mri, args.out, args.mesh, args.h5, args.pvd, args.test)
     
     
