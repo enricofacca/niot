@@ -88,6 +88,7 @@ def setup(mri_directory,
         main_network_data = nibabel.load(f"{out_directory}/main_network.nii.gz")
         main_network_np = main_network_data.get_fdata()
 
+        inlets_np = nibabel.load(f"{out_directory}/inlets.nii.gz").get_fdata()
         external_network_np = nibabel.load(f"{out_directory}/external_network.nii.gz").get_fdata()
 
         sink_support_data = nibabel.load(f"{out_directory}/sink_support.nii.gz")
@@ -110,7 +111,7 @@ def setup(mri_directory,
 
         PETSc.Sys.Print(f" Prepoccesed voxel_size: {voxel_size}, lengths: {lengths}, offset: {offset}")
 
-        return main_network_np, sink_support_np, skeleton_np, thickness_np, tof_clean_np, external_network_np
+        return main_network_np, sink_support_np, skeleton_np, thickness_np, tof_clean_np, external_network_np, inlets_np
 
     voxel_size, affine, tof_np, brain_mask_np, t1_np, aseg_np = load_data(mri_directory)
     hx, hy, hz = voxel_size
@@ -124,7 +125,7 @@ def setup(mri_directory,
     PETSc.Sys.Print(f" offset: x {offset[0]:.10e}, y {offset[1]:.10e}, z {offset[2]:.10e}")
     
     # preprocess data
-    main_network_np, sink_support_np, skeleton_np, thickness_np, tof_clean_np, external_network_np = load_preprocessed(out_directory)
+    main_network_np, sink_support_np, skeleton_np, thickness_np, tof_clean_np, external_network_np , inlets_np = load_preprocessed(out_directory)
     
     # reload the mesh from file
     if mesh_tpye == "simplex":
@@ -201,67 +202,71 @@ def setup(mri_directory,
     
     # relabeled mesh to mark the inlet boundary
     my = False
+    remark_mesh = True
     if mesh_tpye == "cartesian":
-        my = True
+        remark_mesh = False
+     
+    if remark_mesh:
+        if my:
+            zmin = 0
+            start  = time.time()
+            PETSc.Sys.Print("intepolate marker for relabeled mesh", end="")
+            marker_space = FunctionSpace(mesh, "DQ", 0)
+            main_network_indicator = Function(marker_space, name="main_network_indicator")
+            x,y,z = mesh.coordinates
+            main_network_indicator.interpolate(main_network_mesh * conditional(abs(z-zmin) < hx,1,0))
+            PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+                
+            start  = time.time()
+            PETSc.Sys.Print("Relabeled mesh", end="")
+            relabeled_mesh = MyRelabeledMesh(mesh, [main_network_indicator], 
+                                                [99],
+                                                boundary_only=True,
+                                                name="relabeled_mesh")
+            PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+
+            lower, upper = bounding_box(relabeled_mesh)
+            PETSc.Sys.Print("Bounding box lower after relabeling:")
+            PETSc.Sys.Print(f" {lower[0]:.10e}<= x <>{upper[0]:.10e}. Lx={lengths[0]:.10e}")
+            PETSc.Sys.Print(f" {lower[1]:.10e}<= y <>{upper[1]:.10e}. Ly={lengths[1]:.10e}")
+            PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e}. Lz={lengths[2]:.10e}")
         
-    if my:
-        zmin = 0
-        start  = time.time()
-        PETSc.Sys.Print("intepolate marker for relabeled mesh", end="")
-        marker_space = FunctionSpace(mesh, "DQ", 0)
-        main_network_indicator = Function(marker_space, name="main_network_indicator")
-        x,y,z = mesh.coordinates
-        main_network_indicator.interpolate(main_network_mesh * conditional(abs(z-zmin) < hx,1,0))
-        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
-            
-        start  = time.time()
-        PETSc.Sys.Print("Relabeled mesh", end="")
-        relabeled_mesh = MyRelabeledMesh(mesh, [main_network_indicator], 
-                                            [99],
-                                            boundary_only=True,
-                                            name="relabeled_mesh")
-        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
-
-        lower, upper = bounding_box(relabeled_mesh)
-        PETSc.Sys.Print("Bounding box lower after relabeling:")
-        PETSc.Sys.Print(f" {lower[0]:.10e}<= x <>{upper[0]:.10e}. Lx={lengths[0]:.10e}")
-        PETSc.Sys.Print(f" {lower[1]:.10e}<= y <>{upper[1]:.10e}. Ly={lengths[1]:.10e}")
-        PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e}. Lz={lengths[2]:.10e}")
-    
-        PETSc.Sys.Print("Shifting coordinates. I do not know why relabeled mesh shift them back")
-        relabeled_mesh.coordinates.dat.data[:, 0] -= offset[0]
-        relabeled_mesh.coordinates.dat.data[:, 1] -= offset[1]
-        relabeled_mesh.coordinates.dat.data[:, 2] -= offset[2]
-        PETSc.Sys.Print("Offset completed")
-
+            PETSc.Sys.Print("Shifting coordinates. I do not know why relabeled mesh shift them back")
+            relabeled_mesh.coordinates.dat.data[:, 0] -= offset[0]
+            relabeled_mesh.coordinates.dat.data[:, 1] -= offset[1]
+            relabeled_mesh.coordinates.dat.data[:, 2] -= offset[2]
+            PETSc.Sys.Print("Offset completed")
+        else:
+            zmin = 0
+            start  = time.time()
+            PETSc.Sys.Print("intepolate marker for relabeled mesh", end="")
+            marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
+            main_network_bottom_indicator = Function(marker_space, name="main_network_indicator")
+            x,y,z = mesh.coordinates
+            main_network_bottom_indicator.interpolate(main_network_mesh * conditional(abs(z-zmin) < hx,1,0))
+            start  = time.time()
+            PETSc.Sys.Print(f" done in {time.time()-start:.2e} s")
+            PETSc.Sys.Print("Relabeled mesh", end="")
+            relabeled_mesh = RelabeledMesh(mesh, [main_network_bottom_indicator], 
+                                                [99],
+                                                name="relabeled_mesh")
+            PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+            lower, upper = bounding_box(relabeled_mesh)
+            PETSc.Sys.Print("Bounding box lower after relabeling:")
+            PETSc.Sys.Print(f" {lower[0]:.10e}<= x <>{upper[0]:.10e}. Lx={lengths[0]:.10e}")
+            PETSc.Sys.Print(f" {lower[1]:.10e}<= y <>{upper[1]:.10e}. Ly={lengths[1]:.10e}")
+            PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e}. Lz={lengths[2]:.10e}")
         
-
+            PETSc.Sys.Print("Shifting coordinates. I do not know why relabeled mesh shift them back")
+            relabeled_mesh.coordinates.dat.data[:, 0] -= offset[0]
+            relabeled_mesh.coordinates.dat.data[:, 1] -= offset[1]
+            relabeled_mesh.coordinates.dat.data[:, 2] -= offset[2]
+            PETSc.Sys.Print("Offset completed")
     else:
-        zmin = 0
-        start  = time.time()
-        PETSc.Sys.Print("intepolate marker for relabeled mesh", end="")
-        marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
-        main_network_bottom_indicator = Function(marker_space, name="main_network_indicator")
-        x,y,z = mesh.coordinates
-        main_network_bottom_indicator.interpolate(main_network_mesh * conditional(abs(z-zmin) < hx,1,0))
-        start  = time.time()
-        PETSc.Sys.Print(f" done in {time.time()-start:.2e} s")
-        PETSc.Sys.Print("Relabeled mesh", end="")
-        relabeled_mesh = RelabeledMesh(mesh, [main_network_bottom_indicator], 
-                                            [99],
-                                            name="relabeled_mesh")
-        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
-        lower, upper = bounding_box(relabeled_mesh)
-        PETSc.Sys.Print("Bounding box lower after relabeling:")
-        PETSc.Sys.Print(f" {lower[0]:.10e}<= x <>{upper[0]:.10e}. Lx={lengths[0]:.10e}")
-        PETSc.Sys.Print(f" {lower[1]:.10e}<= y <>{upper[1]:.10e}. Ly={lengths[1]:.10e}")
-        PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e}. Lz={lengths[2]:.10e}")
-    
-        PETSc.Sys.Print("Shifting coordinates. I do not know why relabeled mesh shift them back")
-        relabeled_mesh.coordinates.dat.data[:, 0] -= offset[0]
-        relabeled_mesh.coordinates.dat.data[:, 1] -= offset[1]
-        relabeled_mesh.coordinates.dat.data[:, 2] -= offset[2]
-        PETSc.Sys.Print("Offset completed")
+        relabeled_mesh = mesh
+        relabeled_mesh.name = "relabeled_mesh"
+
+
 
     PETSc.Sys.Print(f" Relabeled mesh created")
     lower, upper = bounding_box(relabeled_mesh)
@@ -281,7 +286,7 @@ def setup(mri_directory,
     sink_support_mesh = i2d.numpy2firedrake(relabeled_mesh, sink_support_np, name='sink_support',lengths=lengths)
     skeleton_mesh = i2d.numpy2firedrake(relabeled_mesh, skeleton_np, name='skeleton',lengths=lengths)
     thickness_mesh = i2d.numpy2firedrake(relabeled_mesh, thickness_np, name='thickness',lengths=lengths)
-
+    inlets_mesh = i2d.numpy2firedrake(relabeled_mesh, inlets_np, name='inlets',lengths=lengths)
 
     PETSc.Sys.Print("Shifting coordinates of relabeled mesh")
     relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
@@ -295,52 +300,6 @@ def setup(mri_directory,
                 sink_support_mesh,
                 tof_smooth_mesh]
     
-
-    # lower, upper = bounding_box(relabeled_mesh)
-    # cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths, offset=lower)
-    # lower, upper = bounding_box(cartesian_mesh)
-    # PETSc.Sys.Print(" Cartesian mesh bounding box:")
-    # PETSc.Sys.Print(f" {lower[0]:.2e}<= x <={upper[0]:.2e}. Lx={lengths[0]:.2e}")
-    # PETSc.Sys.Print(f" {lower[1]:.2e}<= y <={upper[1]:.2e}. Ly={lengths[1]:.2e}")
-    # PETSc.Sys.Print(f" {lower[2]:.2e}<= z <={upper[2]:.2e}. Lz={lengths[2]:.2e}")
-    
-    # DG0 = FunctionSpace(relabeled_mesh, "DG", 0)
-    # DG0_cartesian = FunctionSpace(cartesian_mesh, "DG", 0)
-    
-    
-    # interpolate_fun = Function(DG0, name="interpolate_fun")
-    # target_on_cartesian = Function(DG0_cartesian, name="target_on_cartesian")
-    # interpolatator = interpolate(interpolate_fun, DG0_cartesian, 
-    #                              allow_missing_dofs=True,  
-    #                              default_missing_val=1e30)
-
-    # def transfer(interpolator, source_on_mesh, target_on_cartesian):
-    #     PETSc.Sys.Print("Transferring function to cartesian mesh", end="")
-    #     start = time.time()
-    #     interpolate_fun.assign(source_on_mesh)    
-    #     assemble(interpolator, tensor=target_on_cartesian)
-    #     PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
-        
-    # data4pvd = []
-    # datacartesian = []
-    # for source_mesh in [main_network_mesh]:
-    #     data4pvd.append(source_mesh)
-    #     transfer(interpolatator, source_mesh, target_on_cartesian)
-    #     target_on_cartesian.rename("target"+source_mesh.name())
-    #     datacartesian.append(target_on_cartesian)
-    #     transferred_np = i2d.firedrake2numpy(target_on_cartesian,fill=1e30)
-    #     # Save to nii.gz
-    #     outfilename = os.path.join(out_directory,f"proj_{source_mesh.name()}.nii.gz")
-    #     nibabel.save(nibabel.Nifti1Image(transferred_np, affine), outfilename)
-        
-    #VTKFile(os.path.join(out_directory,f"proj_cartesian.pvd")).write(*datacartesian)
-    #VTKFile(os.path.join(out_directory,f"source.pvd")).write(*data4pvd)
-
-    # Different points on each MPI rank to add to the vertex-only mesh
-    #points = cartesian_mesh.coordinates.dat.data.copy()
-    #point_evaluator = PointEvaluator(mesh, points)
-    #main_network_centers = point_evaluator.evaluate(main_network_mesh)
-    #vom = VertexOnlyMesh(mesh, points, redundant = False)
 
     
     if save_h5:
@@ -369,9 +328,13 @@ def setup(mri_directory,
             afile.save_function(skeleton_mesh)
             PETSc.Sys.Print(f" skeleton ", end="")
             afile.save_function(thickness_mesh)
+            PETSc.Sys.Print(f" thickness ", end="")
+            afile.save_function(inlets_mesh)
+            PETSc.Sys.Print(f" inlets ", end="")
+
+
             PETSc.Sys.Print(f" Include info ")
             afile.require_group("/info/")
-            PETSc.Sys.Print(f" thickness ", end="")
             afile.set_attr("/info/", "affine", affine)
             PETSc.Sys.Print(f" affine ")
             afile.set_attr("/info/", "offset", offset)
