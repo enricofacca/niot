@@ -44,10 +44,8 @@ def setup(mri_directory,
         dimensions = tof_data.header.get_data_shape()[:3]
 
         hx, hy, hz = tof_data.header['pixdim'][1:4]
-        lengths = np.array([float(dimensions[0]*hx), 
-                            float(dimensions[1]*hy), 
-                            float(dimensions[2]*hz)])
-        voxel_size = (hx, hy, hz)
+        lengths = np.array(dimensions) * np.array([hx, hy, hz])
+        voxel_size = np.array([hx, hy, hz])
 
         # get brain mask
         nii_file = f"{dir_nii}/brain_mask_smooth.nii.gz"
@@ -105,9 +103,8 @@ def setup(mri_directory,
         tof_clean_np = tof_clean_data.get_fdata()
         voxel_size = main_network_data.header['pixdim'][1:4]
         dimensions = main_network_np.shape
-        lengths = np.array([float(dimensions[0]*voxel_size[0]), 
-                            float(dimensions[1]*voxel_size[1]), 
-                            float(dimensions[2]*voxel_size[2])])
+        
+        lengths = np.array(dimensions) * voxel_size
         affine = main_network_data.affine
         offset = affine[:3, 3]
 
@@ -118,11 +115,13 @@ def setup(mri_directory,
     voxel_size, affine, tof_np, brain_mask_np, t1_np, aseg_np = load_data(mri_directory)
     hx, hy, hz = voxel_size
     dimensions = tof_np.shape
-    lengths = np.array([float(dimensions[0]*hx), 
-                        float(dimensions[1]*hy), 
-                        float(dimensions[2]*hz)])
-    offset = affine[:3, 3]
-    PETSc.Sys.Print(f" Inputs voxel_size: {voxel_size}, lengths: {lengths}, offset: {offset}")
+    lengths = np.array([hx, hy, hz]) * np.array(dimensions)
+    offset = np.array(affine[:3, 3])
+
+    PETSc.Sys.Print(f" Inputs shape {tof_np.shape}")
+    PETSc.Sys.Print(f" voxel_size: {voxel_size}")
+    PETSc.Sys.Print(f" lengths: x {lengths[0]:.10e}, y {lengths[1]:.10e}, z {lengths[2]:.10e}")
+    PETSc.Sys.Print(f" offset: x {offset[0]:.10e}, y {offset[1]:.10e}, z {offset[2]:.10e}")
     
     # preprocess data
     main_network_np, sink_support_np, skeleton_np, thickness_np, tof_clean_np, external_network_np = load_preprocessed(out_directory)
@@ -151,9 +150,9 @@ def setup(mri_directory,
     
     PETSc.Sys.Print("Bounding box mesh")
     lower, upper = bounding_box(mesh)
-    PETSc.Sys.Print(f" {lower[0]:.2e}<= x <>{upper[0]:.2e}. Lx={lengths[0]:.2e}")
-    PETSc.Sys.Print(f" {lower[1]:.2e}<= y <>{upper[1]:.2e}. Ly={lengths[1]:.2e}")
-    PETSc.Sys.Print(f" {lower[2]:.2e}<= z <>{upper[2]:.2e}. Lz={lengths[2]:.2e}") 
+    PETSc.Sys.Print(f" {lower[0]:.10e}<= x <>{upper[0]:.10e} lx{upper[0]-lower[0]:.10e}. Lx={lengths[0]:.10e}")
+    PETSc.Sys.Print(f" {lower[1]:.10e}<= y <>{upper[1]:.10e} ly{upper[1]-lower[1]:.10e} Ly={lengths[1]:.10e}")
+    PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e} lz{upper[2]-lower[2]:.10e} Lz={lengths[2]:.10e}") 
     
     PETSc.Sys.Print("Shifting coordinates")
     mesh.coordinates.dat.data[:, 0] -= offset[0]
@@ -162,9 +161,9 @@ def setup(mri_directory,
     
     PETSc.Sys.Print("Offset completed")
     lower, upper = bounding_box(mesh)
-    PETSc.Sys.Print(f" {lower[0]:.2e}<= x <>{upper[0]:.2e}. Lx={lengths[0]:.2e}")
-    PETSc.Sys.Print(f" {lower[1]:.2e}<= y <>{upper[1]:.2e}. Ly={lengths[1]:.2e}")
-    PETSc.Sys.Print(f" {lower[2]:.2e}<= z <>{upper[2]:.2e}. Lz={lengths[2]:.2e}")
+    PETSc.Sys.Print(f" {lower[0]:.10e}<= x <>{upper[0]:.10e}. Lx={lengths[0]:.10e}")
+    PETSc.Sys.Print(f" {lower[1]:.10e}<= y <>{upper[1]:.10e}. Ly={lengths[1]:.10e}")
+    PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e}. Lz={lengths[2]:.10e}")
         
     
     def interpolate_from_numpy(target_mesh, data_np, lengths, name):
@@ -192,11 +191,14 @@ def setup(mri_directory,
     
     # relabeled mesh to mark the inlet boundary
     my = False
+    if mesh_tpye == "cartesian":
+        my = True
+        
     if my:
         zmin = 0
         start  = time.time()
         PETSc.Sys.Print("intepolate marker for relabeled mesh", end="")
-        marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
+        marker_space = FunctionSpace(mesh, "DQ", 0)
         main_network_indicator = Function(marker_space, name="main_network_indicator")
         x,y,z = mesh.coordinates
         main_network_indicator.interpolate(main_network_mesh * conditional(abs(z-zmin) < hx,1,0))
@@ -211,13 +213,19 @@ def setup(mri_directory,
         PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
 
         lower, upper = bounding_box(relabeled_mesh)
-        PETSc.Sys.Print(f"Bounding box lower: {lower}, upper: {upper}")
-
+        PETSc.Sys.Print("Bounding box lower after relabeling:")
+        PETSc.Sys.Print(f" {lower[0]:.10e}<= x <>{upper[0]:.10e}. Lx={lengths[0]:.10e}")
+        PETSc.Sys.Print(f" {lower[1]:.10e}<= y <>{upper[1]:.10e}. Ly={lengths[1]:.10e}")
+        PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e}. Lz={lengths[2]:.10e}")
+    
         PETSc.Sys.Print("Shifting coordinates. I do not know why relabeled mesh shift them back")
         relabeled_mesh.coordinates.dat.data[:, 0] -= offset[0]
         relabeled_mesh.coordinates.dat.data[:, 1] -= offset[1]
         relabeled_mesh.coordinates.dat.data[:, 2] -= offset[2]
         PETSc.Sys.Print("Offset completed")
+
+        
+
     else:
         zmin = 0
         start  = time.time()
@@ -235,9 +243,9 @@ def setup(mri_directory,
         PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
         lower, upper = bounding_box(relabeled_mesh)
         PETSc.Sys.Print("Bounding box lower after relabeling:")
-        PETSc.Sys.Print(f" {lower[0]:.2e}<= x <>{upper[0]:.2e}. Lx={lengths[0]:.2e}")
-        PETSc.Sys.Print(f" {lower[1]:.2e}<= y <>{upper[1]:.2e}. Ly={lengths[1]:.2e}")
-        PETSc.Sys.Print(f" {lower[2]:.2e}<= z <>{upper[2]:.2e}. Lz={lengths[2]:.2e}")
+        PETSc.Sys.Print(f" {lower[0]:.10e}<= x <>{upper[0]:.10e}. Lx={lengths[0]:.10e}")
+        PETSc.Sys.Print(f" {lower[1]:.10e}<= y <>{upper[1]:.10e}. Ly={lengths[1]:.10e}")
+        PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e}. Lz={lengths[2]:.10e}")
     
         PETSc.Sys.Print("Shifting coordinates. I do not know why relabeled mesh shift them back")
         relabeled_mesh.coordinates.dat.data[:, 0] -= offset[0]
@@ -248,9 +256,9 @@ def setup(mri_directory,
     PETSc.Sys.Print(f" Relabeled mesh created")
     lower, upper = bounding_box(relabeled_mesh)
     new_lengths = upper - lower
-    PETSc.Sys.Print(f" {lower[0]:.2e}<= x <>{upper[0]:.2e}. Lx={lengths[0]:.2e} newLx={new_lengths[0]:.2e}")
-    PETSc.Sys.Print(f" {lower[1]:.2e}<= y <>{upper[1]:.2e}. Ly={lengths[1]:.2e} newLy={new_lengths[1]:.2e}")
-    PETSc.Sys.Print(f" {lower[2]:.2e}<= z <>{upper[2]:.2e}. Lz={lengths[2]:.2e} newLz={new_lengths[2]:.2e}")
+    PETSc.Sys.Print(f" {lower[0]:.10e}<= x <>{upper[0]:.10e}. Lx={lengths[0]:.10e} newLx={new_lengths[0]:.10e}")
+    PETSc.Sys.Print(f" {lower[1]:.10e}<= y <>{upper[1]:.10e}. Ly={lengths[1]:.10e} newLy={new_lengths[1]:.10e}")
+    PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e}. Lz={lengths[2]:.10e} newLz={new_lengths[2]:.10e}")
     
 
     # 
