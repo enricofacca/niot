@@ -513,7 +513,7 @@ def numpy2firedrake(mesh, value, name=None, lengths=None, offset=None, output_fu
       img_function.rename(name,name)
    
 
-   if output_function is not None:
+   if output_function is None:
       return img_function
 
 

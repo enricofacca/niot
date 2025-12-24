@@ -829,15 +829,22 @@ class NiotSolver:
         #                         'pc_type': 'hypre'},
         #                         options_prefix='increment_solver_')
 
-        if isinstance(self.mesh, ExtrudedMeshTopology):
-            num_cells = self.mesh.num_cells() * (self.mesh.layers-1)
-            num_vertices = self.mesh.num_vertices() * self.mesh.layers
-            num_facets = ( self.mesh.num_cells() * (self.mesh.layers) # horizontal facets
-                          + self.mesh.num_facets() * (self.mesh.layers-1) ) # vertical facets
-        else:
-            num_cells = self.mesh.num_cells()
-            num_vertices = self.mesh.num_vertices()
-            num_facets = self.mesh.num_facets()
+        num_cells = 0
+        num_vertices = 0
+        num_facets = 0
+        nproc = PETSc.COMM_WORLD.getSize()
+        for i in range(nproc):
+            if i == PETSc.COMM_WORLD.getRank():
+                if isinstance(self.mesh, ExtrudedMeshTopology):
+                    num_cells = self.mesh.num_cells() * (self.mesh.layers-1)
+                    num_vertices = self.mesh.num_vertices() * self.mesh.layers
+                    num_facets = ( self.mesh.num_cells() * (self.mesh.layers) # horizontal facets
+                                + self.mesh.num_facets() * (self.mesh.layers-1) ) # vertical facets
+                else:
+                    num_cells = self.mesh.num_cells()
+                    num_vertices = self.mesh.num_vertices()
+                    num_facets = self.mesh.num_facets()
+            PETSc.COMM_WORLD.barrier()
 
 
         self.print_info(f'Cells: {num_cells}'

@@ -362,16 +362,22 @@ class PorousMediaMap(Conductivity2ImageMap):
         # to being able the PDE
         self.R = FunctionSpace(space.mesh(), 'R', 0)
         self.dt = Function(self.R)
+        PETSc.Sys.Print(self.dt.name, self.dt.uid)
         self.dt0 = dt0
         
     
         
         self.image_h = Function(space)
+        PETSc.Sys.Print(self.image_h.name, self.image_h.uid)
         self.tdens4transform = Function(space)
+        PETSc.Sys.Print(self.tdens4transform.name, self.tdens4transform.uid)
+
         
         self.intermediate_images = []
         for i in range(nsteps):
             self.intermediate_images.append(Function(space, name=f'img_{i}'))
+            PETSc.Sys.Print(self.intermediate_images[i].name, self.intermediate_images[i].uid)
+
         
 
         self.name = name
@@ -452,7 +458,13 @@ class PorousMediaMap(Conductivity2ImageMap):
             def img_bounds(X,F):
                 min_v = X.min()[1]
                 max_v = X.max()[1]
-                msg = "".join([f'{min_v:2.1e}','<=PM IMG <=',f'{max_v:2.1e}'])
+                msg = "".join([f'AFTER {min_v:2.1e}','<=PM IMG <=',f'{max_v:2.1e}'])
+                PETSc.Sys.Print(msg)
+
+            def pre_img_bounds(X):
+                min_v = X.min()[1]
+                max_v = X.max()[1]
+                msg = "".join([f'BEFORE {min_v:2.1e}','<=PM IMG <=',f'{max_v:2.1e}'])
                 PETSc.Sys.Print(msg)
                 
                     
@@ -462,7 +474,8 @@ class PorousMediaMap(Conductivity2ImageMap):
                 self.pm_problem,
                 solver_parameters=solver_parameters,
                 options_prefix='porous_solver_',
-                post_function_callback=img_bounds
+                #pre_function_callback=pre_img_bounds,
+                #post_function_callback=img_bounds
                 )
             self.lower_bound = Function(space, name='lower_bound')
             self.upper_bound = Function(space, name='upper_bound')
@@ -533,13 +546,13 @@ class PorousMediaMap(Conductivity2ImageMap):
         #assemble(interpolate(conductivity,self.space), tensor=self.tdens4transform)
 
         # estimate for initial time step
-        with conductivity.dat.vec as cond_vec:
-            _, min_cond = cond_vec.min()
-            if min_cond < 0:
-                raise ValueError('Negative conductivity')
-            _, max_cond = cond_vec.max()
-            PETSc.Sys.Print(f'cond min={min_cond}, max={max_cond}')
-            dt0 = self.dt0#min(1e-6, 1e-6/(max_cond))
+        # with conductivity.dat.vec as cond_vec:
+        #     _, min_cond = cond_vec.min()
+        #     if min_cond < 0:
+        #         raise ValueError('Negative conductivity')
+        #     _, max_cond = cond_vec.max()
+        #     PETSc.Sys.Print(f'cond min={min_cond}, max={max_cond}')
+        dt0 = self.dt0#min(1e-6, 1e-6/(max_cond))
             
         PETSc.Sys.Print(f'dt0={dt0}, sigma={self.sigma}', self.nsteps)
         
@@ -619,8 +632,17 @@ class PorousMediaMap(Conductivity2ImageMap):
                 if i == 0:
                     # u^{0} = conductivity
                     self.tdens4transform.interpolate(conductivity)
+                    # print info
+                    if self.verbose > 0:    
+                        mass = assemble(self.tdens4transform*dx)
+                        with self.tdens4transform.dat.vec as img_vec:
+                            PETSc.Sys.Print(utilities.color("yellow",f' '
+                                    + utilities.msg_bounds(img_vec,'TDENS at t=0')
+                                    + f' mass={mass:.2e}'))
+
+
                     # good intiial guess is the conductivity itself
-                    self.image_h.assign(self.tdens4transform)
+                    #self.image_h.assign(self.tdens4transform)
                 else:
                     # update u^{k} with u^{k-1}
                     self.tdens4transform.interpolate(self.image_h)
@@ -629,7 +651,6 @@ class PorousMediaMap(Conductivity2ImageMap):
                     PETSc.Sys.Print(f"Assign initial guess from stored image {i=}")
                     # need to annotate this assigment for pyadjoint to track dependencies
                     self.image_h.assign(self.intermediate_images[i], annotate=True)
-
 
                 with self.tdens4transform.dat.vec as uk_vec:
                     lower_bound_value = uk_vec.min()[1]
@@ -652,9 +673,9 @@ class PorousMediaMap(Conductivity2ImageMap):
                 if self.verbose > 0:
                     mass = assemble(self.image_h*dx)
                     with self.image_h.dat.vec as img_vec:
-                        PETSc.Sys.Print(f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
+                        PETSc.Sys.Print(utilities.color("yellow",f'{i=} dt={dt:.1e} t={total_time:.1e} sigma={self.sigma:.2e} '
                                     + utilities.msg_bounds(img_vec,'IMG')
-                                    + f' mass={mass:.2e}')
+                                    + f' mass={mass:.2e}'))
                         
                 # store images
                 if self.store_images:
