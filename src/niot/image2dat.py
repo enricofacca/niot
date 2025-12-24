@@ -21,7 +21,7 @@ from firedrake import RectangleMesh, ExtrudedMesh,VTKFile
 from pyop2.mpi import (
     MPI, COMM_WORLD, temp_internal_comm
 )
-
+import meshio
 
 
 from pyevtk.hl import gridToVTK, imageToVTK
@@ -412,7 +412,7 @@ def compatible(mesh, value):
       raise ValueError('Only 2D and 3D images are supported')
    return check
       
-def numpy2firedrake(mesh, value, name=None, lengths=None):
+def numpy2firedrake(mesh, value, name=None, lengths=None, offset=None, output_function=None):
    '''
    Convert np array (2d o 3d) into a function compatible with the mesh solver.
    Args:
@@ -432,9 +432,20 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
       lengths = get_lengths(mesh)   
       nxyz = get_box_division(mesh)
       invert_rows_columns = mesh.invert_rows_columns
+
+   if offset is None:
+      lower, upper = bounding_box(mesh)
+   else:
+      lower = np.array(offset)
+      upper = lower + np.array(lengths)
    
-   DG0 = fd.FunctionSpace(mesh,'DG',0)
-   img_function = fd.Function(DG0)
+
+   if output_function is not None:
+      DG0 = output_function.function_space()
+      img_function = output_function
+   else:
+      DG0 = fd.FunctionSpace(mesh,'DG',0)
+      img_function = fd.Function(DG0)
    
    
    if mesh.geometric_dimension() == 3:    
@@ -443,9 +454,9 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
       hz = lengths[2]/nxyz[2]
       if invert_rows_columns:
          def my_data(xyz): 
-            x = xyz[:,0]
-            y = xyz[:,1]
-            z = xyz[:,2]
+            x = xyz[:,0] - lower[0]
+            y = xyz[:,1] - lower[1]
+            z = xyz[:,2] - lower[2]
             i = np.fix(x/hx).astype(int)
             j = np.fix(y/hy).astype(int)
             k = np.fix(z/hz).astype(int)
@@ -453,9 +464,9 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
             return value[j,i,k]
       else:
          def my_data(xyz): 
-            x = xyz[:,0]
-            y = xyz[:,1]
-            z = xyz[:,2]
+            x = xyz[:,0] - lower[0]
+            y = xyz[:,1] - lower[1]
+            z = xyz[:,2] - lower[2]
             i = np.fix(x/hx).astype(int)
             j = np.fix(y/hy).astype(int)
             k = np.fix(z/hz).astype(int)
@@ -469,8 +480,8 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
          hx = lengths[0]/nxyz[0]
          hy = lengths[1]/nxyz[1]
          def my_data(xyz): 
-            x = xyz[:,0]
-            y = xyz[:,1]
+            x = xyz[:,0] - lower[0]
+            y = xyz[:,1] - lower[1]
             i = np.fix(x/hx).astype(int)
             j = np.fix(y/hy).astype(int)
             return value[j,i]
@@ -482,8 +493,8 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
          hx = lengths[0]/nxyz[0]
          hy = lengths[1]/nxyz[1]
          def my_data(xyz): 
-            x = xyz[:,0]
-            y = xyz[:,1]
+            x = xyz[:,0] - lower[0]
+            y = xyz[:,1] - lower[1]
             #if flip_up_down:
             #   y = Ly - y
             i = np.fix(y/hx).astype(int)
@@ -496,14 +507,14 @@ def numpy2firedrake(mesh, value, name=None, lengths=None):
    # Get current coordinates
    W = fd.VectorFunctionSpace(DG0.ufl_domain(), DG0.ufl_element())
    coordinates = fd.assemble(interpolate(DG0.ufl_domain().coordinates, W))
-   
-   img_function = fd.Function(DG0,name=name)
    img_function.dat.data[:] = my_data(coordinates.dat.data)
-
-
+   
    if (name is not None):
       img_function.rename(name,name)
-   return img_function
+   
+
+   if output_function is not None:
+      return img_function
 
 
 def simplex2cartesian(function, cartesian_mesh):
@@ -1264,9 +1275,24 @@ def voxel_mesh_from_3d_mask(mask3d,
    
    Lx, Ly, Lz = lengths
    # 1. Create topology and coordinates from the 2D mask
-   output = topol_coords_edges_from_mask_3d(mask3d, Lx=Lx, Ly=Ly, Lz=Lz)
-   topol, xyz_coords, new_edges, active_cells, inverse_cells = output
+   #output = topol_coords_edges_from_mask_3d(mask3d, Lx=Lx, Ly=Ly, Lz=Lz)
+   #topol, xyz_coords, new_edges, active_cells, inverse_cells = output
    
+   mesh_meshio = export_voxel_to_gmsh(mask3d)
+   xyz_coords = mesh_meshio.points
+   xyz_coords[:,0] = xyz_coords[:,0] * (Lx / mask3d.shape[0]) + offset[0]
+   xyz_coords[:,1] = xyz_coords[:,1] * (Ly / mask3d.shape[1]) + offset[1]
+   xyz_coords[:,2] = xyz_coords[:,2] * (Lz / mask3d.shape[2]) + offset[2]
+
+   
+   print(dir(mesh_meshio))
+   print(mesh_meshio.cell_data_dict)
+   print(mesh_meshio.cell_sets_dict)
+   print(mesh_meshio.cells_dict)
+   topol = mesh_meshio.cells_dict["hexahedron"]
+   print(topol)
+   print(dir(topol))
+   print(type(topol))
    
    
    name = mesh.DEFAULT_MESH_NAME
@@ -1305,10 +1331,10 @@ def voxel_mesh_from_3d_mask(mask3d,
    
    selected_mesh3d.invert_rows_columns = False
    selected_mesh3d.flip_up_down = False
-   selected_mesh3d.ncells = len(new_edges)
-   selected_mesh3d.new_edges = new_edges
-   selected_mesh3d.active_cells = active_cells
-   selected_mesh3d.inverse_cells = inverse_cells
+   #selected_mesh3d.ncells = len(new_edges)
+   #selected_mesh3d.new_edges = new_edges
+   #selected_mesh3d.active_cells = active_cells
+   #selected_mesh3d.inverse_cells = inverse_cells
    
    return selected_mesh3d
 
@@ -1513,6 +1539,85 @@ def coord_from_ijk(i, j, k, hx, hy, hz):
    y = j * hy
    z = k * hz
    return np.stack([x, y, z], axis=1) # shape (n, 3)
+
+def export_voxel_to_gmsh(array_3d, voxel_size=1.0):
+   """
+   Converts a 3D binary numpy array into a Gmsh (.msh) file using hexahedral elements.
+   Only cells where array_3d == 1 are converted into mesh elements.
+   
+   Parameters:
+   -----------
+   array_3d : np.ndarray
+      3D array of 0s and 1s.
+   filename : str
+      Output path for the .msh file.
+   voxel_size : float
+      The physical side length of each cube.
+   """
+   
+   # 1. Identify active voxel indices (where value is 1)
+   # Using np.argwhere returns an (N, 3) array of [z, y, x]
+   z_idx, y_idx, x_idx = np.where(array_3d == 1)
+   num_cubes = len(z_idx)
+   
+   if num_cubes == 0:
+      print("Warning: The provided array is empty (all zeros). No mesh generated.")
+      return
+
+   # 2. Generate unique nodes
+   # A cube at (i, j, k) has 8 vertices. 
+   # To avoid duplicate nodes at shared corners, we define the global grid of possible nodes.
+   nx, ny, nz = array_3d.shape
+   
+   # The coordinate grid for nodes (vertices) has dimensions (N+1)
+   # We only want to export nodes that are actually part of an active cube.
+   # However, for simplicity and performance in smaller/medium grids, 
+   # we can map cube indices to a global node indexing system.
+   
+   def get_node_idx(iz, iy, ix):
+      return iz * (ny + 1) * (nx + 1) + iy * (nx + 1) + ix
+
+   # Define the 8 relative offsets for a hexahedron in Gmsh ordering (Type 5)
+   # Gmsh Hexahedron node ordering:
+   # 0: (0,0,0), 1: (1,0,0), 2: (1,1,0), 3: (0,1,0)  <- Bottom face
+   # 4: (0,0,1), 5: (1,0,1), 6: (1,1,1), 7: (0,1,1)  <- Top face
+   offsets = np.array([
+      [0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0],
+      [1, 0, 0], [1, 0, 1], [1, 1, 1], [1, 1, 0]
+   ])
+   
+   # Construct elements array (num_cubes, 8)
+   # We add the offsets to our base (z, y, x) indices
+   cells_nodes = []
+   for dx, dy, dz in offsets:
+      cells_nodes.append(get_node_idx(x_idx + dx, y_idx + dy, z_idx + dz))
+   
+   # Stack to get (num_cubes, 8)
+   hexa_cells = np.stack(cells_nodes, axis=1)
+   
+   # 3. Collect unique nodes and remap
+   unique_node_indices, inverse_map = np.unique(hexa_cells, return_inverse=True)
+   hexa_cells_remapped = inverse_map.reshape(hexa_cells.shape)
+   
+   # 4. Calculate physical coordinates for unique nodes
+   # Reconstruct (x, y, z) from the flat unique_node_indices
+   u_iz = unique_node_indices // ((ny + 1) * (nx + 1))
+   remainder = unique_node_indices % ((ny + 1) * (nx + 1))
+   u_iy = remainder // (nx + 1)
+   u_ix = remainder % (nx + 1)
+   
+   points = np.stack([u_ix, u_iy, u_iz], axis=1).astype(float) * voxel_size
+   
+   # 5. Create meshio object and write
+   # 'hexahedron' is the meshio key for 8-node bricks
+   cells = [("hexahedron", hexa_cells_remapped)]
+   
+   
+   mesh = meshio.Mesh(points=points, cells=cells)
+
+   return mesh
+
+
    
 def topol_coords_edges_from_mask_3d(mask, Lx=1.0, Ly=1.0, Lz=1.0):
    """
