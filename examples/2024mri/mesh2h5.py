@@ -311,7 +311,6 @@ def setup(mri_directory,
             h5_filename = os.path.join(mri_directory,
                                 f"inputs_hexa_nproc{n_proc}.h5")
         PETSc.Sys.Print(f"Saving to {h5_filename}", end="")
-        print("name",relabeled_mesh.name)
         with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
             afile.save_mesh(relabeled_mesh,"relabeled_mesh")
             PETSc.Sys.Print(f" mesh ", end="")
