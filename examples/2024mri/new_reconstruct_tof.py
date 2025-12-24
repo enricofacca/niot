@@ -106,16 +106,19 @@ class BluringOperator:
             return function
         mesh = function.function_space().mesh()
         if mesh.ufl_cell().is_simplex():
+            PETSc.Sys.Print("Using heat equation for simplicial mesh")
             self.sigma.assign(sigma)
             self.rhs_function.interpolate(function)
             self.heat_solver.solve()
             out = assemble(interpolate(self.blurred, function.function_space()))
             return out
-
         else:
+            PETSc.Sys.Print("Using gaussian filter for cartesian mesh")
             function_np = i2d.firedrake2numpy(function)
             function_np_blurred = gaussian_filter(function_np, sigma)
             function_blurred = i2d.numpy2firedrake(mesh, function_np_blurred, name=function.name()+"_blurred")
+            function_np = None
+            gc.collect()
             return function_blurred
 
 def save_as_nifti(function, filename, affine, dimensions, lenghts, offset):
@@ -429,10 +432,8 @@ def experiment(args):
     affine = tof_data.affine
     original_dimensions = tof_data.header.get_data_shape()[:3]
     hx, hy, hz = tof_data.header['pixdim'][1:4]
-    lengths = np.array([float(original_dimensions[0]*hx), 
-                        float(original_dimensions[1]*hy), 
-                        float(original_dimensions[2]*hz)])
 
+    lengths = np.array([hx, hy, hz]) * np.array(original_dimensions)
 
     out_directory = results + test_case
     mpi_mkdir(out_directory)
@@ -570,18 +571,19 @@ def experiment(args):
         
         mesh = cartesian_mesh
 
-    # mesh.nx = original_dimensions[0]
-    # mesh.ny = original_dimensions[1]
-    # mesh.nz = original_dimensions[2]
-    # mesh.xmin = 0.0
-    # mesh.xmax = lengths[0]
-    # mesh.ymin = 0.0
-    # mesh.ymax = lengths[1]
-    # mesh.zmin = 0.0
-    # mesh.zmax = lengths[2]
-    # mesh.hx = hx
-    # mesh.hy = hy
-    # mesh.hz = hz
+    mesh.nx = original_dimensions[0]
+    mesh.ny = original_dimensions[1]
+    mesh.nz = original_dimensions[2]
+    mesh.xmin = offset[0]
+    mesh.xmax = offset[0]+lengths[0]
+    mesh.ymin = offset[1]
+    mesh.ymax = offset[1]+lengths[1]
+    mesh.zmin = offset[2]
+    mesh.zmax = offset[2]+lengths[2]
+    mesh.hx = hx
+    mesh.hy = hy
+    mesh.hz = hz
+    mesh.invert_rows_columns = False
     
     blurer = BluringOperator(mesh)
 
@@ -605,7 +607,18 @@ def experiment(args):
         "blurer": blurer
     }
 
+    if mesh.ufl_cell().is_simplex():
+        defualt_spaces = ["CG1DG0"]
+    else:
+        defualt_spaces = ["DG0DG0"]
 
+    # check compatibility of mesh and spaces
+    spaces = options.get("spaces", defualt_spaces)[0]
+    
+    if spaces == "CG1DG0" and (not mesh.ufl_cell().is_simplex()):
+        raise ValueError(f"Simplicial mesh requires CG1 space, got {spaces}")
+    if spaces == "DG0DGO" and mesh.ufl_cell().is_simplex():
+        raise ValueError(f"Cartesian mesh requires DG0 space, got {spaces}")
 
     
     # confidence data
@@ -1199,7 +1212,15 @@ def experiment(args):
         if spaces == "DG0DG0":
             inlet_pressure = Function(inlets.function_space())
             inlet_pressure.assign(0.0)
-            weak_Dirichlet = [(inlet_pressure, ds_b, inlets)]
+            if mesh.extruded:
+                PETSc.Sys.Print("Using bottom boundary for inlet pressure")
+                # we need to use the bottom boundary only
+                weak_Dirichlet = [(inlet_pressure, ds_b, inlets)]
+            else:
+                PETSc.Sys.Print("Using all boundary for inlet pressure")
+                # we use all the boundary
+                weak_Dirichlet = [(inlet_pressure, ds, inlets)]
+
             strong_Dirichlet = None
         elif spaces == "CG1DG0" or spaces == "CR1DG0":
             weak_Dirichlet = None
