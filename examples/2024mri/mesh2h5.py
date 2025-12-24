@@ -144,7 +144,7 @@ def setup(mri_directory,
     PETSc.Sys.Print(f" offset:  x {offset[0]:.10e}, y {offset[1]:.10e}, z {offset[2]:.10e}")
     
     # preprocess data
-    main_network_np, sink_support_np, skeleton_np, thickness_np, tof_clean_np, external_network_np , inlets_np = load_preprocessed(out_directory)
+    #main_network_np, sink_support_np, skeleton_np, thickness_np, tof_clean_np, external_network_np , inlets_np = load_preprocessed(out_directory)
     
     # reload the mesh from file
     if mesh_tpye == "simplex":
@@ -180,38 +180,10 @@ def setup(mri_directory,
     
     PETSc.Sys.Print("Bounding box mesh")
     lower, upper = bounding_box(mesh)
-    PETSc.Sys.Print(f" {lower[0]:.10e}<= x <>{upper[0]:.10e} lx{upper[0]-lower[0]:.10e}. Lx={lengths[0]:.10e}")
+    PETSc.Sys.Print(f" {lower[0]:.10e}<= x <>{upper[0]:.10e} lx{upper[0]-lower[0]:.10e} Lx={lengths[0]:.10e}")
     PETSc.Sys.Print(f" {lower[1]:.10e}<= y <>{upper[1]:.10e} ly{upper[1]-lower[1]:.10e} Ly={lengths[1]:.10e}")
     PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e} lz{upper[2]-lower[2]:.10e} Lz={lengths[2]:.10e}") 
     
-    # PETSc.Sys.Print("Shifting coordinates")
-    # mesh.coordinates.dat.data[:, 0] -= offset[0]
-    # mesh.coordinates.dat.data[:, 1] -= offset[1]
-    # mesh.coordinates.dat.data[:, 2] -= offset[2]
-    
-    # PETSc.Sys.Print("Offset completed")
-    # lower, upper = bounding_box(mesh)
-    # PETSc.Sys.Print(f" {lower[0]:.10e}<= x <>{upper[0]:.10e}. Lx={lengths[0]:.10e}")
-    # PETSc.Sys.Print(f" {lower[1]:.10e}<= y <>{upper[1]:.10e}. Ly={lengths[1]:.10e}")
-    # PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e}. Lz={lengths[2]:.10e}")
-        
-    
-    def interpolate_from_numpy(target_mesh, data_np, lengths, name):
-        start  = time.time()
-        PETSc.Sys.Print("Intepolate main network from numpy", end="")    
-        data_mesh = i2d.numpy2firedrake(target_mesh, data_np, name=name,lengths=lengths)
-        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
-        return data_mesh
-        
-    def interpolate_from_cartesian(target_mesh, cartesian_mesh, data_np, name):
-        start  = time.time()
-        PETSc.Sys.Print("Intepolate main network from cartesian", end="")    
-        DG0 = FunctionSpace(target_mesh, "DG", 0)
-        data_mesh = Function(DG0, name=name)
-        data_cartesian = i2d.numpy2firedrake(cartesian_mesh, data_np, name=name)
-        data_mesh.interpolate(main_network_cartesian)
-        PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
-        return data_mesh, data_cartesian 
 
 
     DG0 = FunctionSpace(mesh, "DG", 0)
