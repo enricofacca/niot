@@ -15,6 +15,7 @@ from skimage.morphology import skeletonize
 from scipy.ndimage import binary_dilation
 import time
 from mpi4py import MPI
+import gc
 
 def bounding_box(mesh):
     lower = mesh.coordinates.dat.data.min(axis=0)
@@ -28,6 +29,22 @@ def bounding_box(mesh):
     
     return np.array(global_lower), np.array(global_upper)
 
+def read_nifti_file(filepath, mesh, lengths, offset, name, output_function):
+    """Reads a NIfTI file and returns the image data as a numpy array."""
+    PETSc.Sys.Print(f"Reading NIfTI file: {filepath}", end="")    
+    start  = time.time()
+    img = nibabel.load(filepath)
+    data_np = img.get_fdata()
+    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+
+    start  = time.time()
+    PETSc.Sys.Print("Intepolate from numpy", end="")    
+    i2d.numpy2firedrake(mesh, data_np, name=name, lengths=lengths, offset=offset, output_function=output_function)
+    PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
+    data_np = None  # Free memory
+    gc.collect()
+    
+
 def setup(mri_directory, 
           out_directory,
             mesh_tpye="simplex",
@@ -36,17 +53,20 @@ def setup(mri_directory,
             test_dirichlet_bc = False
           ):
 
-    def load_data(mri_directory):
-        save_npy = False
+    def load_indo_data(mri_directory):
+        
         # load tof data and get basic info
         dir_nii = mri_directory
         tof_data = nibabel.load(f"{dir_nii}/TOF.nii.gz")
         dimensions = tof_data.header.get_data_shape()[:3]
 
         hx, hy, hz = tof_data.header['pixdim'][1:4]
-        lengths = np.array(dimensions) * np.array([hx, hy, hz])
         voxel_size = np.array([hx, hy, hz])
+        affine = tof_data.affine
 
+        return voxel_size, dimensions, affine
+
+    def load_data(dir_nii):
         # get brain mask
         nii_file = f"{dir_nii}/brain_mask_smooth.nii.gz"
         brain_mask_data = nibabel.load(nii_file)
@@ -113,16 +133,15 @@ def setup(mri_directory,
 
         return main_network_np, sink_support_np, skeleton_np, thickness_np, tof_clean_np, external_network_np, inlets_np
 
-    voxel_size, affine, tof_np, brain_mask_np, t1_np, aseg_np = load_data(mri_directory)
+    voxel_size, dimensions, affine = load_indo_data(mri_directory)
     hx, hy, hz = voxel_size
-    dimensions = tof_np.shape
     lengths = np.array([hx, hy, hz]) * np.array(dimensions)
     offset = np.array(affine[:3, 3])
 
-    PETSc.Sys.Print(f" Inputs shape {tof_np.shape}")
+    PETSc.Sys.Print(f" Inputs shape {dimensions}")
     PETSc.Sys.Print(f" voxel_size: {voxel_size}")
     PETSc.Sys.Print(f" lengths: x {lengths[0]:.10e}, y {lengths[1]:.10e}, z {lengths[2]:.10e}")
-    PETSc.Sys.Print(f" offset: x {offset[0]:.10e}, y {offset[1]:.10e}, z {offset[2]:.10e}")
+    PETSc.Sys.Print(f" offset:  x {offset[0]:.10e}, y {offset[1]:.10e}, z {offset[2]:.10e}")
     
     # preprocess data
     main_network_np, sink_support_np, skeleton_np, thickness_np, tof_clean_np, external_network_np , inlets_np = load_preprocessed(out_directory)
@@ -165,16 +184,16 @@ def setup(mri_directory,
     PETSc.Sys.Print(f" {lower[1]:.10e}<= y <>{upper[1]:.10e} ly{upper[1]-lower[1]:.10e} Ly={lengths[1]:.10e}")
     PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e} lz{upper[2]-lower[2]:.10e} Lz={lengths[2]:.10e}") 
     
-    PETSc.Sys.Print("Shifting coordinates")
-    mesh.coordinates.dat.data[:, 0] -= offset[0]
-    mesh.coordinates.dat.data[:, 1] -= offset[1]
-    mesh.coordinates.dat.data[:, 2] -= offset[2]
+    # PETSc.Sys.Print("Shifting coordinates")
+    # mesh.coordinates.dat.data[:, 0] -= offset[0]
+    # mesh.coordinates.dat.data[:, 1] -= offset[1]
+    # mesh.coordinates.dat.data[:, 2] -= offset[2]
     
-    PETSc.Sys.Print("Offset completed")
-    lower, upper = bounding_box(mesh)
-    PETSc.Sys.Print(f" {lower[0]:.10e}<= x <>{upper[0]:.10e}. Lx={lengths[0]:.10e}")
-    PETSc.Sys.Print(f" {lower[1]:.10e}<= y <>{upper[1]:.10e}. Ly={lengths[1]:.10e}")
-    PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e}. Lz={lengths[2]:.10e}")
+    # PETSc.Sys.Print("Offset completed")
+    # lower, upper = bounding_box(mesh)
+    # PETSc.Sys.Print(f" {lower[0]:.10e}<= x <>{upper[0]:.10e}. Lx={lengths[0]:.10e}")
+    # PETSc.Sys.Print(f" {lower[1]:.10e}<= y <>{upper[1]:.10e}. Ly={lengths[1]:.10e}")
+    # PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e}. Lz={lengths[2]:.10e}")
         
     
     def interpolate_from_numpy(target_mesh, data_np, lengths, name):
@@ -194,21 +213,22 @@ def setup(mri_directory,
         PETSc.Sys.Print(f" - completed in {time.time()-start:.2e} s")
         return data_mesh, data_cartesian 
 
-    main_network_mesh = interpolate_from_numpy(mesh, main_network_np, lengths, name="main_network")
-    #main_network_mesh2, main_network_cartesian2 = interpolate_from_cartesian(mesh, cartesian_mesh, main_network_np, name="main_network2")
+
+    DG0 = FunctionSpace(mesh, "DG", 0)
+    main_network_mesh = Function(DG0, name="main_network")
+    filepath = os.path.join(out_directory, "main_network.nii.gz")
+    read_nifti_file(filepath, mesh, lengths, offset, "main_network",  output_function = main_network_mesh)
+
     
-    #assemble_diff = assemble((main_network_mesh - main_network_mesh2)**2 * dx)
-    #PETSc.Sys.Print(f"Difference between two interpolation methods for main network: {assemble_diff:.2e}")
-    
-    # relabeled mesh to mark the inlet boundary
     my = False
     remark_mesh = True
     if mesh_tpye == "cartesian":
         remark_mesh = False
      
+    lower, upper = bounding_box(mesh)
     if remark_mesh:
         if my:
-            zmin = 0
+            zmin = lower[2]
             start  = time.time()
             PETSc.Sys.Print("intepolate marker for relabeled mesh", end="")
             marker_space = FunctionSpace(mesh, "DQ", 0)
@@ -231,13 +251,13 @@ def setup(mri_directory,
             PETSc.Sys.Print(f" {lower[1]:.10e}<= y <>{upper[1]:.10e}. Ly={lengths[1]:.10e}")
             PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e}. Lz={lengths[2]:.10e}")
         
-            PETSc.Sys.Print("Shifting coordinates. I do not know why relabeled mesh shift them back")
-            relabeled_mesh.coordinates.dat.data[:, 0] -= offset[0]
-            relabeled_mesh.coordinates.dat.data[:, 1] -= offset[1]
-            relabeled_mesh.coordinates.dat.data[:, 2] -= offset[2]
-            PETSc.Sys.Print("Offset completed")
+            # PETSc.Sys.Print("Shifting coordinates. I do not know why relabeled mesh shift them back")
+            # relabeled_mesh.coordinates.dat.data[:, 0] -= offset[0]
+            # relabeled_mesh.coordinates.dat.data[:, 1] -= offset[1]
+            # relabeled_mesh.coordinates.dat.data[:, 2] -= offset[2]
+            # PETSc.Sys.Print("Offset completed")
         else:
-            zmin = 0
+            zmin = lower[2]
             start  = time.time()
             PETSc.Sys.Print("intepolate marker for relabeled mesh", end="")
             marker_space = FunctionSpace(mesh, "HDiv Trace", 0)
@@ -257,11 +277,11 @@ def setup(mri_directory,
             PETSc.Sys.Print(f" {lower[1]:.10e}<= y <>{upper[1]:.10e}. Ly={lengths[1]:.10e}")
             PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e}. Lz={lengths[2]:.10e}")
         
-            PETSc.Sys.Print("Shifting coordinates. I do not know why relabeled mesh shift them back")
-            relabeled_mesh.coordinates.dat.data[:, 0] -= offset[0]
-            relabeled_mesh.coordinates.dat.data[:, 1] -= offset[1]
-            relabeled_mesh.coordinates.dat.data[:, 2] -= offset[2]
-            PETSc.Sys.Print("Offset completed")
+            # PETSc.Sys.Print("Shifting coordinates. I do not know why relabeled mesh shift them back")
+            # relabeled_mesh.coordinates.dat.data[:, 0] -= offset[0]
+            # relabeled_mesh.coordinates.dat.data[:, 1] -= offset[1]
+            # relabeled_mesh.coordinates.dat.data[:, 2] -= offset[2]
+            # PETSc.Sys.Print("Offset completed")
     else:
         relabeled_mesh = mesh
         relabeled_mesh.name = "relabeled_mesh"
@@ -276,29 +296,24 @@ def setup(mri_directory,
     PETSc.Sys.Print(f" {lower[2]:.10e}<= z <>{upper[2]:.10e}. Lz={lengths[2]:.10e} newLz={new_lengths[2]:.10e}")
     
 
-    # 
-    PETSc.Sys.Print(" Interpolate numpy data to relabeled mesh")
-    tof_mesh = i2d.numpy2firedrake(relabeled_mesh, tof_np, name='tof',lengths=lengths)
-    tof_smooth_mesh = i2d.numpy2firedrake(relabeled_mesh, tof_clean_np, name='tof_smooth',lengths=lengths)
-    t1_mesh = i2d.numpy2firedrake(relabeled_mesh, t1_np, name='t1',lengths=lengths)
-    brain_mask_mesh = i2d.numpy2firedrake(relabeled_mesh, brain_mask_np, name='brain_mask',lengths=lengths)
-    main_network_mesh = i2d.numpy2firedrake(relabeled_mesh, main_network_np, name='main_network',lengths=lengths)
-    sink_support_mesh = i2d.numpy2firedrake(relabeled_mesh, sink_support_np, name='sink_support',lengths=lengths)
-    skeleton_mesh = i2d.numpy2firedrake(relabeled_mesh, skeleton_np, name='skeleton',lengths=lengths)
-    thickness_mesh = i2d.numpy2firedrake(relabeled_mesh, thickness_np, name='thickness',lengths=lengths)
-    inlets_mesh = i2d.numpy2firedrake(relabeled_mesh, inlets_np, name='inlets',lengths=lengths)
+    # # 
+    # PETSc.Sys.Print(" Interpolate numpy data to relabeled mesh")
+    # tof_mesh = i2d.numpy2firedrake(relabeled_mesh, tof_np, name='tof',lengths=lengths)
+    # tof_smooth_mesh = i2d.numpy2firedrake(relabeled_mesh, tof_clean_np, name='tof_smooth',lengths=lengths)
+    # t1_mesh = i2d.numpy2firedrake(relabeled_mesh, t1_np, name='t1',lengths=lengths)
+    # brain_mask_mesh = i2d.numpy2firedrake(relabeled_mesh, brain_mask_np, name='brain_mask',lengths=lengths)
+    # main_network_mesh = i2d.numpy2firedrake(relabeled_mesh, main_network_np, name='main_network',lengths=lengths)
+    # sink_support_mesh = i2d.numpy2firedrake(relabeled_mesh, sink_support_np, name='sink_support',lengths=lengths)
+    # skeleton_mesh = i2d.numpy2firedrake(relabeled_mesh, skeleton_np, name='skeleton',lengths=lengths)
+    # thickness_mesh = i2d.numpy2firedrake(relabeled_mesh, thickness_np, name='thickness',lengths=lengths)
+    # inlets_mesh = i2d.numpy2firedrake(relabeled_mesh, inlets_np, name='inlets',lengths=lengths)
 
-    PETSc.Sys.Print("Shifting coordinates of relabeled mesh")
-    relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
-    relabeled_mesh.coordinates.dat.data[:, 1] += offset[1]
-    relabeled_mesh.coordinates.dat.data[:, 2] += offset[2]
-    PETSc.Sys.Print("Offset completed")
-    
-    data4pvd = [tof_mesh,
-                brain_mask_mesh,
-                main_network_mesh,
-                sink_support_mesh,
-                tof_smooth_mesh]
+    # PETSc.Sys.Print("Shifting coordinates of relabeled mesh")
+    # relabeled_mesh.coordinates.dat.data[:, 0] += offset[0]
+    # relabeled_mesh.coordinates.dat.data[:, 1] += offset[1]
+    # relabeled_mesh.coordinates.dat.data[:, 2] += offset[2]
+    # PETSc.Sys.Print("Offset completed")
+   
     
 
     
@@ -313,23 +328,43 @@ def setup(mri_directory,
         PETSc.Sys.Print(f"Saving to {h5_filename}", end="")
         with CheckpointFile(h5_filename, 'w', comm=COMM_WORLD) as afile:
             afile.save_mesh(relabeled_mesh,"relabeled_mesh")
-            PETSc.Sys.Print(f" mesh ", end="")
-            afile.save_function(tof_mesh)
-            PETSc.Sys.Print(f" tof ", end="")
-            afile.save_function(t1_mesh)
-            PETSc.Sys.Print(f" t1 ", end="")
-            afile.save_function(brain_mask_mesh)
-            PETSc.Sys.Print(f" brain_mask ", end="")
+            PETSc.Sys.Print(f" mesh ")
+
             afile.save_function(main_network_mesh)
-            PETSc.Sys.Print(f" main_network ", end="")
-            afile.save_function(sink_support_mesh)
-            PETSc.Sys.Print(f" sink_support ", end="")
-            afile.save_function(skeleton_mesh)
-            PETSc.Sys.Print(f" skeleton ", end="")
-            afile.save_function(thickness_mesh)
-            PETSc.Sys.Print(f" thickness ", end="")
-            afile.save_function(inlets_mesh)
-            PETSc.Sys.Print(f" inlets ", end="")
+            PETSc.Sys.Print(f" main_network ")
+        
+            for filepath, name in [
+                (os.path.join(out_directory, "inlets.nii.gz"), "inlets"),
+                (os.path.join(out_directory, "thickness.nii.gz"),  "thickness"),
+                (os.path.join(out_directory, "skeleton.nii.gz"),  "skeleton"),
+                (os.path.join(out_directory, "sink_support.nii.gz"), "sink_support"),
+                (os.path.join(out_directory, "external_network.nii.gz"), "external_network"),
+                (os.path.join(out_directory, "tof_clean.nii.gz"), "tof"),
+                (os.path.join(mri_directory, "T1.nii.gz"), "t1"),
+                (os.path.join(mri_directory, "TOF.nii.gz"), "tof"),
+                (os.path.join(mri_directory, "brain_mask_smooth.nii.gz"), "brain_mask_smooth"),
+                ]:
+                read_nifti_file(filepath, mesh, lengths, offset, name, main_network_mesh)
+
+                afile.save_function(main_network_mesh)
+                PETSc.Sys.Print(f" {name} ")
+
+            # afile.save_function(tof_mesh)
+            # PETSc.Sys.Print(f" tof ", end="")
+            # afile.save_function(t1_mesh)
+            # PETSc.Sys.Print(f" t1 ", end="")
+            # afile.save_function(brain_mask_mesh)
+            # PETSc.Sys.Print(f" brain_mask ", end="")
+            # afile.save_function(main_network_mesh)
+            # PETSc.Sys.Print(f" main_network ", end="")
+            # afile.save_function(sink_support_mesh)
+            # PETSc.Sys.Print(f" sink_support ", end="")
+            # afile.save_function(skeleton_mesh)
+            # PETSc.Sys.Print(f" skeleton ", end="")
+            # afile.save_function(thickness_mesh)
+            # PETSc.Sys.Print(f" thickness ", end="")
+            # afile.save_function(inlets_mesh)
+            # PETSc.Sys.Print(f" inlets ", end="")
 
 
             PETSc.Sys.Print(f" Include info ")
@@ -378,10 +413,6 @@ def setup(mri_directory,
             outfilename = os.path.join(out_directory,f"solution_dirichlet.nii.gz")
             nibabel.save(nibabel.Nifti1Image(solution_np, affine), outfilename)
         cartesian_mesh.comm.barrier()
-
-    if save_pvd:
-        outfilename = os.path.join(out_directory,f"inputs.pvd")
-        VTKFile(outfilename).write(*data4pvd)
 
         
 if __name__ == '__main__':
