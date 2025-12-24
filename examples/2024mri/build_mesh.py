@@ -249,7 +249,7 @@ def setup(mri_directory,
 
     # set inlet marker. Bottom slice of main network
     inlets_np = main_network_np.copy()
-    inlets_np[1:,:,:] = 0
+    inlets_np[:,:,1:] = 0
     
     # in tof there are small isolated components that we do not want to fit
     # so we apply a slight gaussian blur to remove them
@@ -432,7 +432,7 @@ def setup(mri_directory,
         writer = partial(meshio.exodus.write)
         writer(os.path.join(out_directory,"brain_hexa_main.e"), mesh_hexa)
 
-        
+
     if build_tof_mesh:
         mesh_tof_pygal, mask_tof_np = build_mesh(voxel_size,
                                          brain_mask_np,

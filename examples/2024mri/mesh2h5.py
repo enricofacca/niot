@@ -311,10 +311,10 @@ def setup(mri_directory,
                 (os.path.join(out_directory, "skeleton.nii.gz"),  "skeleton"),
                 (os.path.join(out_directory, "sink_support.nii.gz"), "sink_support"),
                 (os.path.join(out_directory, "external_network.nii.gz"), "external_network"),
-                (os.path.join(out_directory, "tof_clean.nii.gz"), "tof"),
+                (os.path.join(out_directory, "tof_clean.nii.gz"), "tof_clean"),
                 (os.path.join(mri_directory, "T1.nii.gz"), "t1"),
                 (os.path.join(mri_directory, "TOF.nii.gz"), "tof"),
-                (os.path.join(mri_directory, "brain_mask_smooth.nii.gz"), "brain_mask_smooth"),
+                (os.path.join(mri_directory, "brain_mask_smooth.nii.gz"), "brain_mask"),
                 ]:
                 read_nifti_file(filepath, mesh, lengths, offset, name, main_network_mesh)
 
