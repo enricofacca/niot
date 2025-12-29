@@ -380,7 +380,10 @@ def set_step(increment,
              lower_bound=1e-2, 
              upper_bound=0.5, 
              expansion=2,
-             contraction=0.5):
+             contraction=0.5,
+             order_down=-0.8,
+                order_up=0.8,
+                ):
     """
     Set the step lenght according to the control strategy
     and the increment
@@ -394,8 +397,6 @@ def set_step(increment,
             step = max(min(1.0 / d_max, upper_bound), lower_bound)
     elif (type == 'adaptive2'):
         
-        order_down = -0.8
-        order_up = 0.8
         r = increment / state
         _, r_min = r.min()
         _, r_max = r.max()
@@ -524,6 +525,8 @@ class NiotSolver:
                     'upper_bound' : 0.5,
                     'expansion' : 2,
                     'contraction': 0.5,
+                    'order_down': -0.7,
+                    'order_up': 0.7,
                 },                
             },
             'tdens_mirror_descent_semi_implicit' : {
@@ -562,6 +565,7 @@ class NiotSolver:
                     'upper_bound' : 0.5,
                     'expansion' : 2,
                     'contraction': 0.5,
+
                 },                
             },
         }
@@ -1021,8 +1025,8 @@ class NiotSolver:
                     'snes_ksp_ew_rtol0': 1e-2,
                     'snes_ksp_ew_rtolmax': 1e-6,
                     'ksp_type': 'gmres',
-                    'ksp_rtol': 1e-6,
-                    'ksp_atol': 1e-6,
+                    #'ksp_rtol': 1e-6,
+                    #'ksp_atol': 1e-6,
                     'ksp_max_it': 500,
                     'pc_type': 'hypre',
                     'snes_monitor': None,
