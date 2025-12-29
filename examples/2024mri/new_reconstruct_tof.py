@@ -576,6 +576,7 @@ def experiment(args):
 
     try:
         xmin = mesh.xmin
+        offset = [mesh.xmin, mesh.ymin, mesh.zmin]
         PETSc.Sys.Print(f"Mesh dimensions: nx={mesh.nx}, ny={mesh.ny}, nz={mesh.nz}")
         lower, upper = mesh.bounding_box()
         PETSc.Sys.Print(f"Mesh bounds: x[{lower[0]:.2e}, {upper[0]:.2e}], "
