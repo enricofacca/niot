@@ -713,7 +713,7 @@ class NiotSolver:
                             "pc_hypre_type": "boomeramg",
                             "pc_hypre_boomeramg_strong_threshold": 0.75,
                             "pc_hypre_boomeramg_max_iter": 1,
-                            "pc_hypre_boomeramg_agg_nl": 3,
+                            "pc_hypre_boomeramg_agg_nl": 4,
                             "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
                         }
             petsc_controls.update(hypre_ctrl_3d)
@@ -806,7 +806,7 @@ class NiotSolver:
                         "pc_hypre_type": "boomeramg",
                         "pc_hypre_boomeramg_strong_threshold": 0.75,
                         "pc_hypre_boomeramg_max_iter": 1,
-                        "pc_hypre_boomeramg_agg_nl": 3,
+                        "pc_hypre_boomeramg_agg_nl": 4,
                         "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
                     }
             solver_parameters.update(hypre_ctrl_3d)
@@ -981,6 +981,10 @@ class NiotSolver:
                     'snes_atol': 1e-16,
                     'snes_stol': 1e-10,
                     'snes_max_it': 100,
+                    # inexact Newton with Eisenstat-Walker
+                    #"snes_ksp_ew": None,
+                    #"snes_ksp_ew_rtol0": 1e-2,
+                    #"snes_ksp_ew_rtolmax": 1e-6,
                     'ksp_type': 'gmres',
                     'ksp_rtol': 1e-6,
                     'ksp_atol': 1e-12,
@@ -997,7 +1001,7 @@ class NiotSolver:
                                 "pc_hypre_type": "boomeramg",
                                 "pc_hypre_boomeramg_strong_threshold": 0.75,
                                 "pc_hypre_boomeramg_max_iter": 1,
-                                "pc_hypre_boomeramg_agg_nl": 3,
+                                "pc_hypre_boomeramg_agg_nl": 4,
                                 "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
                             }
                     solver_parameters.update(hypre_ctrl_3d)
