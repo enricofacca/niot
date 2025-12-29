@@ -177,7 +177,7 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
     
 
 
-    sink_support_np = set_sink_support(aseg, main_network_np)
+    sink_support_np = set_sink_support(aseg_np, main_network_np)
     sink_support = i2d.numpy2firedrake(cartesian_mesh, sink_support_np, name="sink_support")
     
     sink_support_np = None
