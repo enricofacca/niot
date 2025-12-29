@@ -119,6 +119,7 @@ class BluringOperator:
             print(f"Max before blur: {function_np.max():.2e}, after blur: {function_np_blurred.max():.2e}")
             function_blurred = i2d.numpy2firedrake(mesh, function_np_blurred, name=function.name()+"_blurred")
             function_np = None
+            function_np_blurred = None
             gc.collect()
             print(f"Blurring done",function_blurred.name)
             return function_blurred
