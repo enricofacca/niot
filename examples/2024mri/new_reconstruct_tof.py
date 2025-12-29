@@ -116,9 +116,11 @@ class BluringOperator:
             PETSc.Sys.Print("Using gaussian filter for cartesian mesh")
             function_np = i2d.firedrake2numpy(function)
             function_np_blurred = gaussian_filter(function_np, sigma)
+            print(f"Max before blur: {function_np.max():.2e}, after blur: {function_np_blurred.max():.2e}")
             function_blurred = i2d.numpy2firedrake(mesh, function_np_blurred, name=function.name()+"_blurred")
             function_np = None
             gc.collect()
+            print(f"Blurring done",function_blurred.name)
             return function_blurred
 
 def save_as_nifti(function, filename, affine, dimensions, lenghts, offset):
@@ -309,6 +311,7 @@ def set_corrupted_network(**kwargs):
             blurer = kwargs["blurer"]
             hx = kwargs["voxel_size"][0]
             tof4corrupted = blurer(tof, sigma=blur*hx)
+            print("Blurring with sigma=", tof4corrupted.name)
         else:
             tof4corrupted = tof
 
