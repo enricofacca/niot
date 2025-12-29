@@ -435,6 +435,7 @@ def experiment(args):
     affine = tof_data.affine
     original_dimensions = tof_data.header.get_data_shape()[:3]
     hx, hy, hz = tof_data.header['pixdim'][1:4]
+    dimensions = original_dimensions
     
     voxel_size = np.array([hx, hy, hz])
     lengths = np.array([hx, hy, hz]) * np.array(original_dimensions)
