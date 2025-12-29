@@ -326,6 +326,8 @@ def set_corrupted_network(**kwargs):
                             * conditional(tof4corrupted > threshold_tof, 1, 0) # only values above the threshold
                             * conditional(external_network > 0, 0, 1) # exclude external network
                             )
+        tof4corrupted = None
+        gc.collect()
     
     elif option_type == "support":
         try:
@@ -1472,13 +1474,15 @@ def experiment(args):
 
 
         def solve_and_save(niot_solver, label_dir, n_buffer):
-            
+            gc.collect()
+
             # select if we just want the latest solution 
             update_solution = True
             if update_solution:
                 file_label = "final"
             else:
                 file_label = f"{n_buffer:02}"
+
                 
             
             n_iter = niot_solver.ctrl_get('max_iter')
