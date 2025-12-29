@@ -1300,8 +1300,8 @@ class NiotSolver:
                             )
                         fire_adj.pause_annotation()
 
-                        tape = fire_adj.get_working_tape()
-                        tape.visualise("tape_discrepancy.pdf")
+                        #tape = fire_adj.get_working_tape()
+                        #tape.visualise("tape_discrepancy.pdf")
                     
                     else:
                         self.adj_discrepancy_fun = self.adj_discrepancy_fun_reduced(self.tdens_h)
