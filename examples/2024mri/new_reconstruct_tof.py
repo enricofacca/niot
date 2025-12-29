@@ -435,8 +435,10 @@ def experiment(args):
     affine = tof_data.affine
     original_dimensions = tof_data.header.get_data_shape()[:3]
     hx, hy, hz = tof_data.header['pixdim'][1:4]
-
+    
+    voxel_size = np.array([hx, hy, hz])
     lengths = np.array([hx, hy, hz]) * np.array(original_dimensions)
+
 
     out_directory = results + test_case
     mpi_mkdir(out_directory)
@@ -570,7 +572,7 @@ def experiment(args):
 
         COMM_WORLD.barrier()
         data = setup_h5(args.mri, threshold, blur=blur, masked_mesh=masked_mesh, comm=comm)
-        cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets, skeleton, thickness = data
+        cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets, skeleton, thickness, sink_support = data
         
         mesh = cartesian_mesh
 
