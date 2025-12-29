@@ -982,9 +982,9 @@ class NiotSolver:
                     'snes_stol': 1e-10,
                     'snes_max_it': 100,
                     # inexact Newton with Eisenstat-Walker
-                    "snes_ksp_ew": None,
-                    "snes_ksp_ew_rtol0": 1e-2,
-                    "snes_ksp_ew_rtolmax": 1e-6,
+                    'snes_ksp_ew': None,
+                    'snes_ksp_ew_rtol0': 1e-2,
+                    'snes_ksp_ew_rtolmax': 1e-6,
                     'ksp_type': 'gmres',
                     #'ksp_rtol': 1e-6,
                     #'ksp_atol': 1e-12,
@@ -1016,13 +1016,17 @@ class NiotSolver:
                     'snes_stol': 1e-6,
                     'snes_max_it': 100,
                     'snes_linesearch_type':'bt',
+                     # inexact Newton with Eisenstat-Walker
+                    'snes_ksp_ew': None,
+                    'snes_ksp_ew_rtol0': 1e-2,
+                    'snes_ksp_ew_rtolmax': 1e-6,
                     'ksp_type': 'gmres',
                     'ksp_rtol': 1e-6,
                     'ksp_atol': 1e-6,
                     'ksp_max_it': 500,
                     'pc_type': 'hypre',
                     'snes_monitor': None,
-                    #'snes_linesearch_monitor': None,
+                    'snes_linesearch_monitor': None,
                     'ksp_monitor': None,
                     }
 
