@@ -14,6 +14,31 @@ from skimage.morphology import skeletonize
 from scipy.ndimage import binary_dilation
 import time
 
+def set_sink_support(aseg_np, main_network_np):
+    """
+    set the sink support based on aseg
+    """
+    sink_support_np = np.zeros_like(aseg_np, dtype=np.uint8)
+    # label described in https://surfer.nmr.mgh.harvard.edu/fswiki/FsTutorial/AnatomicalROI/FreeSurferColorLUT
+    empty_markers = [4, # left-lateral ventricle
+                    5, # left-inf-lat-vent
+                    14, # 3rd ventricle
+                    15, # 4th ventricle
+                    24, # CSF
+                    43, # right-lateral ventricle
+                    44, # right-inf-lat-ventricle 
+                    ]
+    
+    sink_support_np[aseg_np > 0] = 1
+    for label in empty_markers:
+        sink_support_np[aseg_np == label] = 0
+
+    # remove main network from sink
+    sink_support_np[main_network_np > 0 ] = 0
+
+    return sink_support_np
+    
+
 
 def export_voxel_to_gmsh(array_3d, voxel_size=1.0):
     """
@@ -217,29 +242,6 @@ def setup(mri_directory,
             raise ValueError(f"Unknown mode {mode} for tof preprocessing")        
         
     
-    def set_sink_support(aseg_np, main_network):
-        """
-        set the sink support based on aseg
-        """
-        sink_support_np = np.zeros_like(aseg_np, dtype=np.uint8)
-        # label described in https://surfer.nmr.mgh.harvard.edu/fswiki/FsTutorial/AnatomicalROI/FreeSurferColorLUT
-        empty_markers = [4, # left-lateral ventricle
-                        5, # left-inf-lat-vent
-                        14, # 3rd ventricle
-                        15, # 4th ventricle
-                        24, # CSF
-                        43, # right-lateral ventricle
-                        44, # right-inf-lat-ventricle 
-                        ]
-        
-        sink_support_np[aseg_np > 0] = 1
-        for label in empty_markers:
-            sink_support_np[aseg_np == label] = 0
-
-        # remove main network from sink
-        sink_support_np[main_network_np > 0 ] = 0
-
-        return sink_support_np
     
     # process parameters
     main_network_np, skeleton_np, thickness_np, external_network_np = set_main_network(tof_np, 
@@ -423,6 +425,34 @@ def setup(mri_directory,
         print(f"{zmin:.10e}<= z <= {zmax:.10e} lz={zmax - zmin:.10e} lengths[2]={lengths[2]:.10e} diff={abs((zmax - zmin) - lengths[2]):.10e}")
 
         
+
+        # save mesh as vtu and msh
+        mesh_hexa.write(os.path.join(out_directory,"brain_hexa_main.vtu"))
+        writer = partial(meshio.gmsh.write, fmt_version="2.2", binary=True)
+        writer(os.path.join(out_directory,"brain_hexa_main.msh"), mesh_hexa)
+
+        writer = partial(meshio.exodus.write)
+        writer(os.path.join(out_directory,"brain_hexa_main.e"), mesh_hexa)
+
+    if build and cell_type == "masked":
+        mask_np = brain_mask_np.copy()
+        mask_np[main_network_np > 0 ] = 1
+
+        # estimate used voxel size
+        volume = 100 * np.sum(mask_np > 0) / ( mask_np.shape[0] * mask_np.shape[1] * mask_np.shape[2])
+        print(f"Volume fraction of hexa mesh: {volume:.2f}% | new={np.sum(mask_np > 0)} old={mask_np.shape[0] * mask_np.shape[1] * mask_np.shape[2]}")
+
+
+        PETSc.Sys.Print(f"Building masked mesh ")
+        masked_mesh = i2d.mesh_from_3d_mask(mask_np, lengths, variable_layer=False, invert_rows_columns=False)
+
+        offset = np.array(affine[:3, 3])
+        coordinates = masked_mesh.coordinates.dat.data
+        coordinates[:,0] += offset[0]
+        coordinates[:,1] += offset[1]
+        coordinates[:,2] += offset[2]
+        
+                
 
         # save mesh as vtu and msh
         mesh_hexa.write(os.path.join(out_directory,"brain_hexa_main.vtu"))
