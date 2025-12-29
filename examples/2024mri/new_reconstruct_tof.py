@@ -574,19 +574,27 @@ def experiment(args):
         
         mesh = cartesian_mesh
 
-    mesh.nx = original_dimensions[0]
-    mesh.ny = original_dimensions[1]
-    mesh.nz = original_dimensions[2]
-    mesh.xmin = offset[0]
-    mesh.xmax = offset[0]+lengths[0]
-    mesh.ymin = offset[1]
-    mesh.ymax = offset[1]+lengths[1]
-    mesh.zmin = offset[2]
-    mesh.zmax = offset[2]+lengths[2]
-    mesh.hx = hx
-    mesh.hy = hy
-    mesh.hz = hz
-    mesh.invert_rows_columns = False
+    try:
+        xmin = mesh.xmin
+        PETSc.Sys.Print(f"Mesh dimensions: nx={mesh.nx}, ny={mesh.ny}, nz={mesh.nz}")
+        lower, upper = mesh.bounding_box()
+        PETSc.Sys.Print(f"Mesh bounds: x[{lower[0]:.2e}, {upper[0]:.2e}], "
+                        f"y[{lower[1]:.2e}, {upper[1]:.2e}], "
+                        f"z[{lower[2]:.2e}, {upper[2]:.2e}]")
+    except:
+        mesh.nx = original_dimensions[0]
+        mesh.ny = original_dimensions[1]
+        mesh.nz = original_dimensions[2]
+        mesh.xmin = offset[0]
+        mesh.xmax = offset[0]+lengths[0]
+        mesh.ymin = offset[1]
+        mesh.ymax = offset[1]+lengths[1]
+        mesh.zmin = offset[2]
+        mesh.zmax = offset[2]+lengths[2]
+        mesh.hx = hx
+        mesh.hy = hy
+        mesh.hz = hz
+        mesh.invert_rows_columns = False
     
     blurer = BluringOperator(mesh)
 
