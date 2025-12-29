@@ -7,6 +7,8 @@ import gc
 from connected_components_tof import connected_components, main_network_equal_one, find_external_network
 import os
 from scipy.ndimage import gaussian_filter
+from build_mesh import set_sink_support
+
 
 def save_as_npy(file_nii, file_npy, comm=COMM_WORLD):
     PETSc.Sys.Print(f" {file_nii} to {file_npy}", os.path.exists(file_npy))
@@ -159,7 +161,28 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
     PETSc.Sys.Print(f"aseg ",end="")
     aseg_np = get_data_from_nii(file_nii, save_npy, comm=comm)
     aseg = i2d.numpy2firedrake(cartesian_mesh, aseg_np, name='aseg')
+    
+
+    
+    # main and external network
+    if blur > 0:
+        PETSc.Sys.Print(f"Connected components with threshold {threshold:.2e} and blur {blur:.2e}")
+        label = f"t{threshold:.2e}_blur{blur:.2e}"  
+    else: 
+        label = f"t{threshold:.2e}"
+    file_nii = f"{dir_nii}/main_network_{label}.nii.gz"
+    main_network_np = get_data_from_nii(file_nii, save_npy, comm=comm)
+    main_network = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name="main_network")
+    PETSc.Sys.Print(f"Main network done")
+    
+
+
+    sink_support_np = set_sink_support(aseg, main_network_np)
+    sink_support = i2d.numpy2firedrake(cartesian_mesh, sink_support_np, name="sink_support")
+    
+    sink_support_np = None
     aseg_np = None
+    main_network_np = None
     gc.collect()
     PETSc.Sys.Print(f" - done")
     
@@ -177,18 +200,7 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
     # 
     
     
-    # main and external network
-    if blur > 0:
-        PETSc.Sys.Print(f"Connected components with threshold {threshold:.2e} and blur {blur:.2e}")
-        label = f"t{threshold:.2e}_blur{blur:.2e}"  
-    else: 
-        label = f"t{threshold:.2e}"
-    file_nii = f"{dir_nii}/main_network_{label}.nii.gz"
-    main_network_np = get_data_from_nii(file_nii, save_npy, comm=comm)
-    main_network = i2d.numpy2firedrake(cartesian_mesh, main_network_np, name="main_network")
-    PETSc.Sys.Print(f"Main network done")
-    main_network_np = None
-    gc.collect()
+   
 
     # read skeleton mask of main network
     file_nii = f"{dir_nii}/skeleton_{label}.nii.gz"
@@ -216,12 +228,12 @@ def setup_h5(mri_directory, threshold, blur = 0.0, masked_mesh=True, comm=COMM_W
     external_network_np = None
     gc.collect()
 
-    return cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets, skeleton, thickness
+    return cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets, skeleton, thickness, sink_support
 
 
 def write_h5(mri_directory, threshold, blur, comm, n_proc, data):
     # unpack data
-    cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets, skeleton, thickness = data
+    cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets, skeleton, thickness, sink_support = data
 
     #
     # save to h5
