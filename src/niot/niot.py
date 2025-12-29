@@ -717,7 +717,7 @@ class NiotSolver:
                             "pc_hypre_type": "boomeramg",
                             "pc_hypre_boomeramg_strong_threshold": 0.75,
                             "pc_hypre_boomeramg_max_iter": 1,
-                            "pc_hypre_boomeramg_agg_nl": 4,
+                            "pc_hypre_boomeramg_agg_nl": 3,
                             "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
                         }
             petsc_controls.update(hypre_ctrl_3d)
@@ -808,9 +808,9 @@ class NiotSolver:
                         # tuning parameters for the multigrid
                         # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
                         "pc_hypre_type": "boomeramg",
-                        "pc_hypre_boomeramg_strong_threshold": 0.8,
+                        "pc_hypre_boomeramg_strong_threshold": 0.75,
                         "pc_hypre_boomeramg_max_iter": 1,
-                        "pc_hypre_boomeramg_agg_nl": 4,
+                        "pc_hypre_boomeramg_agg_nl": 3,
                         "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
                     }
             solver_parameters.update(hypre_ctrl_3d)
@@ -1005,7 +1005,7 @@ class NiotSolver:
                                 "pc_hypre_type": "boomeramg",
                                 "pc_hypre_boomeramg_strong_threshold": 0.75,
                                 "pc_hypre_boomeramg_max_iter": 1,
-                                "pc_hypre_boomeramg_agg_nl": 4,
+                                "pc_hypre_boomeramg_agg_nl": 3,
                                 "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
                             }
                     solver_parameters.update(hypre_ctrl_3d)
@@ -1039,9 +1039,9 @@ class NiotSolver:
                                 # tuning parameters for the multigrid
                                 # https://mooseframework.inl.gov/releases/moose/2021-09-15/application_development/hypre.html
                                 "pc_hypre_type": "boomeramg",
-                                "pc_hypre_boomeramg_strong_threshold": 0.8,
+                                "pc_hypre_boomeramg_strong_threshold": 0.75,
                                 "pc_hypre_boomeramg_max_iter": 1,
-                                "pc_hypre_boomeramg_agg_nl": 4,
+                                "pc_hypre_boomeramg_agg_nl": 3,
                                 "pc_hypre_boomeramg_interp_type": "ext+i",  # "classic" or "ext+i"
                             }
                     solver_parameters.update(hypre_ctrl_3d)
