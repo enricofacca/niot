@@ -1381,13 +1381,16 @@ def experiment(args):
         niot_solver.ctrl_set(['dmk','type'], method)
 
         # time step
-        deltat_control = {
+        default_deltat_control = {
         'type': 'adaptive2',
         'lower_bound': 1e-13,
-        'upper_bound': 2e-2,
+        'upper_bound': 5e-2,
         'expansion': 1.1,
         'contraction': 0.5,
+        'order_down': -0.6,
+        'order_up': 0.6,
         }
+        deltat_control = combination.get("deltat_control", default_deltat_control) 
         niot_solver.ctrl_set(['dmk',method,'deltat'], deltat_control)
         
         # setup log file
