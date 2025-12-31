@@ -407,7 +407,7 @@ def experiment(args):
     except:
         blur = 0.0
         options["blur"] = [blur]
-        
+    
 
     PETSc.Sys.Print(f"**** SETUP ****** ")
     PETSc.Sys.Print(f"Inputs: {args.mri}")
@@ -824,6 +824,12 @@ def experiment(args):
                 t1 = kwargs['t1']
             except:
                 raise ValueError("t1 not provided")
+            
+            try:
+                brain_mask = kwargs['brain_mask']
+            except:
+                raise ValueError("brain_mask not provided")
+            
             try:
                 main_network = kwargs['main_network']
             except:
@@ -856,13 +862,18 @@ def experiment(args):
             kappa.interpolate(# base value is value (Euclidean distace)
                               1.0
                               # outsise the main network, we penalize the passage 
-                              + conditional(main_network > 0, 0, 1) 
                               # but only in the region where t1 is high
+                              # or outside the brain domain 
+                              + conditional(main_network > 0, 0, 1) 
                               * (
                                   kappa1 * conditional(t1 > level1, 1, 0) * conditional(t1 < level2, 1, 0)
                                   + kappa2 * conditional(t1 > level2, 1, 0)
-                                ) 
+                                + 10*conditional(brain_mask < 1e-10, 1, 0 ) 
+                                )
+                              
                         )
+            with kappa.dat.vec_ro as kappa_vec:
+                PETSc.Sys.Print(utilities.msg_bounds(kappa_vec, "kappa function"))
             return kappa
         elif option_type == "t1white":
             try:
@@ -1226,6 +1237,7 @@ def experiment(args):
         source.assign(0.0)
 
         kappa = set_kappa(**combination, **input_data)
+                
         
         if spaces == "DG0DG0":
             inlet_pressure = Function(inlets.function_space())
@@ -1250,6 +1262,9 @@ def experiment(args):
                                       Dirichlet = strong_Dirichlet,
                                       weak_Dirichlet = weak_Dirichlet,
                                       kappa=kappa)
+
+        # save kappa as pvd
+        VTKFile(os.path.join(out_directory, "kappa.pvd")).write(kappa)
         
         #
         # set confidence
@@ -1435,9 +1450,11 @@ def experiment(args):
 
                 if combination["kappa"] != "one":
                     filename = f"{label_dir}/kappa.nii.gz"
-                    save_as_nifti(kappa, filename,  affine, dimensions, lengths, offset)
+                    save_as_nifti(btp.kappa, filename,  affine, dimensions, lengths, offset)
+                    with kappa.dat.vec_ro as kappa_vec:
+                        PETSc.Sys.Print(utilities.msg_bounds(kappa_vec, "kappa function"))
                 
-                filaname = f"{label_dir}/main_network.nii.gz"
+                filename = f"{label_dir}/main_network.nii.gz"
                 save_as_nifti(main_network, filename,  affine, dimensions, lengths, offset)
             else:
                 if save_h5:
