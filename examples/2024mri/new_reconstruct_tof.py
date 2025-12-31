@@ -1263,9 +1263,6 @@ def experiment(args):
                                       weak_Dirichlet = weak_Dirichlet,
                                       kappa=kappa)
 
-        # save kappa as pvd
-        VTKFile(os.path.join(out_directory, "kappa.pvd")).write(kappa)
-        
         #
         # set confidence
         #
