@@ -1013,25 +1013,44 @@ def experiment(args):
             high += 1e-4
             return high
         
-        if option_type == "main_network":
+        if option_type == "tof_on_main_network":
             try:
                 main_network = kwargs['main_network']
             except:
                 raise ValueError("main_network not provided")
             
             try: 
-                map = kwargs['map']
-                scaling = map['scaling']
+                scaling_tof = options['scaling_tof']
             except:
-                raise ValueError("map not provided")
+                scaling_tof = 1.0
             
             try:
                 tof = kwargs['tof']
             except:
                 raise ValueError("tof not provided")
             
-            initial = Function(main_network.function_space(), name=common_name+"main_network")
-            initial.interpolate(tof/scaling*conditional(main_network > 0, 1, 0))
+            try:
+                brain_mask = kwargs['brain_mask']
+            except:
+                raise ValueError("brain mask not provided")
+            
+            try:
+                lift_brain = option["lift_brain"]
+            except:
+                lift_brain = 1e-4
+            
+            try:
+                lift = option["lift"]
+            except:
+                lift = 1e-4
+            
+
+
+            initial = Function(main_network.function_space(), name=common_name+"tof_on_main_network")
+            initial.interpolate(tof * scaling_tof * conditional(main_network > 0, 1, 0)
+                                + lift_brain * brain_mask
+                                + lift
+                                )
             return initial
         
         if option_type == "load":
@@ -1453,6 +1472,9 @@ def experiment(args):
                 
                 filename = f"{label_dir}/main_network.nii.gz"
                 save_as_nifti(main_network, filename,  affine, dimensions, lengths, offset)
+
+                filename = f"{label_dir}/external_network.nii.gz"
+                save_as_nifti(external_network, filename,  affine, dimensions, lengths, offset)
             else:
                 if save_h5:
                     h5_file_inputs = os.path.join(label_dir, "inputs.h5")
