@@ -888,7 +888,7 @@ def experiment(args):
                 raise ValueError("brain_mask not provided")
             
             try:
-                corrupted = kwargs['corrupted']
+                corrupted_fun = kwargs['corrupted_fun']
             except:
                 raise ValueError("corrupted")
             
@@ -1305,7 +1305,7 @@ def experiment(args):
         source = Function(R, name="source")
         source.assign(0.0)
 
-        kappa = set_kappa(**combination, corrupted=corrupted, **input_data)
+        kappa = set_kappa(**combination, corrupted_fun=corrupted, **input_data)
                 
         
         if spaces == "DG0DG0":
