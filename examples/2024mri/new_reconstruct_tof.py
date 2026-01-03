@@ -909,13 +909,13 @@ def experiment(args):
             
             
             name = f"{common_name}sink_support"
-            kappa = Function(t1.function_space(), name=name)
+            kappa = Function(corrupted_fun.function_space(), name=name)
             kappa.interpolate(# base value is value (Euclidean distace)
                               1.0
                               # outsise the main network and where there are data
                               # we penalize the passage
                               + conditional(main_network > 0, 0, 1)
-                              * conditional(corrupted > 1e-10, 0, 1) 
+                              * conditional(corrupted_fun > 1e-10, 0, 1) 
                               * sink_support * kappa_support
                                 + conditional(main_network > 0, 0, 1)
                                 * conditional(brain_mask < 1e-10, 1, 0 )
