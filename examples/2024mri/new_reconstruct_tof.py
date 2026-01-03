@@ -817,7 +817,6 @@ def experiment(args):
             one = Function(FunctionSpace(mesh,"R",0), name=common_name+"one")
             one.assign(1.0)
             return one
-       
         elif option_type == "t1":
             PETSc.Sys.Print(option)
             try:
@@ -872,6 +871,57 @@ def experiment(args):
                                 )
                               
                         )
+            with kappa.dat.vec_ro as kappa_vec:
+                PETSc.Sys.Print(utilities.msg_bounds(kappa_vec, "kappa function"))
+            return kappa
+               
+        elif option_type == "sink_support":
+            PETSc.Sys.Print(option)
+            try:
+                sink_support = kwargs['sink_support']
+            except:
+                raise ValueError("sink not provided")
+            
+            try:
+                brain_mask = kwargs['brain_mask']
+            except:
+                raise ValueError("brain_mask not provided")
+            
+            try:
+                corrupted = kwargs['corrupted']
+            except:
+                raise ValueError("corrupted")
+            
+            try:
+                main_network = kwargs['main_network']
+            except:
+                raise ValueError("main_network not provided")
+            
+            try:
+                kappa_support = option["kappa_support"]
+            except:
+                kappa_support = 1.5
+
+            try:
+                kappa_support = option["kappa_outside"]
+            except:
+                kappa_support = 5
+            
+            
+            name = f"{common_name}sink_support"
+            kappa = Function(t1.function_space(), name=name)
+            kappa.interpolate(# base value is value (Euclidean distace)
+                              1.0
+                              # outsise the main network and where there are data
+                              # we penalize the passage
+                              + conditional(main_network > 0, 0, 1)
+                              * conditional(corrupted > 1e-10, 0, 1) 
+                              * sink_support * kappa_support
+                                + conditional(main_network > 0, 0, 1)
+                                * conditional(brain_mask < 1e-10, 1, 0 )
+                                * kappa_outside
+                              )
+            
             with kappa.dat.vec_ro as kappa_vec:
                 PETSc.Sys.Print(utilities.msg_bounds(kappa_vec, "kappa function"))
             return kappa
@@ -1255,7 +1305,7 @@ def experiment(args):
         source = Function(R, name="source")
         source.assign(0.0)
 
-        kappa = set_kappa(**combination, **input_data)
+        kappa = set_kappa(**combination, corrupted=corrupted, **input_data)
                 
         
         if spaces == "DG0DG0":
