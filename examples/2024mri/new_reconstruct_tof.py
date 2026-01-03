@@ -903,9 +903,9 @@ def experiment(args):
                 kappa_support = 1.5
 
             try:
-                kappa_support = option["kappa_outside"]
+                kappa_outside = option["kappa_outside"]
             except:
-                kappa_support = 5
+                kappa_outside = 5
             
             
             name = f"{common_name}sink_support"
