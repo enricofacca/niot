@@ -940,6 +940,7 @@ class NiotSolver:
             self.tdens2image = lambda x: self.tdens2image_map(x)
 
         elif tdens2image == 'pm':
+            PETSc.Sys.Print(f'Using PM map for tdens2image mapping')
             try:
                 sigma = self.ctrl_get(['tdens2image', 'pm','sigma'])
                 exponent_m = self.ctrl_get(['tdens2image', 'pm','exponent_m'])
@@ -947,12 +948,15 @@ class NiotSolver:
                 label_pm = f'pm_{exponent_m:.1f}_{sigma:.2e}'
             except:
                 cond_zero = self.ctrl_get(['tdens2image', 'pm','cond_zero'])
+                PETSc.Sys.Print(f'Using cond_zero {cond_zero} in pm tdens2image map')
                 exponent_p = self.ctrl_get(['tdens2image', 'pm','exponent_p'])
+                PETSc.Sys.Print(f'Using exponent_p {exponent_p} in pm tdens2image map')
                 scaling = self.ctrl_get(['tdens2image', 'pm','scaling'])
                 try:
                     correction = self.ctrl_get(['tdens2image', 'pm','correction'])
                 except:
                     correction = 1.0
+                PETSc.Sys.Print(f'Using correction factor {correction} in pm tdens2image map')
                 dim = self.mesh.geometric_dimension() 
 
                 dim = self.mesh.geometric_dimension()
@@ -1562,7 +1566,15 @@ class NiotSolver:
 
         DG0_vec = VectorFunctionSpace(self.mesh,'DG',0)
         vel = Function(DG0_vec)
-        assemble(interpolate(- tdens * grad(pot), DG0_vec), tensor = vel)
+        if self.fems.pot_space.ufl_element().degree() == 1:
+            assemble(interpolate(- tdens * grad(pot), DG0_vec), tensor = vel)
+        else:
+            RT0_vec = VectorFunctionSpace(self.mesh,'RT',0)
+            cond = self.fems.cell2face_map(tdens_h)
+            gradpot = jump(pot) / self.fems.delta_h
+            vel_RT0 = Function(RT0_vec)
+            vel_RT0.interpolate(- cond * gradpot)
+            vel.interpolate(vel_RT0)
         vel.rename('vel','Velocity')
         
         return pot, tdens, vel
