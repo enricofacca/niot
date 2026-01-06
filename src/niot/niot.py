@@ -1568,13 +1568,13 @@ class NiotSolver:
         vel = Function(DG0_vec)
         if self.fems.pot_space.ufl_element().degree() == 1:
             assemble(interpolate(- tdens * grad(pot), DG0_vec), tensor = vel)
-        else:
-            RT0_vec = FunctionSpace(self.mesh, "Raviart-Thomas", 1)
-            cond = self.fems.cell2face_map(tdens_h)
-            gradpot = jump(pot) / self.fems.delta_h
-            vel_RT0 = Function(RT0_vec)
-            vel_RT0.interpolate(- cond * gradpot)
-            vel.interpolate(vel_RT0)
+        # else:
+        #     RT0_vec = FunctionSpace(self.mesh, "Raviart-Thomas", 1)
+        #     cond = self.fems.cell2face_map(tdens_h)
+        #     gradpot = jump(pot) / self.fems.delta_h
+        #     vel_RT0 = Function(RT0_vec)
+        #     vel_RT0.interpolate(- cond * gradpot)
+        #     vel.interpolate(vel_RT0)
         vel.rename('vel','Velocity')
         
         return pot, tdens, vel
