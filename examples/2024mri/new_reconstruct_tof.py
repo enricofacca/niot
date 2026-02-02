@@ -1119,13 +1119,13 @@ def experiment(args):
                 scaling = option['scaling']
             except:
                 scaling = 1.0
-            intial *= scaling
+            initial *= scaling
 
             try:
                 lift = option['lift']
             except:
                 scaling = 0.0
-            intial += lift
+            initial += lift
             
 
 
