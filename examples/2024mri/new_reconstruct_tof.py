@@ -285,6 +285,7 @@ def set_corrupted_network(**kwargs):
     else:
         raise ValueError(f"Unknown confidence type {option}")
 
+    common_name = "OBS"
 
 
     tof = kwargs['tof']
@@ -298,7 +299,7 @@ def set_corrupted_network(**kwargs):
         except:
             threshold_tof = 200
 
-        name = f"OBStof_t{threshold_tof:.2e}"
+        name = f"{common_name}tof_t{threshold_tof:.2e}"
 
         try: 
             blur = option['blur']
@@ -332,7 +333,7 @@ def set_corrupted_network(**kwargs):
         except:
             threshold_tof = 200
 
-        name = f"OBSsupport_t{threshold_tof:.2e}"
+        name = f"{common_name}support_t{threshold_tof:.2e}"
 
         try: 
             blur = option['blur']
@@ -359,7 +360,32 @@ def set_corrupted_network(**kwargs):
                                 * conditional(external_network > 0, 0, 1) # exclude external network
                                 )
                             )   
+
+    if option_type == "load":
+        try:
+            path = option['path']
+        except:
+            raise ValueError("path initial tdens to provided")
         
+        try:
+            mesh = kwargs["mesh"]
+        except:
+            raise ValueError("mesh not provided")
+        corrupted = nii2firedrake(path, mesh, name=common_name+"load",comm=mesh.comm)
+
+        try:
+            scaling = option['scaling']
+        except:
+            scaling = 1.0
+        corrupted *= scaling
+
+        try:
+            lift = option['lift']
+        except:
+            scaling = 0.0
+        corrupted += lift
+
+
     else:
         raise ValueError(f"Unknown corrupted option {option}")
 
@@ -1610,7 +1636,13 @@ def experiment(args):
             
                 filename=f"{label_dir}/pot_{file_label}.nii.gz"
                 save_as_nifti(pot, filename,  affine, dimensions, lengths, offset)
-        
+
+                flux_component = Function(niot_solver.mesh,"DG",0)
+                for i in range(niot_solver.mesh.geometric_dimension() ):
+                    flux_component.interpolate(vel[i])
+                    filename=f"{label_dir}/flux{i}_{file_label}.nii.gz"
+                    save_as_nifti(flux_component, filename,  affine, dimensions, lengths, offset)
+
                 if combination["map"]['type'] == 'pm':
                     filename = f"{label_dir}/image_reconstruction_{file_label}.nii.gz"
                     save_as_nifti(niot_solver.image_h, 
