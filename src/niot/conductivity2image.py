@@ -362,21 +362,22 @@ class PorousMediaMap(Conductivity2ImageMap):
         # to being able the PDE
         self.R = FunctionSpace(space.mesh(), 'R', 0)
         self.dt = Function(self.R)
-        PETSc.Sys.Print(self.dt.name, self.dt.uid)
+        #PETSc.Sys.Print(self.dt.name, self.dt.uid)
         self.dt0 = dt0
         
     
         
         self.image_h = Function(space)
-        PETSc.Sys.Print(self.image_h.name, self.image_h.uid)
+        #PETSc.Sys.Print(self.image_h.name, self.image_h.uid)
         self.tdens4transform = Function(space)
-        PETSc.Sys.Print(self.tdens4transform.name, self.tdens4transform.uid)
+        #PETSc.Sys.Print(self.tdens4transform.name, self.tdens4transform.uid)
 
         
         self.intermediate_images = []
         for i in range(nsteps):
             self.intermediate_images.append(Function(space, name=f'img_{i}'))
-            PETSc.Sys.Print(self.intermediate_images[i].name, self.intermediate_images[i].uid)
+            #
+            # PETSc.Sys.Print(self.intermediate_images[i].name, self.intermediate_images[i].uid)
 
         
 
