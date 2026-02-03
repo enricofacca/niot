@@ -1597,6 +1597,9 @@ class NiotSolver:
                                                ) 
             petsc_controls = {
                 "ksp_type": "minres",
+                'ksp_monitor': None,                
+                'ksp_rtol': 1e-10,
+                'ksp_atol': 1e-13,                        
                 "pc_type": "hypre"}
             inter_solver = LinearVariationalSolver(inter_prob,
                                                 solver_parameters = petsc_controls,
