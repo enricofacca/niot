@@ -361,7 +361,7 @@ def set_corrupted_network(**kwargs):
                                 )
                             )   
 
-    if option_type == "load":
+    elif option_type == "load":
         try:
             path = option['path']
         except:
