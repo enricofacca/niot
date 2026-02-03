@@ -1590,7 +1590,7 @@ class NiotSolver:
             rhs_form = cond * gradpot * div(test) * d_internal_faces
             mass_form = test * trial * dx 
             # setup the linear variational problem
-            inter_prob = LinearVariationalProblem(, # bilinear form
+            inter_prob = LinearVariationalProblem(mass_form, # bilinear form
                                                rhs_form, # linear form
                                                vel_RT1, # solution
                                                ) 
