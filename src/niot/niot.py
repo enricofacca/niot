@@ -1592,7 +1592,7 @@ class NiotSolver:
             mass_form = dot(test,trial) * dx 
             rhs = assemble(rhs_form)
             with rhs.dat.vec as rhs_vec:
-                pritn(rhs_vec.size)
+                print(rhs_vec.size)
             M = assemble(mass_form).M.handle
             print(M.size)
 
