@@ -1114,6 +1114,21 @@ def experiment(args):
             except:
                 raise ValueError("mesh not provided")
             initial = nii2firedrake(path, mesh, name=common_name+"load",comm=mesh.comm)
+
+            try:
+                scaling = option['scaling']
+            except:
+                scaling = 1.0
+            initial *= scaling
+
+            try:
+                lift = option['lift']
+            except:
+                scaling = 0.0
+            initial += lift
+            
+
+
             return initial
         
         if option_type == "corrupted":
@@ -1600,6 +1615,12 @@ def experiment(args):
                     filename = f"{label_dir}/image_reconstruction_{file_label}.nii.gz"
                     save_as_nifti(niot_solver.image_h, 
                                   filename,  affine, dimensions, lengths, offset)
+
+                    actual_rec = niot_solver.tdens2image_map(tdens)
+                    filename = f"{label_dir}/real_image_{file_label}.nii.gz"
+                    save_as_nifti(actual_rec, 
+                                  filename,  affine, dimensions, lengths, offset)
+
             if save_h5:
                 h5_file = os.path.join(label_dir, f"solution_{file_label}.h5")
                 # if file exists, remove it
