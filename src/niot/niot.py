@@ -1584,10 +1584,24 @@ class NiotSolver:
                 RT1 = FunctionSpace(self.mesh, "Raviart-Thomas", 1)
             cond = self.fems.cell2face_map(tdens_h)
             gradpot = jump(pot) / self.fems.delta_h
-            vel_RT0 = Function(RT1)
-            vel_RT0.interpolate(- cond * gradpot)
-            vel.interpolate(vel_RT0)
-        vel.rename('vel','Velocity')
+            vel_RT1 = Function(RT1,name="flux")
+            test = TestFunction(RT1)
+            d_internal_faces = d_face_interior(self.mesh)
+            rhs_form = cond * gradpot * div(test) * d_internal_faces
+            mass_form = test * trial * dx 
+            # setup the linear variational problem
+            inter_prob = LinearVariationalProblem(, # bilinear form
+                                               rhs_form, # linear form
+                                               vel_RT1, # solution
+                                               ) 
+            petsc_controls = {
+                "ksp_type": "minres",
+                "pc_type": "hypre"}
+            inter_solver = LinearVariationalSolver(inter_prob,
+                                                solver_parameters = petsc_controls,
+                                                options_prefix = 'inter_solver_')
+            inter_solver.solve()
+            vel.rename('vel','Velocity')
         
         return pot, tdens, vel
     
