@@ -1590,6 +1590,12 @@ class NiotSolver:
             d_internal_faces = d_face_interior(self.mesh)
             rhs_form = cond * gradpot * div(test) * d_internal_faces
             mass_form = dot(test,trial) * dx 
+            rhs = assemble(rhs_form)
+            with rhs.dat.vec as rhs_vec:
+                pritn(rhs_vec.size)
+            M = assemble(mass_form).M.handle
+            print(M.size)
+
             # setup the linear variational problem
             inter_prob = LinearVariationalProblem(mass_form, # bilinear form
                                                rhs_form, # linear form
@@ -1603,7 +1609,7 @@ class NiotSolver:
                 "pc_type": "hypre"}
             inter_solver = LinearVariationalSolver(inter_prob,
                                                 solver_parameters = petsc_controls,
-                                                options_prefix = 'inter_solver_')
+                                                options_prefix = 'interpolation_solver_RT1_')
             inter_solver.solve()
             
             vel.interpolate(vel_RT1)
