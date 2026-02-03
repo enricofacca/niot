@@ -1570,16 +1570,16 @@ class NiotSolver:
             assemble(interpolate(- tdens * grad(pot), DG0_vec), tensor = vel)
         else:
             if self.mesh.extruded:
-                RT1 =  FunctionSpace(self.mesh, "RTC",1)
+                #RT1 =  FunctionSpace(self.mesh, "RTC",1)
                 # RT1 element on a prism
-                #W0_h = FiniteElement("RTCF", quadrilateral, 1)
-                #W0_v = FiniteElement("DG", interval, 0)
-                #W0 = HDivElement(TensorProductElement(W0_h, W0_v))
-                #W1_h = FiniteElement("DG", quadrilateral, 0)
-                #W1_v = FiniteElement("CG", interval, 1)
-                #W1 = HDivElement(TensorProductElement(W1_h, W1_v))
-                #W_elt = W0 + W1
-                #RT1 = FunctionSpace(self.mesh, W_elt)
+                W0_h = FiniteElement("RTCF", quadrilateral, 1)
+                W0_v = FiniteElement("DG", interval, 0)
+                W0 = HDivElement(TensorProductElement(W0_h, W0_v))
+                W1_h = FiniteElement("DG", quadrilateral, 0)
+                W1_v = FiniteElement("CG", interval, 1)
+                W1 = HDivElement(TensorProductElement(W1_h, W1_v))
+                W_elt = W0 + W1
+                RT1 = FunctionSpace(self.mesh, W_elt)
             else:
                 RT1 = FunctionSpace(self.mesh, "Raviart-Thomas", 1)
             cond = self.fems.cell2face_map(tdens_h)
