@@ -1565,7 +1565,7 @@ class NiotSolver:
         tdens_h.rename('tdens')
 
         DG0_vec = VectorFunctionSpace(self.mesh,'DG',0)
-        vel = Function(DG0_vec)
+        vel = Function(DG0_vec,name="vel")
         if self.fems.pot_space.ufl_element().degree() == 1:
             assemble(interpolate(- tdens * grad(pot), DG0_vec), tensor = vel)
         else:
@@ -1601,7 +1601,8 @@ class NiotSolver:
                                                 solver_parameters = petsc_controls,
                                                 options_prefix = 'inter_solver_')
             inter_solver.solve()
-            vel.rename('vel','Velocity')
+            
+            vel.interpolate(vel_RT1)
         
         return pot, tdens, vel
     
