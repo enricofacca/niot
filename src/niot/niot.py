@@ -1589,7 +1589,7 @@ class NiotSolver:
             trial = TrialFunction(RT1)
             d_internal_faces = d_face_interior(self.mesh)
             rhs_form = cond * gradpot * div(test) * d_internal_faces
-            mass_form = test * trial * dx 
+            mass_form = dot(test,trial) * dx 
             # setup the linear variational problem
             inter_prob = LinearVariationalProblem(mass_form, # bilinear form
                                                rhs_form, # linear form
