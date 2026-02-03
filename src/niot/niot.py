@@ -1588,7 +1588,7 @@ class NiotSolver:
             test = TestFunction(RT1)
             trial = TrialFunction(RT1)
             d_internal_faces = d_face_interior(self.mesh)
-            rhs_form = cond * gradpot * div(test) * d_internal_faces
+            rhs_form = cond * gradpot * jump(div(test)) * d_internal_faces
             mass_form = dot(test,trial) * dx 
             rhs = assemble(rhs_form)
             with rhs.dat.vec as rhs_vec:
