@@ -1571,11 +1571,11 @@ class NiotSolver:
         else:
             if self.mesh.extruded:
                 # RT1 element on a prism
-                W0_h = FiniteElement("RT", "quadrilater", 1)
-                W0_v = FiniteElement("DG", "interval", 0)
+                W0_h = FiniteElement("RT", quadrilater, 1)
+                W0_v = FiniteElement("DG", interval, 0)
                 W0 = HDivElement(TensorProductElement(W0_h, W0_v))
-                W1_h = FiniteElement("DG", "quadrilater", 0)
-                W1_v = FiniteElement("CG", "interval", 1)
+                W1_h = FiniteElement("DG", quadrilater, 0)
+                W1_v = FiniteElement("CG", interval, 1)
                 W1 = HDivElement(TensorProductElement(W1_h, W1_v))
                 W_elt = W0 + W1
                 RT1 = FunctionSpace(self.mesh, W_elt)
