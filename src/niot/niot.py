@@ -1586,6 +1586,7 @@ class NiotSolver:
             gradpot = jump(pot) / self.fems.delta_h
             vel_RT1 = Function(RT1,name="flux")
             test = TestFunction(RT1)
+            trial = TrialFunction(RT1)
             d_internal_faces = d_face_interior(self.mesh)
             rhs_form = cond * gradpot * div(test) * d_internal_faces
             mass_form = test * trial * dx 
