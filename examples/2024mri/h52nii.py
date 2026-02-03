@@ -196,9 +196,9 @@ def h52nii(h5_file, di_name="./", mask_file=""):
 
 
     #start = time()
-    #PETSc.Sys.Print(f" Creating Firedrake2NumpyConverter",end="")
-    #converter = Firedrake2NumpyConverter(mesh, dimensions, voxel_size, offset,mask=mask_np)
-    #PETSc.Sys.Print(f" Created Firedrake2NumpyConverter in {time()-start:.2f} seconds")
+    PETSc.Sys.Print(f" Creating Firedrake2NumpyConverter",end="")
+    converter = Firedrake2NumpyConverter(mesh, dimensions, voxel_size, offset,mask=mask_np)
+    PETSc.Sys.Print(f" Created Firedrake2NumpyConverter in {time()-start:.2f} seconds")
 
 
     # if comm.rank == 0:
@@ -331,8 +331,8 @@ def h52nii(h5_file, di_name="./", mask_file=""):
         #      )
         # PETSc.Sys.Print(f" created numpy array for {fun.name() } in {time()-start:.2f} seconds")
         
-        #global_data = converter.convert(fun)
-        global_data = i2d.anyfiredrake2numpy(fun, dimensions, lenghts, offset, fill=-1e30)
+        global_data = converter.convert(fun)
+        #global_data = i2d.anyfiredrake2numpy(fun, dimensions, lenghts, offset, fill=-1e30)
 
         # # use MPI to get the totals 
         # mesh.comm.Reduce(

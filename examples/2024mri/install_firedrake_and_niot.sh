@@ -12,7 +12,7 @@ wrkdir=$(pwd)
 curl -O https://raw.githubusercontent.com/firedrakeproject/firedrake/master/scripts/firedrake-configure
 sudo apt -y install $(python3 firedrake-configure --show-system-packages)
 sudo apt -y install python3.12-venv
-export PETSC_CONFIGURE_OPTIONS="--download-hypre --download-spai"
+export PETSC_CONFIGURE_OPTIONS="--download-hypre --download-spai  -download-exodusii --download-mumps"
 git clone --depth 1 https://github.com/firedrakeproject/petsc.git
 cd petsc/
 python3 ../firedrake-configure --show-petsc-configure-options| xargs -L1 ./configure

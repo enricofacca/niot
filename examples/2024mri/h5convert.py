@@ -27,5 +27,4 @@ with CheckpointFile(h5_file, 'r',comm=comm) as afile:
 out_file = sys.argv[2]
 # save as pvd
 PETSc.Sys.Print(f"Saving data to {out_file}")
-VTKFile = File(out_file)
-VTKFile.write(tdens, pot)
+VTKFile(out_file).write(tdens, pot)

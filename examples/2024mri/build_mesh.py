@@ -14,6 +14,109 @@ from skimage.morphology import skeletonize
 from scipy.ndimage import binary_dilation
 import time
 
+def load_data(mri_directory):
+    save_npy = False
+    # load tof data and get basic info
+    dir_nii = mri_directory
+    tof_data = nibabel.load(f"{dir_nii}/TOF.nii.gz")
+    dimensions = tof_data.header.get_data_shape()[:3]
+
+    print(f"Data shape: {dimensions=}")
+    hx, hy, hz = tof_data.header['pixdim'][1:4]
+    lengths = np.array([hx,hy,hz]) * np.array(dimensions)
+    voxel_size = (hx, hy, hz)
+
+    # get brain mask
+    nii_file = f"{dir_nii}/brain_mask_smooth.nii.gz"
+    brain_mask_data = nibabel.load(nii_file)
+    brain_mask_np = brain_mask_data.get_fdata()  
+    
+
+    # load tof data
+    # tof_np = tof_data.get_fdata()
+    file_nii = f"{dir_nii}/TOF.nii.gz"
+    tof_data = nibabel.load(file_nii)
+    tof_np = tof_data.get_fdata()
+
+    # load tof data
+    # tof_np = tof_data.get_fdata()
+    file_nii = f"{dir_nii}/aseg.nii.gz"
+    data_aseg = nibabel.load(file_nii)
+    aseg_np = data_aseg.get_fdata()
+    
+
+    # load main network
+    file_nii = f"{dir_nii}/T1.nii.gz"
+    t1_data = nibabel.load(file_nii)
+    t1_np = t1_data.get_fdata()
+
+
+    return voxel_size, tof_data.affine, tof_np, brain_mask_np, t1_np, aseg_np
+
+
+def set_tof4mesh(tof_np, options_dict):
+    """
+    Prepocess tof of assign a label to the mesh generation
+    """
+    mode = options_dict.get("mode","gaussian_blur")
+    if mode == "gaussian":
+        suboption = options_dict.get("gaussian")
+        blur_tof = suboption.get("blur",0.0)
+        hx = suboption.get("hx",1.0)
+        if abs(blur_tof) < 1e-10:
+            return tof_smooth_np
+        else:
+            print(f" - applying gaussian blur {blur_tof:.2e}",end="")
+            tof_smooth_np = gaussian_filter(tof_np, sigma=blur_tof*hx)
+            print(f" - done",end="")
+            return tof_smooth_np
+    elif mode == "dilation":
+        suboption = options_dict.get("dilation")
+        mask = suboption.get("mask",None)
+        iterations = suboption.get("iterations",2)
+        threshold = suboption.get("threshold", 180)
+        structure = tof_np > threshold
+        tof_smooth_np = binary_dilation(structure,iterations=iterations,mask=mask)
+        print(f" - done",end="")
+        return tof_smooth_np
+    else:
+        raise ValueError(f"Unknown mode {mode} for tof preprocessing")        
+
+def set_main_network(tof_np, threshold_tof, blur_tof, hx):
+    """
+    Get the main network, its skeleton, and local thickness.
+    Blur is applied before connected components analysis and improve skeletonization.
+    """
+    # blur tof, separate main network, and keep largest connected component
+    if blur_tof> 0:
+        print(f" - applying gaussian blur {blur_tof:.2e}")
+        tof_main_network_np = gaussian_filter(tof_np, sigma=blur_tof * hx)
+    else:
+        tof_main_network_np = tof_np.copy()
+    labels_np, nlabels = connected_components(tof_main_network_np, threshold_tof)
+    labels_np = main_network_equal_one(labels_np, nlabels, tof_np)
+    
+    # define main network 
+    main_network = np.zeros_like(labels_np, dtype=np.uint8)
+    main_network[labels_np == 1] = 1
+    
+    # get the skeleton of main network
+    skeleton_np = skeletonize(main_network)
+    skeleton_np = skeleton_np.astype(np.uint8)
+
+    # compute local thickness of the main network
+    thickness_np = lt.local_thickness(main_network)
+    # scale by thickness 
+    thickness_np *= hx
+
+    # find external network
+    external_network_np = find_external_network(labels_np)
+
+    return main_network, skeleton_np, thickness_np, external_network_np
+
+
+
+
 def set_sink_support(aseg_np, main_network_np):
     """
     set the sink support based on aseg
@@ -130,44 +233,7 @@ def setup(mri_directory,
             cell_type="tetrahedron"
           ):
 
-    def load_data(mri_directory):
-        save_npy = False
-        # load tof data and get basic info
-        dir_nii = mri_directory
-        tof_data = nibabel.load(f"{dir_nii}/TOF.nii.gz")
-        dimensions = tof_data.header.get_data_shape()[:3]
-
-        print(f"Data shape: {dimensions=}")
-        hx, hy, hz = tof_data.header['pixdim'][1:4]
-        lengths = np.array([hx,hy,hz]) * np.array(dimensions)
-        voxel_size = (hx, hy, hz)
-
-        # get brain mask
-        nii_file = f"{dir_nii}/brain_mask_smooth.nii.gz"
-        brain_mask_data = nibabel.load(nii_file)
-        brain_mask_np = brain_mask_data.get_fdata()  
-        
-
-        # load tof data
-        # tof_np = tof_data.get_fdata()
-        file_nii = f"{dir_nii}/TOF.nii.gz"
-        tof_data = nibabel.load(file_nii)
-        tof_np = tof_data.get_fdata()
-
-        # load tof data
-        # tof_np = tof_data.get_fdata()
-        file_nii = f"{dir_nii}/aseg.nii.gz"
-        data_aseg = nibabel.load(file_nii)
-        aseg_np = data_aseg.get_fdata()
-        
-
-        # load main network
-        file_nii = f"{dir_nii}/T1.nii.gz"
-        t1_data = nibabel.load(file_nii)
-        t1_np = t1_data.get_fdata()
-
-
-        return voxel_size, tof_data.affine, tof_np, brain_mask_np, t1_np, aseg_np
+    
     
     voxel_size, affine, tof_np, brain_mask_np, t1_np, aseg_np = load_data(mri_directory)
     hx, hy, hz = voxel_size
@@ -180,66 +246,9 @@ def setup(mri_directory,
     h_new = lengths/np.array(dimensions)
     print(f"New voxel size: {h_new[0]=:.10e}, {h_new[1]=:.10e}, {h_new[2]=:.10e}")
 
-    def set_main_network(tof_np, threshold_tof, blur_tof, hx):
-        """
-        Get the main network, its skeleton, and local thickness.
-        Blur is applied before connected components analysis and improve skeletonization.
-        """
-        # blur tof, separate main network, and keep largest connected component
-        if blur_tof> 0:
-            print(f" - applying gaussian blur {blur_tof:.2e}")
-            tof_main_network_np = gaussian_filter(tof_np, sigma=blur_tof * hx)
-        else:
-            tof_main_network_np = tof_np.copy()
-        labels_np, nlabels = connected_components(tof_main_network_np, threshold_tof)
-        labels_np = main_network_equal_one(labels_np, nlabels, tof_np)
-        
-        # define main network 
-        main_network = np.zeros_like(labels_np, dtype=np.uint8)
-        main_network[labels_np == 1] = 1
-        
-        # get the skeleton of main network
-        skeleton_np = skeletonize(main_network)
-        skeleton_np = skeleton_np.astype(np.uint8)
-
-        # compute local thickness of the main network
-        thickness_np = lt.local_thickness(main_network)
-        # scale by thickness 
-        thickness_np *= hx
-
-        # find external network
-        external_network_np = find_external_network(labels_np)
-
-        return main_network, skeleton_np, thickness_np, external_network_np
     
     
-    def set_tof4mesh(tof_np, options_dict):
-        """
-        Prepocess tof of assign a label to the mesh generation
-        """
-        mode = options_dict.get("mode","gaussian_blur")
-        if mode == "gaussian":
-            suboption = options_dict.get("gaussian")
-            blur_tof = suboption.get("blur",0.0)
-            hx = suboption.get("hx",1.0)
-            if abs(blur_tof) < 1e-10:
-                return tof_smooth_np
-            else:
-                print(f" - applying gaussian blur {blur_tof:.2e}",end="")
-                tof_smooth_np = gaussian_filter(tof_np, sigma=blur_tof*hx)
-                print(f" - done",end="")
-                return tof_smooth_np
-        elif mode == "dilation":
-            suboption = options_dict.get("dilation")
-            mask = suboption.get("mask",None)
-            iterations = suboption.get("iterations",2)
-            threshold = suboption.get("threshold", 180)
-            structure = tof_np > threshold
-            tof_smooth_np = binary_dilation(structure,iterations=iterations,mask=mask)
-            print(f" - done",end="")
-            return tof_smooth_np
-        else:
-            raise ValueError(f"Unknown mode {mode} for tof preprocessing")        
+    
         
     
     
