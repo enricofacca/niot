@@ -1637,7 +1637,7 @@ def experiment(args):
                 filename=f"{label_dir}/pot_{file_label}.nii.gz"
                 save_as_nifti(pot, filename,  affine, dimensions, lengths, offset)
 
-                flux_component = Function(niot_solver.tdens_space,name="flux")
+                flux_component = Function(niot_solver.fems.tdens_space,name="flux")
                 for i in range(niot_solver.mesh.geometric_dimension() ):
                     flux_component.interpolate(vel[i])
                     filename=f"{label_dir}/flux{i}_{file_label}.nii.gz"
