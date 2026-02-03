@@ -1568,13 +1568,24 @@ class NiotSolver:
         vel = Function(DG0_vec)
         if self.fems.pot_space.ufl_element().degree() == 1:
             assemble(interpolate(- tdens * grad(pot), DG0_vec), tensor = vel)
-        # else:
-        #     RT0_vec = FunctionSpace(self.mesh, "Raviart-Thomas", 1)
-        #     cond = self.fems.cell2face_map(tdens_h)
-        #     gradpot = jump(pot) / self.fems.delta_h
-        #     vel_RT0 = Function(RT0_vec)
-        #     vel_RT0.interpolate(- cond * gradpot)
-        #     vel.interpolate(vel_RT0)
+        else:
+            if self.mesh.extruded:
+                # RT1 element on a prism
+                W0_h = FiniteElement("RT", "quadrilater", 1)
+                W0_v = FiniteElement("DG", "interval", 0)
+                W0 = HDivElement(TensorProductElement(W0_h, W0_v))
+                W1_h = FiniteElement("DG", "quadrilater", 0)
+                W1_v = FiniteElement("CG", "interval", 1)
+                W1 = HDivElement(TensorProductElement(W1_h, W1_v))
+                W_elt = W0 + W1
+                RT1 = FunctionSpace(self.mesh, W_elt)
+            else:
+                RT1 = FunctionSpace(self.mesh, "Raviart-Thomas", 1)
+            cond = self.fems.cell2face_map(tdens_h)
+            gradpot = jump(pot) / self.fems.delta_h
+            vel_RT0 = Function(RT1)
+            vel_RT0.interpolate(- cond * gradpot)
+            vel.interpolate(vel_RT0)
         vel.rename('vel','Velocity')
         
         return pot, tdens, vel
