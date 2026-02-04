@@ -930,7 +930,7 @@ class NiotSolver:
         if tdens2image == 'identity':
             #self.tdens2image_map = IdentityMap(self.fems.tdens_space, scaling=scaling)
             self.tdens2image = lambda x: scaling * x# self.tdens2image_map(x)
-
+            self.tdens2image_map = self.tdens2image
 
         elif tdens2image == 'heat':
             sigma = self.ctrl_get(['tdens2image', 'heat','sigma'])
