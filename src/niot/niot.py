@@ -928,8 +928,8 @@ class NiotSolver:
 
 
         if tdens2image == 'identity':
-            self.tdens2image_map = IdentityMap(self.fems.tdens_space, scaling=scaling)
-            self.tdens2image = lambda x: self.tdens2image_map(x)
+            #self.tdens2image_map = IdentityMap(self.fems.tdens_space, scaling=scaling)
+            self.tdens2image = lambda x: scaling * x# self.tdens2image_map(x)
 
 
         elif tdens2image == 'heat':
@@ -1569,43 +1569,13 @@ class NiotSolver:
         if self.fems.pot_space.ufl_element().degree() == 1:
             assemble(interpolate(- tdens * grad(pot), DG0_vec), tensor = vel)
         else:
-            if self.mesh.extruded:
-                #RT1 =  FunctionSpace(self.mesh, "RTC",1)
-                # RT1 element on a prism
-                W0_h = FiniteElement("RTCF", quadrilateral, 1)
-                W0_v = FiniteElement("DG", interval, 0)
-                W0 = HDivElement(TensorProductElement(W0_h, W0_v))
-                W1_h = FiniteElement("DG", quadrilateral, 0)
-                W1_v = FiniteElement("CG", interval, 1)
-                W1 = HDivElement(TensorProductElement(W1_h, W1_v))
-                W_elt = W0 + W1
-                RT1 = FunctionSpace(self.mesh, W_elt)
-            else:
-                RT1 = FunctionSpace(self.mesh, "Raviart-Thomas", 1)
-            
             cond = self.fems.cell2face_map(tdens_h)
-            gradpot = jump(pot) / self.fems.delta_h
-            vel_RT1 = Function(RT1,name="flux")
-            test = TestFunction(RT1)
-            trial = TrialFunction(RT1)
             d_internal_faces = d_face_interior(self.mesh)
             test = TestFunction(DG0_vec)
             trial = TrialFunction(DG0_vec)
             normal = FacetNormal(self.mesh)
-            rhs_form = cond * jump(pot) * dot(avg(test), normal('+')) * d_internal_faces
-            #rhs_form = cond * gradpot * jump(div(test)) * d_internal_faces
+            rhs_form = - cond * jump(pot) * dot(avg(test), normal('+')) * d_internal_faces
             mass_form = inner(test,trial) * dx 
-            rhs = assemble(rhs_form)
-            with rhs.dat.vec as rhs_vec:
-                print(rhs_vec.size)
-            M = assemble(mass_form).M.handle
-            print(M.size)
-
-            # # setup the linear variational problem
-            # inter_prob = LinearVariationalProblem(mass_form, # bilinear form
-            #                                    rhs_form, # linear form
-            #                                    vel_RT1, # solution
-            #                                    ) 
             petsc_controls = {
                  "ksp_type": "minres",
                  'ksp_monitor': None,                
