@@ -1362,8 +1362,8 @@ class NiotSolver:
                         discrepancy_norm = self.ctrl_get('discrepancy_norm')
                         if discrepancy_norm == 'l2':
                             self.gradient_discrepancy_form = derivative(self.discrepancy_form, 
-                                                                 self.tdens_h,
-                                                                 coefficient_derivatives=self.tdens2image_map.cd)
+                                                                 self.tdens_h)#,
+                                                                 #coefficient_derivatives=self.tdens2image_map.cd)
                         elif discrepancy_norm == 'dual_h1':
                             
                             # discrepancy form is 
