@@ -1582,38 +1582,44 @@ class NiotSolver:
                 RT1 = FunctionSpace(self.mesh, W_elt)
             else:
                 RT1 = FunctionSpace(self.mesh, "Raviart-Thomas", 1)
+            
             cond = self.fems.cell2face_map(tdens_h)
             gradpot = jump(pot) / self.fems.delta_h
             vel_RT1 = Function(RT1,name="flux")
             test = TestFunction(RT1)
             trial = TrialFunction(RT1)
             d_internal_faces = d_face_interior(self.mesh)
-            rhs_form = cond * gradpot * jump(div(test)) * d_internal_faces
-            mass_form = dot(test,trial) * dx 
-            rhs = assemble(rhs_form)
-            with rhs.dat.vec as rhs_vec:
-                print(rhs_vec.size)
-            M = assemble(mass_form).M.handle
-            print(M.size)
+            test = TestFunction(DG0_vec)
+            trial = TrialFunction(DG0_vec)
+            normal = FacetNormal(self.mesh)
+            rhs_form = cond * jump(pot) * dot(avg(test), normal) * d_internal_faces
+            #rhs_form = cond * gradpot * jump(div(test)) * d_internal_faces
+            mass_form = inner(test,trial) * dx 
+            #rhs = assemble(rhs_form)
+            #with rhs.dat.vec as rhs_vec:
+            #    print(rhs_vec.size)
+            #M = assemble(mass_form).M.handle
+            #print(M.size)
 
-            # setup the linear variational problem
-            inter_prob = LinearVariationalProblem(mass_form, # bilinear form
-                                               rhs_form, # linear form
-                                               vel_RT1, # solution
-                                               ) 
+            # # setup the linear variational problem
+            # inter_prob = LinearVariationalProblem(mass_form, # bilinear form
+            #                                    rhs_form, # linear form
+            #                                    vel_RT1, # solution
+            #                                    ) 
             petsc_controls = {
-                "ksp_type": "minres",
-                'ksp_monitor': None,                
-                'ksp_rtol': 1e-10,
-                'ksp_atol': 1e-13,                        
-                "pc_type": "hypre"}
-            inter_solver = LinearVariationalSolver(inter_prob,
-                                                solver_parameters = petsc_controls,
-                                                options_prefix = 'interpolation_solver_RT1_')
-            inter_solver.solve()
+                 "ksp_type": "minres",
+                 'ksp_monitor': None,                
+                 'ksp_rtol': 1e-10,
+                 'ksp_atol': 1e-13,                        
+                 "pc_type": "hypre"}
+            # inter_solver = LinearVariationalSolver(inter_prob,
+            #                                     solver_parameters = petsc_controls,
+            #                                     options_prefix = 'interpolation_solver_RT1_')
+            # inter_solver.solve()
             
-            vel.interpolate(vel_RT1)
-        
+            # vel.interpolate(vel_RT1)
+            solve(mass_form == rhs_form, vel, solver_parameters=petsc_controls)
+
         return pot, tdens, vel
     
     #@profile  
