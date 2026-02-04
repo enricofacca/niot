@@ -1592,7 +1592,7 @@ class NiotSolver:
             test = TestFunction(DG0_vec)
             trial = TrialFunction(DG0_vec)
             normal = FacetNormal(self.mesh)
-            rhs_form = cond * jump(pot) * dot(avg(test), normal) * d_internal_faces
+            rhs_form = cond * jump(pot) * avg(dot(test, normal)) * d_internal_faces
             #rhs_form = cond * gradpot * jump(div(test)) * d_internal_faces
             mass_form = inner(test,trial) * dx 
             rhs = assemble(rhs_form)
