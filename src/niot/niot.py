@@ -1595,11 +1595,11 @@ class NiotSolver:
             rhs_form = cond * jump(pot) * dot(avg(test), normal) * d_internal_faces
             #rhs_form = cond * gradpot * jump(div(test)) * d_internal_faces
             mass_form = inner(test,trial) * dx 
-            #rhs = assemble(rhs_form)
-            #with rhs.dat.vec as rhs_vec:
-            #    print(rhs_vec.size)
-            #M = assemble(mass_form).M.handle
-            #print(M.size)
+            rhs = assemble(rhs_form)
+            with rhs.dat.vec as rhs_vec:
+                print(rhs_vec.size)
+            M = assemble(mass_form).M.handle
+            print(M.size)
 
             # # setup the linear variational problem
             # inter_prob = LinearVariationalProblem(mass_form, # bilinear form
