@@ -928,9 +928,9 @@ class NiotSolver:
 
 
         if tdens2image == 'identity':
-            #self.tdens2image_map = IdentityMap(self.fems.tdens_space, scaling=scaling)
-            self.tdens2image = lambda x: scaling * x# self.tdens2image_map(x)
-            self.tdens2image_map = self.tdens2image
+            self.tdens2image_map = IdentityMap(self.fems.tdens_space, scaling=scaling)
+            self.tdens2image = lambda x: self.tdens2image_map(x)
+            #self.tdens2image_map = self.tdens2image
 
         elif tdens2image == 'heat':
             sigma = self.ctrl_get(['tdens2image', 'heat','sigma'])
@@ -1366,8 +1366,8 @@ class NiotSolver:
                         discrepancy_norm = self.ctrl_get('discrepancy_norm')
                         if discrepancy_norm == 'l2':
                             self.gradient_discrepancy_form = derivative(self.discrepancy_form, 
-                                                                 self.tdens_h)#,
-                                                                 #coefficient_derivatives=self.tdens2image_map.cd)
+                                                                 self.tdens_h,
+                                                                 coefficient_derivatives=self.tdens2image_map.cd)
                         elif discrepancy_norm == 'dual_h1':
                             
                             # discrepancy form is 
@@ -1390,6 +1390,7 @@ class NiotSolver:
                     # Simple derivative computation
                     # It uses less memory, but it requires the functional
                     # as combination of operations manegable by automatic differiantion.
+                    print(self.gradient_discrepancy_form)
                     self.gradient_discrepancy = assemble(self.gradient_discrepancy_form)
 
 
@@ -1755,14 +1756,24 @@ class NiotSolver:
         '''
         Measure the discrepancy between I(tdens) and the observed data.
         '''
+        discrepancy_norm = self.ctrl_get('discrepancy_norm')
+        use_adjoint = self.ctrl_get("use_adjoint")
+        map_type = self.ctrl_get(["tdens2image", "type"])
+            
+
         # store image
         self.image_h.interpolate(self.tdens2image_map(tdens))
 
         #with self.image_h.dat.vec as img_vec, self.reconstruction.dat.vec as img_rec_vec:
         #    img_vec.copy(img_rec_vec)
         #    #PETSc.Sys.Print(utilities.msg_bounds(img_rec_vec,'IMG recosntruction'))
+        if discrepancy_norm == "l2" and not use_adjoint and map_type == "identity":
+            # early return
+            scaling = self.ctrl_get(["tdens2image", "scaling"])
+            dis = self.confidence * 0.5 * (scaling * tdens - self.img_observed)**2 * dx
 
-        discrepancy_norm = self.ctrl_get('discrepancy_norm')
+
+        
         if discrepancy_norm == "l2":
             dis = self.confidence * 0.5 * (self.image_h - self.img_observed)**2 * dx
         elif discrepancy_norm == "dual_h1":
