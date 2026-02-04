@@ -1767,10 +1767,13 @@ class NiotSolver:
         #with self.image_h.dat.vec as img_vec, self.reconstruction.dat.vec as img_rec_vec:
         #    img_vec.copy(img_rec_vec)
         #    #PETSc.Sys.Print(utilities.msg_bounds(img_rec_vec,'IMG recosntruction'))
+        
+        
+        # early return
         if discrepancy_norm == "l2" and not use_adjoint and map_type == "identity":
-            # early return
             scaling = self.ctrl_get(["tdens2image", "scaling"])
             dis = self.confidence * 0.5 * (scaling * tdens - self.img_observed)**2 * dx
+            return dis
 
 
         
