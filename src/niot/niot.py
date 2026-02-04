@@ -1352,7 +1352,11 @@ class NiotSolver:
                     if map_type == 'identity':
                         # set the discrepancy term and assembly
                         self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
-                        
+                        self.print_info(
+                        msg="identity without adjoint",
+                        priority=1, 
+                        where=['stdout','log']
+                        )
                         
                         
                         self.adj_discrepancy_fun = assemble(self.discrepancy_form)
