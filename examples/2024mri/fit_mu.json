@@ -1,0 +1,56 @@
+{
+    "save_inputs" : [1],
+    "save_nifti": [1],
+    "spaces" : ["DG0DG0"],
+    "mask_mesh":[1],
+    "blur": [0.0],
+    "threshold":[300],
+    "wd": [1e-2],
+    "discrepancy_norm": ["l2"],
+    "map": [
+	{
+	    "type": "identity",
+	    "scaling" : 1.0      
+        }
+    ],
+    "corrupted": [
+        {
+            "type" : "mu",
+	    "scaling": 1.0
+        }
+        ],
+    "confidence": [
+	{
+	    "type":"main_tof_eps",
+	    "scale_tof": 0.1,
+	    "eps": 1e-1,
+            "main_confidence": 1e4
+	}
+    ],
+    "kappa": [
+	{
+	    "type": "one"
+	}
+	],
+    "absorption": [1.00e-3],
+    "initial": [
+        {
+            "type" : "corrupted",
+	    "scaling": 1.0,
+	    "lift": 1e-6
+        }
+    ],
+    "max_iter": [1000],
+    "buffer" : [100],
+    "deltat_control" : [
+	{
+        "type": "adaptive2",
+        "lower_bound": 1e-13,
+        "upper_bound": 2e-2,
+        "expansion": 1.1,
+        "contraction": 0.5,
+        "order_down": -0.5,
+        "order_up": 0.5
+        }
+	]
+}

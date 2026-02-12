@@ -61,7 +61,7 @@ def connected_components(np_data, threshold, connectivity=26):
 
 
 
-def set_sink_support(aseg_np, main_network_np):
+def set_sink_support(aseg_np):
     """
     set the sink support based on aseg
     """
@@ -79,9 +79,6 @@ def set_sink_support(aseg_np, main_network_np):
     sink_support_np[aseg_np > 0] = 1
     for label in empty_markers:
         sink_support_np[aseg_np == label] = 0
-
-    # remove main network from sink
-    sink_support_np[main_network_np > 0 ] = 0
 
     return sink_support_np
 
@@ -103,39 +100,16 @@ def find_external_network(labels_np):
         external_np[location] = 1
     return external_np
 
-
-
-def setup_nifti(mri_directory, 
-                out_directory, 
-                threshold_tof_4_main_network=400, 
-                blur_tof_4_main_network=0.0,
-                threshold_tof_4_fitting=175,
-                blur_tof_4_fitting=1.5,
-                expansion_mm=10
-                ):
-    if not os.path.exists(out_directory):
-        os.makedirs(out_directory)
-
-    voxel_size, affine, tof_np, brain_mask_np, t1_np, aseg_np = load_data(mri_directory)
-    hx, hy, hz = voxel_size
-
-    dimensions = tof_np.shape
-    lengths = np.array([hx,hy,hz]) * np.array(dimensions)
-    
-    print(f"{hx=:.10e} {hy=:.10e} {hz=:.10e}")
-    print(f"voxel_size: {voxel_size}, lengths: {lengths}")
-    h_new = lengths/np.array(dimensions)
-    print(f"New voxel size: {h_new[0]=:.10e}, {h_new[1]=:.10e}, {h_new[2]=:.10e}")
-        
+def main_and_external_network(tof_np, threshold_tof_4_main_network, blur_tof_4_main_network=0.0):
     # process parameters
-     # blur tof, separate main network, and keep largest connected component
+    # blur tof, separate main network, and keep largest connected component
     if blur_tof_4_main_network> 0:
         print(f" - applying gaussian blur {blur_tof_4_main_network:.2e}")
         tof_main_network_np = gaussian_filter(tof_np, sigma=blur_tof_4_main_network * hx)
     else:
         tof_main_network_np = tof_np.copy()
     labels_np, nlabels = connected_components(tof_main_network_np, threshold_tof_4_main_network)
-    
+
 
     # We count the occurences of each label in the labels_np array
     #
@@ -152,14 +126,60 @@ def setup_nifti(mri_directory,
         label_mapping[old_label] = new_label
     # apply the mapping to labels_np
     labels_np = label_mapping[labels_np]
-    
 
-    
-    #labels_np = main_network_equal_one(labels_np, nlabels, tof_np)
-    
+
     # define main network 
     main_network_np = np.zeros_like(labels_np, dtype=np.uint8)
     main_network_np[labels_np == 1] = 1
+
+    # fill holes in main network
+    main_network_np = binary_fill_holes(main_network_np).astype(np.uint8)
+
+    # find external network
+    print(" Finding external network",end="")
+    # find inlets of external network
+    indices_bottom = labels_np[:,:,0]
+    list_indices_bottom = np.unique(indices_bottom)
+    
+    # remove 0 (background) and 1(main network) from the list
+    list_external = list_indices_bottom[2:]
+    external_np = np.zeros_like(labels_np, dtype=np.uint8)
+    for index in list_external:
+        location = np.where(labels_np == index)
+        external_np[location] = 1
+    print(" -done")
+
+    return main_network_np, external_np, labels_np
+
+
+
+def setup_nifti(mri_directory, 
+                out_directory, 
+                threshold_tof_4_main_network=400, 
+                blur_tof_4_main_network=0.0,
+                threshold_tof_4_fitting=175,
+                blur_tof_4_fitting=1.5,
+                #expansion_mm=10
+                ):
+    if not os.path.exists(out_directory):
+        os.makedirs(out_directory)
+
+    voxel_size, affine, tof_np, brain_mask_np, t1_np, aseg_np = load_data(mri_directory)
+    hx, hy, hz = voxel_size
+
+    dimensions = tof_np.shape
+    lengths = np.array([hx,hy,hz]) * np.array(dimensions)
+    
+    print(f"{hx=:.10e} {hy=:.10e} {hz=:.10e}")
+    print(f"voxel_size: {voxel_size}, lengths: {lengths}")
+    h_new = lengths/np.array(dimensions)
+    print(f"New voxel size: {h_new[0]=:.10e}, {h_new[1]=:.10e}, {h_new[2]=:.10e}")
+
+
+   
+    
+
+    main_network_np, external_network_np, labels_np = main_and_external_network(tof_np, threshold_tof_4_main_network, blur_tof_4_main_network)
     
     # get the skeleton of main network
     skeleton_np = skeletonize(main_network_np).astype(np.uint8)
@@ -171,15 +191,16 @@ def setup_nifti(mri_directory,
     thickness_np *= hx
     print(" -done")
 
-    # find external network
-    print(" Finding external network",end="")
-    external_network_np = find_external_network(labels_np)
-    print(" -done")
+   
 
     # set sink support
     print(" Setting sink support",end="")
     sink_support_np = set_sink_support(aseg_np, main_network_np)
+    # remove sink support from main network
+    sink_support_np[main_network_np > 0] = 0
     print(" -done")
+    
+    
     # set inlet marker. Bottom slice of main network
     inlets_np = main_network_np.copy()
     inlets_np[:,:,1:] = 0
@@ -224,18 +245,18 @@ def setup_nifti(mri_directory,
     mu = (thickness_support/2)**4 * main_network_np
 
     
-    print(" Dilating TOF and main network",end="")
-    iterations = int(np.round(expansion_mm / hx))
-    tof_neighborhood_np = binary_dilation(tof_clean_np,
-                                    iterations=iterations,
-                                    mask=brain_mask_np)
-    print(" -done")
+    # print(" Dilating TOF and main network",end="")
+    # iterations = int(np.round(expansion_mm / hx))
+    # tof_neighborhood_np = binary_dilation(tof_clean_np,
+    #                                 iterations=iterations,
+    #                                 mask=brain_mask_np)
+    # print(" -done")
 
-    print(" Dilating main network",end="")
-    main_network_neighborhood_np = binary_dilation(main_network_np,
-                                    iterations=iterations,
-                                    mask=brain_mask_np).astype(np.uint8)
-    print(" -done")
+    # print(" Dilating main network",end="")
+    # main_network_neighborhood_np = binary_dilation(main_network_np,
+    #                                 iterations=iterations,
+    #                                 mask=brain_mask_np).astype(np.uint8)
+    # print(" -done")
     
     main_network_filled_np = binary_fill_holes(main_network_np).astype(np.uint8)
     skeleton_filled_np = skeletonize(main_network_filled_np).astype(np.uint8)
@@ -251,7 +272,6 @@ def setup_nifti(mri_directory,
     # save as nifti
     data = [
         (main_network_np, "main_network"),
-        (main_network_neighborhood_np, "main_network_neighborhood"),
         (main_network_filled_np, "main_network_filled"),
         (skeleton_np, "skeleton"),
         (skeleton_filled_np, "skeleton_filled"),

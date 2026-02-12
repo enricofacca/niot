@@ -38,6 +38,9 @@ import argparse
 import nibabel
 
 from scipy.ndimage import gaussian_filter
+from preprocess import main_and_external_network, set_sink_support
+import localthickness as lt
+
 
 
 np.set_printoptions(formatter={'float': '{:0.2e}'.format})
@@ -178,6 +181,7 @@ def set_sink(option_type="segmented", **kargs):
         sink.interpolate(- conditional(aseg > 0, absorption,0)
                         * conditional(main_network > 0, 0, 1)
                         * (1-indicator_empty)) # remove blood vessels outside the mask 
+    
     if option_type == "sink_support":
         sink_support = kargs['sink_support']
         absorption = kargs['absorption']
@@ -188,6 +192,30 @@ def set_sink(option_type="segmented", **kargs):
         raise ValueError(f"Unknown sink option {option_type}")
 
     return sink
+
+
+def save_as_npy(file_nii, file_npy, comm=COMM_WORLD):
+    PETSc.Sys.Print(f" {file_nii} to {file_npy}", os.path.exists(file_npy))
+    if not os.path.exists(file_npy):
+        if comm.rank == 0:
+            PETSc.Sys.Print(f"Convertion {file_nii} to {file_npy}",end="")
+            data = nibabel.load(file_nii)
+            data_np = data.get_fdata()
+            np.save(file_npy, data_np)
+            PETSc.Sys.Print(f"- Done")
+    comm.barrier()
+
+
+def get_data_from_nii(file_nii, save_npy=False, comm=COMM_WORLD):
+    if save_npy:
+        file_npy = file_nii.replace('.nii.gz', '.npy')
+        save_as_npy(file_nii, file_npy, comm=comm)
+        data_np = np.load(file_npy,mmap_mode='r')
+    else:
+        data = nibabel.load(file_nii)
+        data_np = data.get_fdata()    
+    return data_np
+
 
     
 
@@ -360,6 +388,82 @@ def set_corrupted_network(**kwargs):
                                 * conditional(external_network > 0, 0, 1) # exclude external network
                                 )
                             )   
+        
+    elif option_type == "mu":
+        try:
+            threshold_tof = option['threshold_tof']
+        except:
+            threshold_tof = 200
+
+        name = f"{common_name}mu_t{threshold_tof:.2e}"
+
+        try: 
+            blur = option['blur']
+        except:
+            blur = 0.0
+        
+        hx = kwargs["voxel_size"][0]
+        if blur > 0:
+            blurer = kwargs["blurer"]
+            tof4corrupted = blurer(tof, sigma=blur*hx)
+        else:
+            tof4corrupted = tof
+
+        try:
+            mesh = kwargs["mesh"]
+        except:
+            raise ValueError("mesh not provided")
+        
+        
+        try:
+            affine = kwargs["affine"]
+        except:
+            raise ValueError("affine not provided")
+
+        PETSc.Sys.Print(f"setting mu")
+        tof_np = i2d.firedrake2numpy(tof4corrupted)
+        nibabel.save(nibabel.Nifti1Image(tof_np, affine), f"temp_tof.nii.gz")
+        tof_np = None
+        if mesh.comm.rank == 0:
+            tof_np = get_data_from_nii(f"temp_tof.nii.gz", save_npy=False, comm=mesh.comm)
+            mask_np = np.zeros_like(tof_np,dtype=np.uint8)
+            mask_np[tof_np > threshold_tof] = 1
+            tof_np = None
+            thickness_np = lt.local_thickness(mask_np)
+            mask_np = None
+            
+            # scale by thickness 
+            thickness_np *= hx
+            mu_np = (thickness_np/2.0)**4
+            
+            nibabel.save(nibabel.Nifti1Image(mu_np, affine), f"mu.nii.gz")
+            thickness_np = None
+            mu_np = None
+            PETSc.Sys.Print(f"mu saved as nifti")
+        mesh.comm.barrier()
+        PETSc.Sys.Print(f"mu loading as nifti")
+        mu = nii2firedrake(f"mu.nii.gz", mesh, name="mu",comm=mesh.comm)
+        
+        try:
+            scaling = option['scaling']
+        except:
+            scaling = 1.0
+        mu *= scaling
+
+
+
+        DG0 = tof.function_space()
+        corrupted = Function(DG0, name=name)
+        corrupted.interpolate(
+                            mu
+                            * (  conditional(main_network > 0, 1, 0) # the main we must fit
+                                + 
+                                conditional(main_network > 0, 0, 1) # the rest
+                                * conditional(brain_mask > 1e-10, 1, 0) #within the brain
+                                * conditional(external_network > 0, 0, 1) # exclude external network
+                                )
+                            )
+        mu = None   
 
     elif option_type == "load":
         try:
@@ -461,6 +565,7 @@ def experiment(args):
     original_dimensions = tof_data.header.get_data_shape()[:3]
     hx, hy, hz = tof_data.header['pixdim'][1:4]
     dimensions = original_dimensions
+    offset = np.array(affine[:3, 3])
     
     voxel_size = np.array([hx, hy, hz])
     lengths = np.array([hx, hy, hz]) * np.array(original_dimensions)
@@ -580,31 +685,91 @@ def experiment(args):
                 f"{args.mri}/TOF.nii.gz",
                     f"{args.mri}/T1.nii.gz",
                     f"{args.mri}/brain_mask_smooth.nii.gz",
+                    f"{args.mri}/aseg.nii.gz"
                     ]
             for file in files:
                 if not os.path.exists(file):
                     raise ValueError(f"File {file} not found")
-            
-            # threshold dependend files
-            main_network_file = f"{args.mri}/main_network_t{threshold:.2e}.nii.gz"
-            external_network_file = f"{args.mri}/external_network_t{threshold:.2e}.nii.gz"            
-            if not os.path.exists(main_network_file) or not os.path.exists(external_network_file):
-                PETSc.Sys.Print(f"Identifty main network and external network",end="")
-                # this only use numpy, so we run only on one processor
-                save_main_and_external_network_as_nifti(args.mri, threshold)
-                PETSc.Sys.Print(f"- done")
-
+    
         PETSc.Sys.Print(f"**** Inputs loading ****")
         if blur > 0:
             label = f"t{threshold:.2e}_blur{blur:.2e}"  
         else: 
             label = f"t{threshold:.2e}"
-
         COMM_WORLD.barrier()
-        data = setup_h5(args.mri, threshold, blur=blur, masked_mesh=masked_mesh, comm=comm)
-        cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets, skeleton, thickness, sink_support = data
-        
+
+
+        #
+        # Get brain mask and build mesh
+        #
+        brain_nii_file = f"{args.mri}/brain_mask_smooth.nii.gz"
+        brain_mask_np = get_data_from_nii(brain_nii_file, False, comm=comm)
+
+        if masked_mesh:
+            PETSc.Sys.Print(f"Building masked mesh ")
+            cartesian_mesh = i2d.mesh_from_3d_mask(brain_mask_np, lengths, variable_layer=False, invert_rows_columns=False)
+        else:
+            PETSc.Sys.Print(f"Building full mesh ")
+            cartesian_mesh =  i2d.cartesian_grid_3d(dimensions,lengths,comm=comm)
+        brain_mask = nii2firedrake(brain_nii_file, cartesian_mesh, name="brain_mask",comm=cartesian_mesh.comm)
         mesh = cartesian_mesh
+
+
+        # load data as firedrake functions
+        tof = nii2firedrake(f"{args.mri}/TOF.nii.gz", mesh, name="tof",comm=mesh.comm)
+        t1 = nii2firedrake(f"{args.mri}/T1.nii.gz", mesh, name="t1",comm=mesh.comm)
+        
+        
+        # load data depended on segmentation, we save as nifti to avoid running out of memory
+        if mesh.comm.rank ==0:
+            asep_np = get_data_from_nii(f"{args.mri}/aseg.nii.gz", False, comm=comm)
+            sink_support_np = set_sink_support(asep_np)
+            asep_np = None
+            nibabel.save(nibabel.Nifti1Image(sink_support_np, affine), f"{out_directory}/sink_support.nii.gz")
+            sink_support_np = None
+        mesh.comm.barrier()
+        aseg = nii2firedrake(f"{args.mri}/aseg.nii.gz", mesh, name="aseg",comm=mesh.comm)
+        sink_support = nii2firedrake(f"{out_directory}/sink_support.nii.gz", mesh, name="sink_support",comm=mesh.comm)
+        
+        #
+        # Define main and external network.
+        # We save as nifti to avoid running out of memory
+        #
+        if mesh.comm.rank ==0:
+            tof_np = get_data_from_nii(f"{args.mri}/TOF.nii.gz", save_npy=False, comm=comm)
+            main_network_np, external_network_np, labels_np = main_and_external_network(tof_np, threshold, blur)
+            inlets_np = np.zeros_like(main_network_np, dtype=np.uint8)
+            inlets_np[main_network_np > 0] = 1
+            inlets_np[:,:,1:] = 0 # only keep inlets at the bottom of the brain
+            
+            data = [
+                (main_network_np, "main_network"),
+                (external_network_np, "external_network"),
+                (labels_np, "labels"),
+                (inlets_np, "inlets")
+             ]
+            for var, name in data:
+                outfilename = os.path.join(out_directory,f"{name}.nii.gz")
+                print(f"Saving {outfilename}")
+                nibabel.save(nibabel.Nifti1Image(var, affine), outfilename)
+            main_network_np = None
+            external_network_np = None
+            labels_np = None
+            inlets_np = None
+        mesh.comm.barrier()
+        main_network = nii2firedrake(f"{out_directory}/main_network.nii.gz", cartesian_mesh, name="main_network",comm=cartesian_mesh.comm)
+        external_network = nii2firedrake(f"{out_directory}/external_network.nii.gz", cartesian_mesh, name="external_network",comm=cartesian_mesh.comm)
+        inlets = nii2firedrake(f"{out_directory}/inlets.nii.gz", cartesian_mesh, name="inlets",comm=cartesian_mesh.comm)
+        #external_network = nii2firedrake(f"{args.out}/external_network.nii.gz", mesh, name="external_network",comm=mesh.comm)
+        #main_network = nii2firedrake(f"{args.out}/main_network.nii.gz", mesh, name="main_network",comm=mesh.comm)
+        #inlets = nii2firedrake(f"{args.out}/inlets.nii.gz", mesh, name="inlets",comm=mesh.comm)
+        #sink_support = nii2firedrake(f"{args.out}/sink_support.nii.gz", mesh, name="sink_support",comm=mesh.comm)
+        
+
+        #data = setup_h5(args.mri, threshold, blur=blur, masked_mesh=masked_mesh, comm=comm)
+        #cartesian_mesh, tof, aseg, t1, brain_mask, main_network, external_network, inlets, skeleton, thickness, sink_support = data
+        
+       
 
     try:
         xmin = mesh.xmin
@@ -642,8 +807,8 @@ def experiment(args):
         "external_network": external_network,
         "mesh": mesh,
         "cartesian_mesh": cartesian_mesh,
-        "skeleton" : skeleton,
-        "thickness": thickness,        
+        #"skeleton" : skeleton,
+        #"thickness": thickness,        
         "affine": affine,
         "offset": offset,
         "voxel_size": voxel_size,
@@ -1178,10 +1343,15 @@ def experiment(args):
             except:
                 lift = 1e-4
 
+            try:
+                scaling = option["scaling"]
+            except:
+                scaling = 1.0
+
             name = common_name+f"corrupted_lift{lift:.2e}"
             support = conditional(brain_mask > 1e-10, 1, 0) + conditional(brain_mask > 1e-10, 0, 1) * conditional(main_network > 0, 1, 0)
             initial = Function(main_network.function_space(), name=name)
-            initial.interpolate(corrupted*support + lift)
+            initial.interpolate(scaling * corrupted * support + lift)
 
             try:
                 sigma_heat = option["sigma_heat"]
@@ -1335,17 +1505,20 @@ def experiment(args):
         #
         # set corrupted network
         #
+        PETSc.Sys.Print(f"corrupted") 
         corrupted = set_corrupted_network(**combination, **input_data)
         
         #
         # btp inputs
         #
+        PETSc.Sys.Print(f"sink")
         sink = set_sink(option_type="sink_support",**combination, **input_data)
 
         R = FunctionSpace(mesh,"R",0)
         source = Function(R, name="source")
         source.assign(0.0)
 
+        PETSc.Sys.Print(f"kappa")
         kappa = set_kappa(**combination, corrupted_fun=corrupted, **input_data)
                 
         
@@ -1366,7 +1539,7 @@ def experiment(args):
             weak_Dirichlet = None
             strong_Dirichlet = [(99, 0.0)]
         
-        
+        PETSc.Sys.Print(f"BTP")
         btp = ot.BranchedTransportProblem(source, sink, 
                                       gamma=0.5, 
                                       Dirichlet = strong_Dirichlet,
@@ -1449,6 +1622,7 @@ def experiment(args):
 
         # setup solver
         mesh.comm.Barrier()
+        PETSc.Sys.Print(f"SETUP SOLVER")
         niot_solver = NiotSolver(btp, 
                              corrupted,  
                              confidence=confidence, 
@@ -1520,6 +1694,7 @@ def experiment(args):
         niot_solver.ctrl_set("log_file",log_filename)
         
         # set solvers according to controls
+        PETSc.Sys.Print(f"SETUP SOLVER")
         niot_solver.setup()
         
         # set intial guess
