@@ -1352,13 +1352,6 @@ class NiotSolver:
                     if map_type == 'identity':
                         # set the discrepancy term and assembly
                         self.discrepancy_form = self.discrepancy_weight * self.discrepancy(self.pot_h,self.tdens_h)
-                        self.print_info(
-                        msg="identity without adjoint",
-                        priority=1, 
-                        where=['stdout','log']
-                        )
-                        
-                        
                         self.adj_discrepancy_fun = assemble(self.discrepancy_form)
                         
                         # accordinf to the norm use we can simplfy the computaion 
@@ -1390,7 +1383,6 @@ class NiotSolver:
                     # Simple derivative computation
                     # It uses less memory, but it requires the functional
                     # as combination of operations manegable by automatic differiantion.
-                    print(self.gradient_discrepancy_form)
                     self.gradient_discrepancy = assemble(self.gradient_discrepancy_form)
 
 
